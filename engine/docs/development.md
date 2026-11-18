@@ -96,7 +96,7 @@ screen. It costs some GPU time on cards that cull quickly, so it is off unless s
 | `HOS_PAGES_LIMIT=1` | A diagnostic: `AllocateMemoryPages` is refused past the console's total (heap and mapped pages), as on the console. Keep it off: the game retries a refused allocation forever |
 | `HOS_GPU_ALLOC_RETRY=0` | A model's material-block allocations from a full heap (the OptimizeChangeBank thread's two CPU buffers and two GPU-memory calls in f_804566e0) not tried in the heap's parents, as shipped (`host/hl_heap_retry.c`, issue 1697) |
 | `HOS_GPU_ALLOC_TEST_FAIL=<n>` or `<gpu>,<cpu>` | A test: the first n of those allocations of each kind (or that many of the GPU memory and of the CPU buffers) refused by the heap they name, as a full heap would, so the retry runs |
-| `HL_MAINLOOP=0` | The game's main loop is the translated one again. By default the main thread is handed to the native main loop (`hl::bridge::FrameLoop`, `docs/native-engine/main-loop.md`) at the framework's loop `0x809667b0`; it needs the job bridge (`HL_JOBS`, on). `HL_MAINLOOP_CHECK=1` counts its invariants every 10 s in the log. For A/B |
+| `HL_MAINLOOP=1` | The game's main loop runs as the native main loop (`hl::bridge::FrameLoop`, `docs/native-engine/main-loop.md`). Off by default again from 0.4.3 (on in 0.4.2): three 0.4.2 crash reports read [null+0x150] on a ModuleSystemWorker (a handle index past its table's count) and the native loop's step order is the first suspect. `HL_MAINLOOP_CHECK=1` counts the loop's invariants |
 
 ### Input for scripted runs
 
