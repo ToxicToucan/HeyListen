@@ -14,3 +14,5 @@
 /* (longshot, ported 2026-11-18) The Shadow resolution row (host/oot_shadow.c asks, gpu/vk/vk_replay.cpp answers 0 Game's 1600,
    1 2200, 2 3072). 56 is the id Longshot 9f8958a5c gives the same row in its vk_api.h (free in this tree). */
 #define HL_OPT_SHADOW_RES 56
+/* The Debug tab's First person row (host/hos_main.c and host/nn_hid.c ask, gpu/vk/vk_replay.cpp answers 0 or 1) */
+#define HL_OPT_FIRST_PERSON 91
