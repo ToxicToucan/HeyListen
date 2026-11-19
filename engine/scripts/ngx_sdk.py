@@ -101,6 +101,8 @@ def files(platform, runtime=True):
 
 def library(sdk, platform):
     """The library a build with this SDK folder links, for that platform"""
+    if platform == "windows" and os.environ.get("HOOKSHOT_NGX_DYNAMIC", "") == "1":   # (local patch 2026-11-18: nvsdk_ngx_d.lib)
+        return os.path.join(sdk, "lib", "nvsdk_ngx_d.lib")
     return os.path.join(sdk, *destination(PLATFORMS[platform]["library"][0]).split("/"))
 
 

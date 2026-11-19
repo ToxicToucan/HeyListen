@@ -201,6 +201,10 @@ def tree_headers(*roots, skip=()):
 def ngx_library(sdk, linux):
     """NVIDIA's NGX library in a HOOKSHOT_NGX_SDK folder (scripts/ngx_sdk.py's layout), for this build's platform: libnvsdk_ngx.a
     on Linux, nvsdk_ngx_s.lib on Windows (the static one, built against Microsoft's static runtime: gpu/vk/vk_ngx_msvc_rt.cpp)"""
+    # (local patch 2026-11-18, OOT perf session: HOOKSHOT_NGX_DYNAMIC=1 links nvsdk_ngx_d.lib, the /MD library of the NGX SDK the owner
+    # already had, through vk_ngx_msvc_rt.cpp's import shims; ngx-dynamic-2026-11-18.patch)
+    if not linux and os.environ.get("HOOKSHOT_NGX_DYNAMIC", "") == "1":
+        return os.path.join(sdk, "lib", "nvsdk_ngx_d.lib")
     return os.path.join(sdk, "lib", "libnvsdk_ngx.a" if linux else "nvsdk_ngx_s.lib")
 
 
@@ -230,6 +234,9 @@ def ngx_link(sdk, mingw):
     libraries of Microsoft's are toolchain.native_link's /nodefaultlib already). Nothing without the SDK"""
     if not sdk:
         return []
+    if mingw and os.environ.get("HOOKSHOT_NGX_DYNAMIC", "") == "1":   # (local patch 2026-11-18: the /MD library names msvcprt, msvcrt and
+        # vcruntime as default libraries; their few calls are vk_ngx_msvc_rt.cpp's shims and llvm-mingw's UCRT, so none of them is linked)
+        return [ngx_library(sdk, False), "-ladvapi32", "-luser32"] + ["-Wl,-Xlink=/nodefaultlib:" + l for l in ("libcpmt", "msvcprt", "msvcrt", "vcruntime", "oldnames")]
     return [ngx_library(sdk, False), "-ladvapi32"] + (["-Wl,-Xlink=/nodefaultlib:libcpmt"] if mingw else [])
 
 
@@ -921,6 +928,8 @@ def main():
         # (NVIDIA DLSS, a local build's option: scripts/ngx_sdk.py. Only vk_dlss.cpp sees NVIDIA's headers; without them
         # it is the stubs that say DLSS is not there)
         ngx_flags = ["-DHOOKSHOT_NGX", "-I" + os.path.join(NGX_SDK, "include")] if NGX_SDK else []
+        if NGX_SDK and os.environ.get("HOOKSHOT_NGX_DYNAMIC", "") == "1":   # (local patch: the /MD library's import shims)
+            ngx_flags.append("-DHOOKSHOT_NGX_DYNAMIC")
         if NGX_SDK:
             print("the Vulkan back end: with NVIDIA DLSS (NVIDIA's NGX SDK in %s)" % NGX_SDK, flush=True)
         # (AMD FSR 4, a build's option too: only vk_fsr4.cpp sees AMD's headers; without them it is the stubs that say FSR is

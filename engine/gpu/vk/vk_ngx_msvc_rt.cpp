@@ -90,5 +90,16 @@ void msvc_xbad_alloc() { msvc_fatal("out of memory (std::bad_alloc)"); }
 [[noreturn]] void msvc_xlength_error(const char* what) __asm__("?_Xlength_error@std@@YAXPEBD@Z");
 void msvc_xlength_error(const char* what) { msvc_fatal(what ? what : "std::length_error"); }
 
+#if defined(HOOKSHOT_NGX_DYNAMIC)
+// (local patch 2026-11-18, OOT perf session; ngx-dynamic-2026-11-18.patch) nvsdk_ngx_d.lib, the SDK's /MD library, calls the two
+// error reports above through MSVCP140's import table (__imp_ names) and checks indirect calls through Control Flow Guard's
+// pointer. Here the import slots point at the functions above, and the guard check does nothing (no CFG in this DLL). Its C
+// library imports (__imp_malloc, __imp___stdio_common_vfprintf ...) are llvm-mingw's UCRT import libraries'.
+static void msvc_guard_check_icall(uintptr_t) {}
+__attribute__((used)) void (*const msvc_imp_xbad_alloc)() __asm__("__imp_?_Xbad_alloc@std@@YAXXZ") = &msvc_xbad_alloc;
+__attribute__((used)) void (*const msvc_imp_xlength_error)(const char*) __asm__("__imp_?_Xlength_error@std@@YAXPEBD@Z") = &msvc_xlength_error;
+__attribute__((used)) void (*const msvc_guard_check_icall_fptr)(uintptr_t) __asm__("__guard_check_icall_fptr") = &msvc_guard_check_icall;
+#endif
+
 }  // extern "C"
 #endif
