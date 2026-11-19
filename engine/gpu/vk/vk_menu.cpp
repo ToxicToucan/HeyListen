@@ -759,9 +759,9 @@ Row rows[] = {
      "press). The folder is screenshot_folder= in hookshot_options.ini; without it, \"screenshots\" beside the game.",
      nullptr, false, true},
     {TAB_CONTROLS, "Clip key", &opts.clip_key, 0, 3, 1, tx_clip_key,   // (fork: vk_clip.h)
-     "Records a clip of up to 10 seconds as an MP4 (NVIDIA's NVENC, through ffmpeg if it is on this PC); press again to end it "
-     "sooner. Holding the controller's Capture button does it too. The folder is clip_folder= in hookshot_options.ini; "
-     "without it, \"clips\" beside the game.",
+     "Starts recording a clip, as an MP4 (NVIDIA's NVENC, through ffmpeg if it is on this PC); press again to stop. REC shows "
+     "while it records. Holding the controller's Capture button does the same. The folder is clip_folder= in "
+     "hookshot_options.ini; without it, \"clips\" beside the game. A clip left running ends at clip_max_minutes= (10).",
      nullptr, false, true},
     // Debug: the tools' switch, the tools themselves below it while they are on (cheat: menu_tick does what they do), then the
     // developer's rows
@@ -2781,7 +2781,9 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
     const bool start = startup_on.load(std::memory_order_acquire);
     const bool fps = opts.show_fps && !start;   // (no game frames yet: not "0 FPS" over the start-up screen)
     const bool open = open_now.load(std::memory_order_relaxed);
-    if (!start && !fps && !open) {   // (nothing shows: no ImGui frame, no render pass)
+    bool clip_recording();   // (fork: vk_replay.cpp, the REC marker)
+    const bool rec = clip_recording() && !start;
+    if (!start && !fps && !open && !rec) {   // (nothing shows: no ImGui frame, no render pass)
         // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
         // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
         if (prebake_needed(w, h) && ui::begin(w, h)) {
@@ -2805,6 +2807,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
     prebake(c);   // (the menu's glyphs at this size, before it opens: no hitch then)
     if (start) draw_startup(c);   // (under the menu)
     overlay_draw(w, h, fps ? opts.show_fps : 0, open);   // (HeyListen: the performance overlay, F10; the menu over its FPS box)
+    if (rec) overlay_rec(w, h, fps ? opts.show_fps : 0);   // (fork: a clip records)
     if (open) draw_menu(c);
     ui::record(cmd, index, w, h);
 }

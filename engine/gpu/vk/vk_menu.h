@@ -111,6 +111,7 @@ void startup_screen(const StartupView* view);
 /// between ui::begin and ui::record). overlay_prepare: before the frame begins (its font into the atlas)
 void overlay_prepare();
 void overlay_draw(uint32_t w, uint32_t h, int mode, bool menu_open);
+void overlay_rec(uint32_t w, uint32_t h, int fps_mode);   // (fork: the REC marker while a clip records, vk_clip.h)
 /// The game image's size the present shows (the overlay's picture lines)
 void overlay_note_image(int w, int h);
 

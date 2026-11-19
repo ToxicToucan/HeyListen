@@ -194,7 +194,7 @@ Settings settings() {
             else if (k == "clip_encoder") s.encoder = val;
             else if (k == "clip_fps") s.fps = std::clamp(atoi(val.c_str()), 10, 120);
             else if (k == "clip_height") s.height = std::clamp(atoi(val.c_str()), 144, 4320);
-            else if (k == "clip_seconds") s.seconds = std::clamp(atoi(val.c_str()), 1, 120);
+            else if (k == "clip_max_minutes") s.max_minutes = std::clamp(atoi(val.c_str()), 1, 120);
             else if (k == "clip_bitrate_mbps") s.bitrate_mbps = std::clamp(atoi(val.c_str()), 2, 200);
         }
         fclose(f);

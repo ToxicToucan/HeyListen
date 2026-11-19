@@ -5549,10 +5549,11 @@ void user_shot_write() {
 }
 
 // (fork) Clips, the GPU side (vk_clip.h): the Clip key (F9 unless changed) or the Capture button held (option_set
-// HL_OPT_CLIP) starts or ends one. Each frame due at the clip's rate is blitted to its size and copied into a readback
+// HL_OPT_CLIP) starts or ends one (a toggle; clip_max_minutes ends one left running). Each frame due at the clip's rate is blitted to its size and copied into a readback
 // buffer of its own; once the GPU is past it the copier takes it. The images and buffers live only while a clip records,
 // and go once every buffer has been read.
 std::atomic<bool> clip_toggle{false};
+std::atomic<bool> clip_rec_on{false};   // (the REC marker's: vk_menu.cpp asks clip_recording())
 struct ClipGpu {
     int phase = 0;   // (0 idle, 1 recording, 2 finishing)
     VkImage image = VK_NULL_HANDLE;
@@ -5562,7 +5563,7 @@ struct ClipGpu {
     void* map[clip::kReadbacks]{};
     struct Pend { bool on = false; uint64_t value = 0; int64_t index = 0; } pend[clip::kReadbacks];
     uint32_t w = 0, h = 0;
-    int fps = 60, seconds = 10;
+    int fps = 60, seconds = 600;
     std::chrono::steady_clock::time_point t0;
     int64_t next_index = 0, end_index = 0;
 } clip_gpu;
@@ -5600,13 +5601,15 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
             clip_gpu_free();
             return;
         }
-        g.w = w, g.h = h, g.fps = s.fps, g.seconds = s.seconds, g.t0 = now, g.next_index = 0, g.phase = 1;
+        g.w = w, g.h = h, g.fps = s.fps, g.seconds = s.max_minutes * 60, g.t0 = now, g.next_index = 0, g.phase = 1;
+        clip_rec_on.store(true);
     }
     const double el = std::chrono::duration<double>(now - g.t0).count();
     if (pressed || el >= g.seconds || clip::failed()) {
         g.phase = 2;
+        clip_rec_on.store(false);
         g.end_index = std::min<int64_t>((int64_t)(el * g.fps), (int64_t)g.seconds * g.fps);
-        logf("clip: stopped after %.2f s", el);
+        logf("clip: stopped after %.2f s%s", el, el >= g.seconds ? " (clip_max_minutes)" : "");
         return;
     }
     const int64_t idx = (int64_t)(el * g.fps);
@@ -6038,6 +6041,7 @@ void do_present(const nvn_tex* t, const int crop[4]) {
 void screenshot_request() { user_shot_wanted.store(true); }
 // (fork) a clip started or ended from outside the present: the menu's option_set (HL_OPT_CLIP, the Capture button held)
 void clip_request() { clip_toggle.store(true); }
+bool clip_recording() { return clip_rec_on.load(std::memory_order_relaxed); }
 
 
 // (hookshot) RX_VK_FRAMELOG=<file>: every frame shown, the game's and the made ones, as they go to the screen, 320x180, while
