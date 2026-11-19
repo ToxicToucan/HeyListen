@@ -109,6 +109,10 @@ const char* tx_fps_limit(int v) {
     static const char* t[] = {"60", "90", "120", "144", "165", "240"};
     return t[v < 0 || v > 5 ? 0 : v];
 }
+const char* tx_shadow_res(int v) {   // (longshot 9f8958a5c, ported)
+    static const char* t[] = {"Game (1600)", "High (2200)", "Ultra (3072)"};
+    return t[v < 0 || v > 2 ? 0 : v];
+}
 const char* tx_perf(int v) { return v == 2 ? "Full" : v ? "FPS" : "Off"; }
 const char* tx_menu_shortcut(int v) {
     static const char* const names[] = {"Insert or F1", "Insert only", "F1 only"};
@@ -637,6 +641,9 @@ Row rows[] = {
     {TAB_GRAPHICS, "Frame rate limit", &opts.fps_limit, 0, 5, 1, tx_fps_limit,   // (HeyListen: HL_OPT_FPS_LIMIT, vk_opt_ids.h, host/nn_vi.c)
      "The game's own frame rate. Above 60 it needs Game speed on Real time (the game's time follows the clock, so it does not run "
      "faster), and your display must run that fast to show every frame.", nullptr, false, true},
+    {TAB_GRAPHICS, "Shadow resolution", &opts.shadow_res, 0, 2, 1, tx_shadow_res,   // (longshot 9f8958a5c, ported: HL_OPT_SHADOW_RES, host/oot_shadow.c)
+     "The sun's shadow map: Game is the game's own 1600. High and Ultra use the game's larger sizes, so thin shadows near Link (chains, ivy, fences) "
+     "are smoother, for a little more GPU time.", nullptr},
     // (the picture's way, top to bottom: the output's size, what fills it from the 3D, the 3D's size, then the window)
     {TAB_GRAPHICS, "Output resolution", &opts.output_res, 0, kLastOutput, 1, tx_output_res,
      "The game's whole frame, HUD included, before it is scaled to the window. Docked only. Applies after a restart.",
