@@ -14,3 +14,6 @@
 /* (fork) A screenshot asked for by the host (option_set: host/pad_sdl.c, the controller's Capture button pressed briefly);
    the renderer writes the next presented frame (gpu/vk/vk_replay.cpp screenshot_request) */
 #define HL_OPT_SCREENSHOT 93
+
+/* (fork) A clip started or ended by the host (option_set: host/pad_sdl.c, the Capture button held); gpu/vk/vk_clip.h */
+#define HL_OPT_CLIP 94

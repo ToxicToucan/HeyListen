@@ -308,13 +308,18 @@ static void pad_log_presses(int i, void *gc) {
 /* one poll: controllers plugged in or gone (each second), then every open one's buttons, sticks and rumble */
 /* (fork) The Capture button (Switch controllers; Share on Xbox and PlayStation pads: SDL's misc1), not the game's: let go
    within half a second, a screenshot (the renderer's, gpu/vk/vk_replay.cpp, through option_set HL_OPT_SCREENSHOT); held
-   longer, left for a clip. */
+   half a second, a clip starts, or the one recording ends (HL_OPT_CLIP, gpu/vk/vk_clip.h). */
 static void capture_button(int down, int64_t now) {
-    static int was;
+    void rx_option_set(int id, int value);
+    static int was, held;
     static int64_t since;
-    if (down && !was) since = now;
-    if (!down && was && now - since < 500000000LL) {
-        void rx_option_set(int id, int value);
+    if (down && !was) since = now, held = 0;
+    if (down && !held && now - since >= 500000000LL) {
+        held = 1;
+        rx_option_set(HL_OPT_CLIP, 1);
+        hos_log("hid: Capture held: a clip starts or ends");
+    }
+    if (!down && was && !held) {
         rx_option_set(HL_OPT_SCREENSHOT, 1);
         hos_log("hid: Capture pressed: a screenshot");
     }
