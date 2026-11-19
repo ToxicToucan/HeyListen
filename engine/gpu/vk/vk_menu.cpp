@@ -46,6 +46,7 @@
 #include "vk_temporal.h"
 #include "vk_reflex.h"
 #include "upscaler_rows.h"
+#include "vk_opt_ids.h"   // (fork: HL_OPT_SCREENSHOT, menu_option_set)
 #include "menu_restart.h"
 #ifndef HOOKSHOT_VERSION   // (nx2/build.py gives it to this file: nx2/version.py)
 #define HOOKSHOT_VERSION "unknown"
@@ -117,6 +118,10 @@ const char* tx_perf(int v) { return v == 2 ? "Full" : v ? "FPS" : "Off"; }
 const char* tx_menu_shortcut(int v) {
     static const char* const names[] = {"Insert or F1", "Insert only", "F1 only"};
     return names[v];
+}
+const char* tx_screenshot_key(int v) {   // (fork: vk_replay.cpp's keys[] in the same order)
+    static const char* const names[] = {"Off", "F12", "F11", "F10", "Print Screen"};
+    return names[std::min(std::max(v, 0), 4)];
 }
 const char* tx_hdr(int v) { return v == 1 ? "Expanded" : v == 2 ? "Native (the game's)" : "Off"; }
 const char* tx_nits(int v) {
@@ -757,6 +762,10 @@ Row rows[] = {
     {TAB_CONTROLS, "Menu shortcut", &opts.menu_shortcut, 0, 2, 1, tx_menu_shortcut,
      "Which keyboard shortcut opens and closes this menu. Choose one key to leave the other free for an overlay. "
      "On a controller, Home, the touchpad click (DualSense, DualShock 4) or Select and Start together always open it.",
+     nullptr, false, true},
+    {TAB_CONTROLS, "Screenshot key", &opts.screenshot_key, 0, 4, 1, tx_screenshot_key,   // (fork: vk_replay.cpp's player screenshot)
+     "Saves the picture as a PNG at its full size, with the game's HUD. The controller's Capture button does it too (a short "
+     "press). The folder is screenshot_folder= in hookshot_options.ini; without it, \"screenshots\" beside the game.",
      nullptr, false, true},
     // Debug: the tools' switch, the tools themselves below it while they are on (cheat: menu_tick does what they do), then the
     // developer's rows
@@ -2203,6 +2212,11 @@ void menu_option_set(int id, int value) {
             int expected = value ? 0 : 1;
             player_flight.compare_exchange_strong(expected, value != 0, std::memory_order_relaxed);
         }
+        return;
+    }
+    if (id == HL_OPT_SCREENSHOT) {   // (fork: the controller's Capture button, host/pad_sdl.c)
+        void screenshot_request();   // (vk_replay.cpp)
+        if (value) screenshot_request();
         return;
     }
     if (id != 7) return;
