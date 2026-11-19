@@ -24,3 +24,6 @@
 
 /* (fork) A clip started or ended by the host (option_set: host/pad_sdl.c, the Capture button held); gpu/vk/vk_clip.h */
 #define HL_OPT_CLIP 94
+/* (fork) The host asks for the Restart row's restart (option_set: host/hos_main.c's quick load): options and pipeline cache
+   saved, the window closed for a restart (gpu/vk/vk_menu.cpp menu_option_set) */
+#define HL_OPT_RESTART 95

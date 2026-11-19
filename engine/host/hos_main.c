@@ -13,7 +13,7 @@
 #include "hos_run_logs.h"
 #include "../gpu/vk/vk_api.h"
 #include "../gpu/vk/oot_cheat_items.h"
-#include "../gpu/vk/vk_opt_ids.h"   /* (fork: HL_OPT_FIRST_PERSON) */
+#include "../gpu/vk/vk_opt_ids.h"   /* (fork: HL_OPT_FIRST_PERSON; HL_OPT_RESTART, the quick load) */
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -1335,6 +1335,142 @@ static void oot_first_person_player(Ctx *c, uint64_t actor, uint64_t components,
     }
 }
 
+/* (fork) Quick save and quick load, the game's side (host/oot_quicksave.c has the files): in play, F5 saves this moment;
+   F8 twice within 3 s loads the newest quick save. A load starts the game again (the Restart row's own way, through the
+   renderer: options and pipeline cache saved first) from the quick save's folder (HL_QUICKLOAD_USER), past the title
+   (HL_SKIP_TITLE=1); once play has begun Link is put back where the quick save was made (HL_QUICKLOAD_POS, once): in that
+   map, or after a teleport there when the save started him elsewhere and the map is in the teleport list. Keys only while
+   the game's window is in front and the menu is closed. From the OoT recomp's quick save (F5 / F8). */
+int hos_qs_write(Ctx *c, uint64_t manager, const char *map, const float xyz[3], char *out, size_t out_size);
+int hos_qs_latest(char *dir, size_t dir_size, char *map, size_t map_size, float xyz[3]);
+
+/* Link moved to xyz in the map he is in, through his physics controller's OneShotPhysicsCctChangePosition (as the
+   Return to mark row does). 1 when it was asked */
+static int oot_put_link(Ctx *c, uint64_t components, const float xyz[3]) {
+    const unsigned offsets[] = {80, 32, 16, 8};
+    uint64_t controller = components;
+    for (unsigned i = 0; i < sizeof offsets / sizeof offsets[0]; i++) {
+        controller = recomp_load64(c, controller + offsets[i]);
+        if (!controller) return 0;
+    }
+    const uint64_t vtable = recomp_load64(c, controller);
+    if (vtable != 0x84c54f10ULL || recomp_load64(c, vtable + 0xe8) != 0x806d2530ULL) return 0;
+    A64Fn change_position = a64_lookup(0x806d2530ULL);
+    if (!change_position) return 0;
+    const Ctx saved = *c;
+    const uint64_t arg = c->x[31] - 16;
+    for (unsigned i = 0; i < 3; i++) {
+        uint32_t bits;
+        memcpy(&bits, &xyz[i], sizeof bits);
+        recomp_store32_sp(c, arg + i * 4, bits);
+    }
+    recomp_store32_sp(c, arg + 12, 0);
+    c->x[31] = arg;
+    c->x[0] = controller;
+    c->x[1] = arg;
+    change_position(c);
+    *c = saved;
+    return 1;
+}
+
+volatile int hos_qs_live;   /* (host/nn_hid.c: the live input file's !qsave 1, !qload 2: a test's quick save and load) */
+
+static void oot_quick_save_tick(Ctx *c, uint64_t actor, uint64_t components, int64_t now) {
+    int rx_option(int id, int otherwise);
+    void rx_option_set(int id, int value);
+    /* the place a quick load is to put Link back (once, read at the first update) */
+    static int place_read, place_left, teleported;
+    static char place_map[96];
+    static float place[3];
+    static int64_t place_since;
+    if (!place_read) {
+        place_read = 1;
+        const char *e = getenv("HL_QUICKLOAD_POS");
+        if (e && *e && sscanf(e, "%95s %f %f %f", place_map, &place[0], &place[1], &place[2]) == 4) {
+            place_left = 1, place_since = now;
+            hos_log("quick load: Link goes back to %s %.2f %.2f %.2f", place_map, place[0], place[1], place[2]);
+        }
+#ifdef _WIN32
+        SetEnvironmentVariableA("HL_QUICKLOAD_POS", NULL);   /* (a later Restart does not do it again) */
+        _putenv("HL_QUICKLOAD_POS=");
+#else
+        unsetenv("HL_QUICKLOAD_POS");
+#endif
+    }
+    if (place_left) {
+        const uint64_t events = oot_singleton(c, OOT_EVENTMGR_SLOT);
+        char map[96];
+        const int busy = events && recomp_load64(c, events + 104);   /* (an event: the arrival scene, a load) */
+        if (now - place_since > 90000000000LL) {
+            place_left = 0;
+            hos_log("quick load: %s was not reached in 90 s: Link stays where the save put him", place_map);
+        } else if (!busy && now - place_since > 3000000000LL && oot_gamedata_string(c, 0x1d6189dau, map, sizeof map)) {
+            if (!strcmp(map, place_map)) {
+                if (oot_put_link(c, components, place)) {
+                    place_left = 0;
+                    hos_log("quick load: Link put back at %s %.2f %.2f %.2f", map, place[0], place[1], place[2]);
+                }
+            } else if (!teleported) {
+                teleported = 1;
+                int index = -1;
+                for (unsigned i = 0; i < sizeof oot_destinations / sizeof oot_destinations[0] && index < 0; i++)
+                    if ((oot_destinations[i].child_banc && !strcmp(oot_destinations[i].child_banc, place_map)) ||
+                        (oot_destinations[i].adult_banc && !strcmp(oot_destinations[i].adult_banc, place_map)))
+                        index = (int)i;
+                if (index >= 0 && oot_teleport(c, actor, (unsigned)index)) {
+                    hos_log("quick load: in %s, the save's map is %s: teleporting there first", map, place_map);
+                    place_since = now;   /* (the teleport's own time) */
+                } else {
+                    place_left = 0;
+                    hos_log("quick load: %s is not in the teleport list: Link stays in %s, where the save put him", place_map, map);
+                }
+            }
+        }
+    }
+    /* the keys */
+    DWORD foreground = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &foreground);
+    const int mine = foreground == GetCurrentProcessId() && !rx_option(1, 0);
+    static int f5_was, f8_was;
+    static int64_t load_armed;
+    const int f5 = mine && GetAsyncKeyState(VK_F5) < 0, f8 = mine && GetAsyncKeyState(VK_F8) < 0;
+    const int live = __atomic_exchange_n(&hos_qs_live, 0, __ATOMIC_RELAXED);   /* (the live input file's !qsave / !qload) */
+    if (live == 2) load_armed = now;   /* (!qload: at once, no second press) */
+    if ((f5 && !f5_was) || live == 1) {
+        char map[96] = "", dir[MAX_PATH];
+        float xyz[3];
+        for (unsigned i = 0; i < 3; i++) xyz[i] = oot_load_float(c, actor + 796 + i * 4);
+        oot_gamedata_string(c, 0x1d6189dau, map, sizeof map);   /* Sequence_CurrentBanc */
+        if (!map[0]) hos_log("quick save: the map is not known now: not made");
+        else hos_qs_write(c, oot_singleton(c, OOT_GAMEDATA_SLOT), map, xyz, dir, sizeof dir);
+    }
+    if ((f8 && !f8_was) || live == 2) {
+        char dir[MAX_PATH], map[96];
+        float xyz[3];
+        if (!hos_qs_latest(dir, sizeof dir, map, sizeof map, xyz)) {
+            hos_log("quick load: no quick save yet (F5 makes one)");
+        } else if (!load_armed || now - load_armed > 3000000000LL) {
+            load_armed = now;
+            hos_log("quick load: F8 again within 3 s loads %s (this game closes)", dir);
+        } else {
+            load_armed = 0;
+            char pos[160];
+            snprintf(pos, sizeof pos, "%s %.4f %.4f %.4f", map, xyz[0], xyz[1], xyz[2]);
+#ifdef _WIN32
+            SetEnvironmentVariableA("HL_QUICKLOAD_USER", dir);
+            SetEnvironmentVariableA("HL_QUICKLOAD_POS", pos);
+            SetEnvironmentVariableA("HL_SKIP_TITLE", "1");
+#else
+            setenv("HL_QUICKLOAD_USER", dir, 1), setenv("HL_QUICKLOAD_POS", pos, 1), setenv("HL_SKIP_TITLE", "1", 1);
+#endif
+            hos_log("quick load: starting again from %s", dir);
+            hos_log_flush();
+            rx_option_set(HL_OPT_RESTART, 1);   /* (the renderer's Restart: gpu/vk/vk_menu.cpp) */
+        }
+    }
+    f5_was = f5, f8_was = f8;
+}
+
 static void oot_update_player_cheats(Ctx *c, uint64_t actor, uint64_t components) {
     int rx_option(int id, int otherwise);
     static uint64_t flying_actor, marked_actor, marked_controller;
@@ -1353,6 +1489,7 @@ static void oot_update_player_cheats(Ctx *c, uint64_t actor, uint64_t components
     oot_first_person_player(c, actor, components, now);
     if (marked_actor != actor || now - last_player_tick > 2000000000LL) marked_controller = 0;
     last_player_tick = now;
+    oot_quick_save_tick(c, actor, components, now);   /* (fork: F5, F8 twice) */
     int action = rx_option(HOS_OPT_CHEAT_ACTION, 0);
     if (!action) action = __atomic_exchange_n(&hos_oot_live_action, 0, __ATOMIC_RELAXED);
     oot_teleport_followup(c);
@@ -1907,6 +2044,10 @@ static int game_main(int argc, char **argv) {
             snprintf(beside_image, MAX_PATH, "%s" SEP_S "image.bin", dir);
             snprintf(beside_romfs, MAX_PATH, "%s" SEP_S "romfs", dir);
             snprintf(beside_user, MAX_PATH, "%s" SEP_S "user", dir);
+            {   /* (fork) a quick load (host/oot_quicksave.c): this start plays from the quick save's folder, not user\ */
+                const char *quick = getenv("HL_QUICKLOAD_USER");
+                if (!hos_user_dir && quick && *quick) hos_user_dir = quick, hos_log("quick load: playing from %s", quick);
+            }
             if (GetFileAttributesA(beside_image) != INVALID_FILE_ATTRIBUTES) {
                 hos_update_check();   /* (a game folder from the builder: is a newer release out? host/hos_update.c) */
                 image = beside_image;
