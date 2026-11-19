@@ -1191,23 +1191,21 @@ static int fp_set_head_visible(Ctx *c, uint64_t components, int visible, int log
 }
 
 /* (fork) Navi kept out of the eye: she hovers by Link's head, so in first person her glowing body and wings filled the
-   view (and the one-frame flash test took her coming and going for flashes, dev-fp3). Her actor is the one the game's AI
-   query QueryNaviGetWaitPos reads her wait position from (main+0x2a74700): the singleton at main+0x4c7e178, through
-   main+0xcaf800. While first person is on, her materials Mt_Body and Mt_Wings (Npc_Navi's two) are hidden while she is
+   view (and the one-frame flash test took her coming and going for flashes, dev-fp3). Her actor is the singleton the
+   game's AI query QueryNaviGetWaitPos (main+0x2a74700) reads her wait position through (main+0x4c7e178). While first person is on, her materials Mt_Body and Mt_Wings (Npc_Navi's two) are hidden while she is
    within 1 m of the eye and shown again beyond it; turned off, she is shown. Her light (the scene's point light) stays. */
 static const char *const kNaviMaterials[] = {"Mt_Body", "Mt_Body_AlphaMask", "Mt_Wings"};
 static uint64_t fp_navi_actor(Ctx *c, int log) {
+    /* (the singleton is her actor: main+0xcaf800, which the query calls on it, is the engine's look-up of one of an actor's
+       components (its table at +0x1f0, entry 0x23: the one keeping her wait position at +0xa54), not the actor) */
     const uint64_t got = recomp_load64(c, 0x84c9e178ULL);
-    const uint64_t inst = got ? recomp_load64(c, got) : 0;
-    uint64_t navi = 0;
-    if (inst) fp_guest_call(c, 0x80ccf800ULL, ((c->x[31] - 256) & ~15ULL) - 16, inst, 0, 0, &navi);
+    const uint64_t navi = got ? recomp_load64(c, got) : 0;
     const uint64_t vt = navi ? recomp_load64(c, navi) : 0;
     const uint64_t comps = navi && fp_in_main(vt) ? recomp_load64(c, navi + 624) : 0;
     if (log)
-        hos_log("first person: Navi: manager %#llx, actor %#llx (vtable %#llx), components %#llx, at %.2f %.2f %.2f",
-                (unsigned long long)inst, (unsigned long long)navi, (unsigned long long)vt, (unsigned long long)comps,
-                comps ? oot_load_float(c, navi + 796) : 0.0f, comps ? oot_load_float(c, navi + 800) : 0.0f,
-                comps ? oot_load_float(c, navi + 804) : 0.0f);
+        hos_log("first person: Navi: actor %#llx (vtable %#llx), components %#llx, at %.2f %.2f %.2f", (unsigned long long)navi,
+                (unsigned long long)vt, (unsigned long long)comps, navi ? oot_load_float(c, navi + 796) : 0.0f,
+                navi ? oot_load_float(c, navi + 800) : 0.0f, navi ? oot_load_float(c, navi + 804) : 0.0f);
     return comps ? navi : 0;
 }
 static void fp_navi(Ctx *c, int want) {
