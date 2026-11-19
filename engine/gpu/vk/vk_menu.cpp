@@ -2215,6 +2215,10 @@ void menu_option_set(int id, int value) {
         if (value) screenshot_request();
         return;
     }
+    if (id == HOS_OPT_CHEAT_CAMERA) {   // (fork: the live input file's !freecam, host/nn_hid.c: a test's switch of the row)
+        if (cheats_on()) free_camera.store(value != 0, std::memory_order_relaxed), menu_refresh = true;
+        return;
+    }
     if (id == HL_OPT_CLIP) {   // (fork: the Capture button held, host/pad_sdl.c)
         void clip_request();   // (vk_replay.cpp)
         if (value) clip_request();
