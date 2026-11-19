@@ -104,4 +104,16 @@ VkResult extern_guarded_graphics(VkPipelineCache cache, const VkGraphicsPipeline
 VkResult extern_guarded_compute(VkPipelineCache cache, const VkComputePipelineCreateInfo* ci, VkPipeline* pl);
 VkResult extern_guarded_shader_module(const VkShaderModuleCreateInfo* ci, VkShaderModule* m);
 
+/// (Triforce, RX_VK_OCC_QUERY; vk_replay.cpp "occlusion queries") RX_VK_OCC_QUERY=1 (off by default in this fork): NVN's
+/// samples-passed reports from Vulkan occlusion queries. occq_live: the queries run (set once, at the first recording; false:
+/// none of these is called). draw() calls occq_draw_enter as a draw comes in, occq_draw_begin once its pass is open (a
+/// count's first draw of a pass begins a query) and occq_draw_issued for each draw it records (a count missing one is not
+/// kept); end_pass calls occq_pass_end before the pass ends (a query begun in a pass ends in it). (Triforce's occ_live,
+/// occ_draw_*: renamed, HeyListen's RX_VK_OCC_REAL already has occ_* names)
+extern bool occq_live;
+void occq_draw_enter();
+void occq_draw_begin(VkCommandBuffer cmd);
+void occq_draw_issued();
+void occq_pass_end(VkCommandBuffer cmd);
+
 } // namespace mkwvk

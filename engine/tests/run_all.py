@@ -41,6 +41,7 @@ ARGS = {
     "tests/test_compute_local_memory.py": ["--cxx", "{cxx}", "--headers", "{spirv_headers}", "--spirv-val", "{spirv_val}"],
     "tests/test_shader_module_guard.py": ["--cxx", "{cxx}"],
     "tests/test_flat_map.py": ["--cxx", "{cxx}"],
+    "tests/test_occ_answer.py": ["--cxx", "{cxx}"],   # (Triforce, RX_VK_OCC_QUERY)
     "tests/test_registration_host_copies.py": ["--cxx", "{cxx}"],
     "tests/test_replay_copies.py": ["--cxx", "{cxx}"],
     "tests/test_png_publication.py": ["--cxx", "{cxx}"],
