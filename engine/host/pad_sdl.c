@@ -23,6 +23,7 @@
 #include "hd_rumble.h"
 #include "hos_motion.h"
 #include "../gpu/vk/vk_api.h"   /* (HOS_PAD_*) */
+#include "../gpu/vk/vk_opt_ids.h"   /* (fork: HL_OPT_SCREENSHOT) */
 
 void hos_host_thread_register_self(const char *name);   /* hos_prof.c */
 
@@ -305,6 +306,21 @@ static void pad_log_presses(int i, void *gc) {
 }
 
 /* one poll: controllers plugged in or gone (each second), then every open one's buttons, sticks and rumble */
+/* (fork) The Capture button (Switch controllers; Share on Xbox and PlayStation pads: SDL's misc1), not the game's: let go
+   within half a second, a screenshot (the renderer's, gpu/vk/vk_replay.cpp, through option_set HL_OPT_SCREENSHOT); held
+   longer, left for a clip. */
+static void capture_button(int down, int64_t now) {
+    static int was;
+    static int64_t since;
+    if (down && !was) since = now;
+    if (!down && was && now - since < 500000000LL) {
+        void rx_option_set(int id, int value);
+        rx_option_set(HL_OPT_SCREENSHOT, 1);
+        hos_log("hid: Capture pressed: a screenshot");
+    }
+    was = down;
+}
+
 static void pads_poll(void) {
     static int64_t next_scan = 0;
     hos_sdl_pads_update();
@@ -351,7 +367,7 @@ static void pads_poll(void) {
         }
         uint64_t b = 0;
         int32_t s[4] = {0};
-        int count = 0;
+        int count = 0, capture = 0;   /* (fork: capture, the Capture / Share button on any pad, SDL's misc1) */
         int rx_option(int id, int otherwise);
         const int strength = rx_option(9, 100);   /* (the menu's Rumble strength: the motors' and HD rumble's) */
         uint16_t motors[2];
@@ -378,6 +394,7 @@ static void pads_poll(void) {
                 if (hos_sdl_pad_button(gc, k)) b |= 1ULL << k;
             /* (the touchpad's click: the Insert menu's, as Home is; nn_hid.c's controls cannot bind it) */
             if (hos_sdl_pad_button(gc, BTN_TOUCHPAD)) b |= 1ULL << HOS_PAD_TOUCHPAD;
+            if (hos_sdl_pad_button(gc, BTN_MISC1)) capture = 1;
             pad_log_presses(i, gc);
             if (hos_sdl_pad_axis(gc, AX_LT) > 8000) b |= 1ULL << HOS_PAD_LTRIGGER;
             if (hos_sdl_pad_axis(gc, AX_RT) > 8000) b |= 1ULL << HOS_PAD_RTRIGGER;
@@ -406,6 +423,7 @@ static void pads_poll(void) {
             }
         }
         motion_poll(now, count);
+        capture_button(capture, now);
         AcquireSRWLockExclusive(&state_lock);
         state_buttons = b;
         memcpy(state_stick, s, sizeof s);

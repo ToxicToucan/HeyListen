@@ -10,3 +10,7 @@
 /* The Skip title screen row (host/oot_autoload.c asks, gpu/vk/vk_replay.cpp answers 0 or 1). 44 is the id Longshot's change
    of the same row uses in vk_api.h (free in this tree: the ids there run 32 to 35, 40 to 43), so the two agree. */
 #define HL_OPT_SKIP_TITLE 44
+
+/* (fork) A screenshot asked for by the host (option_set: host/pad_sdl.c, the controller's Capture button pressed briefly);
+   the renderer writes the next presented frame (gpu/vk/vk_replay.cpp screenshot_request) */
+#define HL_OPT_SCREENSHOT 93
