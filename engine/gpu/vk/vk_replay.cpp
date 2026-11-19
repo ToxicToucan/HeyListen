@@ -56,6 +56,7 @@
 #include "vk_xfer.h"
 #include "vk_present_rect.h"
 #include "vk_present_trace.h"
+#include "vk_clip.h"   // (fork: clips)
 
 #include "vk_internal.h"
 #include "vk_tl_clock.h"   // (RX_VK_TL: the timeline's host time domain)
@@ -6093,8 +6094,115 @@ void user_shot_write() {
     }).detach();
 }
 
+// (fork) Clips, the GPU side (vk_clip.h): the Clip key (F9 unless changed) or the Capture button held (option_set
+// HL_OPT_CLIP) starts or ends one. Each frame due at the clip's rate is blitted to its size and copied into a readback
+// buffer of its own; once the GPU is past it the copier takes it. The images and buffers live only while a clip records,
+// and go once every buffer has been read.
+std::atomic<bool> clip_toggle{false};
+struct ClipGpu {
+    int phase = 0;   // (0 idle, 1 recording, 2 finishing)
+    VkImage image = VK_NULL_HANDLE;
+    VmaAllocation image_alloc = nullptr;
+    VkBuffer buf[clip::kReadbacks]{};
+    VmaAllocation buf_alloc[clip::kReadbacks]{};
+    void* map[clip::kReadbacks]{};
+    struct Pend { bool on = false; uint64_t value = 0; int64_t index = 0; } pend[clip::kReadbacks];
+    uint32_t w = 0, h = 0;
+    int fps = 60, seconds = 10;
+    std::chrono::steady_clock::time_point t0;
+    int64_t next_index = 0, end_index = 0;
+} clip_gpu;
+void clip_gpu_free() {
+    for (int i = 0; i < clip::kReadbacks; i++)
+        if (clip_gpu.buf[i]) destroy_buffer(clip_gpu.buf[i], clip_gpu.buf_alloc[i]);
+    if (clip_gpu.image) destroy_image(clip_gpu.image, clip_gpu.image_alloc);
+    clip_gpu = {};
+}
+// in the present's recording: a clip started, ended, or its frame copied out
+void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, const int crop[4], uint64_t value) {
+    ClipGpu& g = clip_gpu;
+    const bool pressed = clip_toggle.exchange(false);
+    if (g.phase == 2) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (g.phase == 0) {
+        if (!pressed || !src) return;
+        const clip::Settings s = clip::settings();
+        uint32_t w = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[2] : sw;
+        uint32_t h = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[3] : sh;
+        if (h > (uint32_t)s.height) w = (uint32_t)llround((double)w * s.height / h), h = (uint32_t)s.height;
+        w = std::max(2u, w & ~1u), h = std::max(2u, h & ~1u);
+        VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        ci.imageType = VK_IMAGE_TYPE_2D;
+        ci.format = VK_FORMAT_R8G8B8A8_UNORM;
+        ci.extent = {w, h, 1};
+        ci.mipLevels = ci.arrayLayers = 1;
+        ci.samples = VK_SAMPLE_COUNT_1_BIT;
+        ci.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        bool ok = create_image(ci, g.image, g.image_alloc);
+        for (int i = 0; i < clip::kReadbacks && ok; i++)
+            ok = create_buffer((uint64_t)w * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true, g.buf[i], g.buf_alloc[i], &g.map[i]);
+        if (!ok || !clip::start(w, h, s)) {
+            if (!ok) logf("clip: no %ux%u image or readback for it", w, h);
+            clip_gpu_free();
+            return;
+        }
+        g.w = w, g.h = h, g.fps = s.fps, g.seconds = s.seconds, g.t0 = now, g.next_index = 0, g.phase = 1;
+    }
+    const double el = std::chrono::duration<double>(now - g.t0).count();
+    if (pressed || el >= g.seconds || clip::failed()) {
+        g.phase = 2;
+        g.end_index = std::min<int64_t>((int64_t)(el * g.fps), (int64_t)g.seconds * g.fps);
+        logf("clip: stopped after %.2f s", el);
+        return;
+    }
+    const int64_t idx = (int64_t)(el * g.fps);
+    if (idx < g.next_index) return;   // (not due: a frame every 1/fps)
+    g.next_index = idx + 1;
+    int rb = -1;
+    for (int i = 0; i < clip::kReadbacks && rb < 0; i++)
+        if (!g.pend[i].on && !clip::busy()[i].load(std::memory_order_acquire)) rb = i;
+    if (rb < 0) return;   // (every buffer still on the GPU or being read: this frame is left out, the last one repeats)
+    image_barrier(cmd, g.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    blit_crop(cmd, src, sw, sh, crop, g.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, g.w, g.h);
+    image_barrier(cmd, g.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    const VkBufferImageCopy c{0, 0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {g.w, g.h, 1}};
+    vkCmdCopyImageToBuffer(cmd, g.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g.buf[rb], 1, &c);
+    clip::busy()[rb].store(true, std::memory_order_release);
+    g.pend[rb] = {true, value, idx};
+}
+// after the present: the frames the GPU is past handed to the copier; a finished clip let go
+void clip_poll(uint64_t done) {
+    ClipGpu& g = clip_gpu;
+    if (!g.phase) return;
+    bool pending = false;
+    for (int i = 0; i < clip::kReadbacks; i++) {
+        if (!g.pend[i].on) continue;
+        if (done >= g.pend[i].value) {
+            clip::frame(g.pend[i].index, i, (const uint8_t*)g.map[i]);
+            g.pend[i].on = false;
+        } else {
+            pending = true;
+        }
+    }
+    if (g.phase != 2 || pending) return;
+    static bool finished;
+    if (!finished) clip::finish(g.end_index), finished = true;
+    for (int i = 0; i < clip::kReadbacks; i++)
+        if (clip::busy()[i].load(std::memory_order_acquire)) return;   // (a copy still reads its buffer)
+    finished = false;
+    clip_gpu_free();
+}
+
 void do_present(const nvn_tex* t, const int crop[4]) {
     static PendingShot pending;
+    {   // (fork) the Clip key, as the Screenshot key below
+        static const int keys[] = {0, VK_F9, VK_F8, VK_F7};
+        const int key = keys[std::clamp(opts.clip_key, 0, 3)];
+        static bool was_down;
+        const bool down = key && GetForegroundWindow() == app_window() && (GetAsyncKeyState(key) & 0x8000) != 0;
+        if (down && !was_down && !menu_is_open()) clip_toggle.store(true);
+        was_down = down;
+    }
     {   // (fork) the Screenshot key, while the game's window is in front and the menu is closed
         static const int keys[] = {0, VK_F12, VK_F11, VK_F10, VK_SNAPSHOT};
         const int key = keys[std::clamp(opts.screenshot_key, 0, 4)];
@@ -6197,6 +6305,7 @@ void do_present(const nvn_tex* t, const int crop[4]) {
                 logf("vk: screenshot: no %ux%u image for it", w, h);
             }
         }
+        if (clip_gpu.phase || clip_toggle.load(std::memory_order_relaxed)) clip_present(r.cmd, src, sw, sh, crop, value);   // (fork)
         if (src && (dev.offscreen || shots) && offscreen_init()) {
             if (dev.offscreen) {
                 image_barrier(r.cmd, off_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -6455,6 +6564,7 @@ void do_present(const nvn_tex* t, const int crop[4]) {
         };
         if (pending.on && (shot || completed() >= pending.value)) take(pending.value, pending.presents), pending.on = false;
         if (user_shot.pending && completed() >= user_shot.value) user_shot_write(), user_shot.pending = false;   // (fork)
+        clip_poll(completed());   // (fork)
         if (shot && made_src && made_map) {
             take(value, presents);
             char path[1024];
@@ -6473,6 +6583,8 @@ void do_present(const nvn_tex* t, const int crop[4]) {
 // (fork) the player's screenshot asked for from outside the present: the menu's option_set (HL_OPT_SCREENSHOT, the controller's
 // Capture button through host/pad_sdl.c)
 void screenshot_request() { user_shot_wanted.store(true); }
+// (fork) a clip started or ended from outside the present: the menu's option_set (HL_OPT_CLIP, the Capture button held)
+void clip_request() { clip_toggle.store(true); }
 
 
 // (hookshot) RX_VK_FRAMELOG=<file>: every frame shown, the game's and the made ones, as they go to the screen, 320x180, while

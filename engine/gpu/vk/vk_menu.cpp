@@ -123,6 +123,10 @@ const char* tx_screenshot_key(int v) {   // (fork: vk_replay.cpp's keys[] in the
     static const char* const names[] = {"Off", "F12", "F11", "F10", "Print Screen"};
     return names[std::min(std::max(v, 0), 4)];
 }
+const char* tx_clip_key(int v) {   // (fork: vk_replay.cpp's clip keys[] in the same order)
+    static const char* const names[] = {"Off", "F9", "F8", "F7"};
+    return names[std::min(std::max(v, 0), 3)];
+}
 const char* tx_hdr(int v) { return v == 1 ? "Expanded" : v == 2 ? "Native (the game's)" : "Off"; }
 const char* tx_nits(int v) {
     static char b[24];
@@ -766,6 +770,11 @@ Row rows[] = {
     {TAB_CONTROLS, "Screenshot key", &opts.screenshot_key, 0, 4, 1, tx_screenshot_key,   // (fork: vk_replay.cpp's player screenshot)
      "Saves the picture as a PNG at its full size, with the game's HUD. The controller's Capture button does it too (a short "
      "press). The folder is screenshot_folder= in hookshot_options.ini; without it, \"screenshots\" beside the game.",
+     nullptr, false, true},
+    {TAB_CONTROLS, "Clip key", &opts.clip_key, 0, 3, 1, tx_clip_key,   // (fork: vk_clip.h)
+     "Records a clip of up to 10 seconds as an MP4 (NVIDIA's NVENC, through ffmpeg if it is on this PC); press again to end it "
+     "sooner. Holding the controller's Capture button does it too. The folder is clip_folder= in hookshot_options.ini; "
+     "without it, \"clips\" beside the game.",
      nullptr, false, true},
     // Debug: the tools' switch, the tools themselves below it while they are on (cheat: menu_tick does what they do), then the
     // developer's rows
@@ -2217,6 +2226,11 @@ void menu_option_set(int id, int value) {
     if (id == HL_OPT_SCREENSHOT) {   // (fork: the controller's Capture button, host/pad_sdl.c)
         void screenshot_request();   // (vk_replay.cpp)
         if (value) screenshot_request();
+        return;
+    }
+    if (id == HL_OPT_CLIP) {   // (fork: the Capture button held, host/pad_sdl.c)
+        void clip_request();   // (vk_replay.cpp)
+        if (value) clip_request();
         return;
     }
     if (id != 7) return;
