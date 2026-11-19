@@ -316,6 +316,8 @@ static void live_input(void) {
                     void rx_option_set(int id, int value);
                     if (!strncmp(line, "!shot", 5)) rx_option_set(HL_OPT_SCREENSHOT, 1);
                     if (!strncmp(line, "!clip", 5)) rx_option_set(HL_OPT_CLIP, 1);
+                    /* "!freecam 1" / "!freecam 0": the Debug tab's Free camera row on or off (the debug tools on) */
+                    if (!strncmp(line, "!freecam ", 9)) rx_option_set(HOS_OPT_CHEAT_CAMERA, atoi(line + 9) != 0);
                 }
                 void rx_set_screenshot_ms(int64_t ms);   /* gpu/render/rx_core.cpp: "!shots <ms>" */
                 if (!strncmp(line, "!shots ", 7)) rx_set_screenshot_ms(atoll(line + 7));
