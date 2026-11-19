@@ -2,6 +2,7 @@
    layer, and the display's vsync event, signaled at 60 Hz by a host thread. HDR and VRR are reported unsupported,
    so the game takes its SDR path. Frames are paced at the native NVN layer's window acquire (the end of this file). */
 #include "hos.h"
+#include "step_steady.h"   /* (Triforce v0.5.0, ported: HOS_STEP_STEADY=1, realtime_step) */
 #include "../gpu/vk/vk_opt_ids.h"   /* (HL_OPT_FPS_LIMIT) */
 #include "../gpu/vk/vk_api.h"   /* (HOS_OPT_HDR_*: the Insert menu's HDR, answered by the renderer) */
 #define WIN32_LEAN_AND_MEAN
@@ -315,10 +316,12 @@ static void realtime_step(int64_t now) {
     static double samples[5], carry;
     static unsigned count, next;
     static long long steps;
+    static StepSteady steady;   /* (Triforce, ported: HOS_STEP_STEADY=1, below) */
     const double dt = (now - last) / 1e9;
     last = now;
     if (dt <= 0 || dt > 0.25) {   /* (a load: the average starts again) */
         count = next = 0, carry = 0, hos_realtime_fps = 0, hos_frame_seconds_bits = 0;
+        step_steady_reset(&steady);
         return;
     }
     /* (HOS_REALTIME_WINDOW=<1-5>: frames averaged for the step; 1: each step the last frame's own time) */
@@ -333,8 +336,27 @@ static void realtime_step(int64_t now) {
     for (unsigned i = 0; i < count; i++) sum += samples[i];
     /* (TICK-014: the carry is kept against the unclamped time; clamped first, a frame shorter than 1 / cap lost its
        difference and one longer kept it: +0.9% speed at the 60 limit) */
-    const double owed = sum / count * 60.0 + carry;
     const int cap = fps_limit();
+    /* (Triforce v0.5.0 host/step_steady.h, after NX2navi's steady step; ported 2026-11-18, OFF unless HOS_STEP_STEADY=1 in this fork)
+       The step is not the mean of the last five intervals but that of the last 12 without their longest and shortest, the
+       paced period where it is within 3% of it, and what the display showed and the game was not given repaid at a 64th a
+       frame (10% of the step at most): a hitch is paid back over most of a second, not in the next five frames. Triforce
+       snaps to its own pacer's period; this tree has none, so the period is the frame rate limit's (1 / fps_limit()), which
+       the step equals only when the game holds the cap. The bounds are each path's below: 1/480 s timed, else 1 / cap. */
+    double secs_avg = sum / count;
+    {
+        static int steady_on = -1;
+        if (steady_on < 0) {
+            steady_on = getenv("HOS_STEP_STEADY") && atoi(getenv("HOS_STEP_STEADY")) != 0;
+            if (steady_on) hos_log("vi: the steady step (HOS_STEP_STEADY=1): 12 intervals without their longest and shortest, the limit's period within 3%%, a hitch repaid slowly");
+        }
+        static int timed_probe = -1;
+        if (timed_probe < 0) timed_probe = !(getenv("HOS_FPS_STEP") && !atoi(getenv("HOS_FPS_STEP")));
+        const int timed_now = cap > 60 && timed_probe && hos_step_probe;
+        if (steady_on)
+            secs_avg = step_steady(&steady, dt, cap > 0 ? 1.0 / cap : 0.0, timed_now ? 1.0 / 480.0 : 1.0 / (timed_now ? 60 : (cap > 0 ? cap : 60)), 4.0 / 60.0);
+    }
+    const double owed = secs_avg * 60.0 + carry;
     /* (HeyListen, after upstream Hookshot a2a89ae11) A cap above 60: the engine's own rate is 60 / <whole display intervals>
        and its controller puts 60 back over a higher +0x2c8 before its global step is made from it (f_83b6ea90), so what
        reads that step ran fps / 60 too fast. The step is then the frames' own time at the two places the engine makes it
@@ -347,7 +369,7 @@ static void realtime_step(int64_t now) {
     if (timed_step < 0) timed_step = !(getenv("HOS_FPS_STEP") && !atoi(getenv("HOS_FPS_STEP")));
     const int timed = cap > 60 && timed_step && hos_step_probe;
     if (timed) {
-        const double secs = sum / count;
+        const double secs = secs_avg;   /* (the steady step's when HOS_STEP_STEADY=1, else the mean of the last five as before) */
         const float f = (float)(secs > 4.0 / 60.0 ? 4.0 / 60.0 : secs < 1.0 / 480.0 ? 1.0 / 480.0 : secs);
         uint32_t bits;
         memcpy(&bits, &f, 4);
