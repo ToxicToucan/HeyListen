@@ -5425,6 +5425,7 @@ TLS_OBJECT(dump_mesh_indirect, std::vector<std::pair<uint64_t, uint64_t>>)   // 
 void end_pass(VkCommandBuffer cmd) {
     Pass& ps = pass();   // (hookshot, once: the accessor is a call and a thread-local read at each use (__tls_get_addr in the shared library). The same object for the thread's life: draw_begin_recording resets it in place)
     if (!ps.open) return;
+    if (occq_live) occq_pass_end(cmd);   // (Triforce, RX_VK_OCC_QUERY: a query begun in the pass ends in it)
     vkCmdEndRendering(cmd);
     ps.open = false;
     note_pass_end(cmd);   // (before the dumps and probes below: they record work, and the next pass's barrier is then a full one)
@@ -7077,7 +7078,9 @@ bool occ_proxy_skip_on() {
     static const bool on = [] {
         const char* e = getenv("RX_VK_OCC_PROXY_SKIP");
         const char* fixed = getenv("RX_VK_OCC_FIXED");
-        const bool v = e && atoi(e) != 0 && occ_mode() == 0 && (!fixed || atoll(fixed) >= 0);
+        // ((Triforce, RX_VK_OCC_QUERY) not with it either: its queries count exactly these draws. occq_live is set at the first
+        // recording's begin, before any draw)
+        const bool v = e && atoi(e) != 0 && occ_mode() == 0 && (!fixed || atoll(fixed) >= 0) && !occq_live;
         logf("vk: draws that write nothing and sample nothing: %s (RX_VK_OCC_PROXY_SKIP)", v ? "left out (their pass kept)" : "recorded, as before");
         return v;
     }();
@@ -7118,6 +7121,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     PROF_HOT(PROF_DRAW);
     FINE_N(FC_DRAWS, 1);
     stats_tick();
+    if (occq_live) occq_draw_enter();   // (Triforce, RX_VK_OCC_QUERY: a draw a samples-passed count wants; occq_draw_issued below)
     mesh_indirect_convert(cmd, d);   // (EvilOOT: before the pass opens; sets mesh_conv_buf for the mesh draw below)
     VkPrimitiveTopology topo = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     if (!d.mesh && !topology(d.prim, topo)) {
@@ -7590,6 +7594,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     }
     StatsQuery stats_query(cmd, p.key, d);   // (EvilOOT, RX_VK_DRAW_STATS)
     OccQuery occ_query(cmd, p.key, d, stats_query.cmd != VK_NULL_HANDLE);   // (TICK-033, RX_VK_OCC_REAL)
+    if (occq_live && ps.open) occq_draw_begin(cmd);   // (Triforce, RX_VK_OCC_QUERY: a count's first draw of the pass begins its query)
     if (stats_frame_now() && stats_prog_wanted(p.key)) {   // (and the wanted programs' buffers: a mesh draw's stages, fragment)
         for (const int stage : {6, 7, 1}) stats_dump_stage(p.key, s, stage);
         // (and as the GPU holds them, after it: RX_VK_GPU_DUMP=1 only; its bindings can sync a pool's mirror mid-frame, and
@@ -7613,6 +7618,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
             }
             st_mesh++;
             st_draws++, ps.draws++;
+            if (occq_live) occq_draw_issued();   // (Triforce, RX_VK_OCC_QUERY)
             return;
         }
         {   // (amd-fix, diagnosis) RX_VK_LOG_MESH_PROGS=1: each mesh program's first draw and every 600th, with what its
@@ -7683,6 +7689,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
                 mesh_conv_buf = VK_NULL_HANDLE;
                 st_mesh++;
                 st_draws++, ps.draws++;
+                if (occq_live) occq_draw_issued();   // (Triforce, RX_VK_OCC_QUERY)
                 return;
             }
             if (d.max < 0 || d.stride < 0) SKIP_HERE();   // (hookshot: the game's ints; a negative count was ~4e9 draws)
@@ -7718,6 +7725,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
         }
         st_mesh++;
         st_draws++, ps.draws++;
+        if (occq_live) occq_draw_issued();   // (Triforce, RX_VK_OCC_QUERY)
         return;
     }
     // vertex streams (from their pools, strides dynamic) and the zero stream
@@ -7816,6 +7824,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
         vkCmdDrawIndexed(cmd, quads * 6, (uint32_t)std::max(1, d.instances), 0, d.indexed ? d.base_vertex : 0,
                          (uint32_t)d.base_instance);
         st_draws++, ps.draws++;
+        if (occq_live) occq_draw_issued();   // (Triforce, RX_VK_OCC_QUERY)
         return;
     }
     if (d.indirect) {
@@ -7860,6 +7869,7 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
         vkCmdDraw(cmd, (uint32_t)d.count, (uint32_t)std::max(1, d.instances), (uint32_t)d.first, (uint32_t)d.base_instance);
     }
     st_draws++, ps.draws++;
+    if (occq_live) occq_draw_issued();   // (Triforce, RX_VK_OCC_QUERY)
 }
 
 /// A dispatch over 2 ms is logged, 60 times, and only while RX_VK_SLOW_DISPATCH is set. Off, the clock is not read.

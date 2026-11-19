@@ -48,6 +48,7 @@
 #include "vk_opt_ids.h"
 #include "vk_perf.h"
 #include "segment_plan.h"   // (TICK-050: the parallel replay's segment count)
+#include "occ_answer.h"     // (Triforce, RX_VK_OCC_QUERY: samples-passed reports from occlusion queries)
 #include "vk_jobs.h"
 #include "vk_shader.h"
 #include "vk_state.h"
@@ -960,8 +961,440 @@ void gpu_time_segment_submitted(const Recording& r) {
     ts_seq_submitted++;
 }
 
+
+// ---- (Triforce, RX_VK_OCC_QUERY) samples-passed reports from occlusion queries (occ_answer.h) ----
+// (Ported from Triforce v0.5.0 (6f338c8, GPL-3.0), 2026-11-18. HeyListen differences: OFF unless RX_VK_OCC_QUERY=1 (Triforce
+// defaults it on), and never together with HeyListen's own RX_VK_OCC_REAL (TICK-033, vk_draw.cpp: per-draw queries of the
+// same type cannot be nested in these); every name here is occq_* / OccqSlot (HeyListen already has occ_cond, occ_init,
+// OccSlot, occ_pool ... for RX_VK_OCC_REAL); no lab_ab knob; a report's place in the stream is HeyListen's TICK-033 draw
+// serial (occ_serial on the replay thread, occ_wserial on a segment's thread, the same at the same report) instead of
+// Triforce's stream_cb/stream_work.)
+// NVN_COUNTER_TYPE_SAMPLES_PASSED reports (the game's render job f_80084de0, near lr 0x800876dc: ~1,700 a frame at Castle
+// Town in the lab, into a ring of report records: ~49,000 addresses in 600 presents) tell the game which objects show; it
+// does not draw one whose count is 0. The replay writes each report as it passes it (NOP_REPORT_COUNTER), with 4096 for the
+// count (everything visible: RX_VK_OCC_FIXED). The lab's upper bound, every count 0 (everything hidden, which breaks the
+// picture and turns the sun white): 2955 -> 1826 draws at Castle Town, 1522 -> 1093 at the Market, +17-18% fps (Triforce's
+// measures).
+// With this the replay still writes that placeholder, where and as it did, and the draws from a reset to its report are
+// counted by Vulkan occlusion queries (precise where the device has occlusionQueryPrecise); once the recording that holds
+// them is done on the GPU the count goes into the report's record, over the placeholder, as NX2navi writes a report at
+// completion (runtime/vk_exec_xfer.c). The game reads its counts once it has waited for the frame.
+//   - each recording slot has its block of kOccqPerSlot queries, and each begin of a slot a new serial (occq_slot_begin): a
+//     count is matched to its recording by that serial, never by the command buffer's handle, which the slot reuses every
+//     kRecordings recordings. The block is reset on the host after it is read (hostQueryReset: only the queries the
+//     recording took), else by the recording's command buffer as it begins. A query is begun by the first draw of a pass
+//     while counting (vk_draw.cpp, occq_draw_begin) and ended with the pass (end_pass) or at the report. A count's queries
+//     follow one another in their block (occ::Counter);
+//   - the counting: the replay's, one per NVN queue's state (occq_mains, under replay_mu), and a parallel replay's segment's,
+//     the thread's own (occq_seg). A parallel replay gives the replay's counting up (occq_serial_give_up): a report after it
+//     without a reset of its own is not measured;
+//   - a report counted whole goes with its recording's slot (OccqSlot::reps), by its address and its place in the stream
+//     (occq_pos: the same for the dry pass that writes its placeholder and the thread that records its draws). When the
+//     recording is submitted its slot is sealed with its number on the recordings' timeline (occq_seal): submit_recording
+//     for the replay's recordings, and the parallel replay's own submits for its segments. (HeyListen: replay_handle's
+//     segments and replay_handle_early's without RX_VK_EARLY_GPU are submitted on the replay thread and signal the recordings'
+//     timeline as Triforce's do; replay_handle_early's with RX_VK_EARLY_GPU go out from whichever thread finishes one, outside
+//     the replay thread's rec_seq order, so they take no timeline number and are found done by their fences, on the replay
+//     thread.) The sealed slots the GPU is done with are read (one look at that timeline, no wait, occq_harvest_done) where
+//     the GPU's progress is learnt anyway: as a game's fence wait ends (wait_core: the game reads its counts after it), at
+//     each recording's begin and at each present; at the latest when the slot comes round again;
+//   - the count is written (occq_write) only when it is whole (every query available, no draw left out, reset and report
+//     in one recording), read back at most occ::kLateAge presents after its report, its report is still the newest at its
+//     address (occ::Writers), and the word still holds what the replay left there: a compare-and-write under occq_mu, so a
+//     count never lands over the game's CPU re-arming the record. Else the record keeps its 4096 (or what the CPU wrote).
+//     A count of 0 is written as 0: the object is hidden;
+//   - a render condition (NOP_RENDER_COND) reads report words as the replay passes it (the replay thread or the dry pass,
+//     in stream order with the placements), decided as NX2navi decides it: a word whose newest report is a samples-passed
+//     one whose count is still to come is unknown, and the condition renders; a word whose count was written, or for which
+//     none comes, is read from memory as before, where a written 0 can skip the draws and clears it gates (occq_cond,
+//     occ::cond_decide). RX_VK_OCC_COND=0: a condition on a samples-passed word always renders (the counts are still
+//     written). RX_VK_OCC_LOG_COND=1: one such condition in 499 logged (300 lines), with both words and their sources.
+// The writes: a count is written as the replay writes a report (the guest page marked written, memory_cpu_owned: the word is
+// cut out of the mirrors' write-backs), under occq_mu, as is each placeholder's write with its Writers entry and a small
+// clear's: a count cannot land after a later report's placeholder or a clear. occq_mu is never taken with dev.present_mu held.
+// (HeyListen has no guest_cpu_wrote / write-back diff shadows, which Triforce's occ_write also tells.)
+// RX_VK_OCC_QUERY_SKIP=<addr>[,...]: these report addresses keep the fixed answer. The line every 600 presents is followed
+// (at its 1st and every 10th) by the first 64 report addresses with their counts.
+constexpr uint32_t kOccqPerSlot = 1024;   // (a recording is ~120 draws, a segment ~160 or more; a count is a query a pass)
+struct OccqSlot {
+    uint32_t used = 0;       // (queries of the block taken by the recording made in it, not yet reset)
+    bool armed = false;      // (its block is reset: queries may begin)
+    uint64_t serial = 0;     // (the recording being made in it: a new one at each begin, occq_serial_next)
+    std::vector<occ::Rep> reps;   // (reports counted whole in it: its recording thread's until it is sealed)
+    bool sealed = false;     // (submitted: used and reps are the readers' (occq_mu) until it is read or begun again)
+    uint64_t seq = 0;        // (its number on the recordings' timeline; 0: none, its fence or batch tells)
+};
+OccqSlot occq_slots[kRecordings];
+std::atomic<uint64_t> occq_serial_next{0};
+std::atomic<int> occq_pending{0};         // (sealed slots with reports not read yet; always 0 with the switch off)
+std::atomic<int64_t> occq_presents{0};    // (presents_now, for every thread: the latencies, the prune)
+VkQueryPool occq_pool = VK_NULL_HANDLE;
+VkQueryControlFlags occq_flags = 0;
+bool occq_host_reset = false;   // (hostQueryReset: a block's used queries reset on the host once read, not all in each recording)
+bool occq_env_real = false;     // (RX_VK_OCC_QUERY=1: the counts written. (HeyListen: always true once live; no lab knob))
+bool occq_cond_on = true;       // (RX_VK_OCC_COND=0: a render condition on a samples-passed word always renders)
+bool occq_log_cond = false;     // (RX_VK_OCC_LOG_COND=1: one such condition in 499 logged, 300 lines at most)
+std::vector<uint64_t> occq_skip;
+std::mutex occq_mu;   // (the sealed slots, the writers, the stats, the sites; a placeholder's write with its entry; the counts' writes)
+// (the replay thread's, in stream order (the serial replay or the dry pass): the queue state whose render condition a
+// written count turned off, until its next condition or render enable; the draws and clears it skips, for the line)
+const NvnState* occq_cond_off = nullptr;
+std::atomic<int64_t> occq_skips_draw{0}, occq_skips_clear{0};
+occ::Writers occq_writers;
+occ::Stats occq_st;
+occ::Sites occq_sites;
+occ::Distinct occq_distinct;
+std::atomic<bool> occq_keep{false};   // (the game reported twice without a reset: counting goes on past reports, as NVN counts)
+occ::Counter& occq_ctr();   // (the counting the thread records for: the replay's, its queue's, or the segment's; below rmode)
+thread_local bool occq_open_here = false;   // (this thread began the query open now: end_pass on another thread leaves it alone)
+/// RX_VK_OCC_QUERY=1: the pool and the switches, once (begin_recording); false: off, nothing changes
+bool occq_init() {
+    // (HeyListen: off unless RX_VK_OCC_QUERY=1; Triforce defaults it on after its own measures. Never with RX_VK_OCC_REAL)
+    const char* e = getenv("RX_VK_OCC_QUERY");
+    occq_env_real = e && atoi(e) != 0;
+    if (!occq_env_real) return false;
+    if (occ_mode()) {
+        logf("vk: occlusion queries (RX_VK_OCC_QUERY=1): not with RX_VK_OCC_REAL=%d (its own per-draw queries): off", occ_mode());
+        occq_env_real = false;
+        return false;
+    }
+    VkQueryPoolCreateInfo qi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+    qi.queryType = VK_QUERY_TYPE_OCCLUSION;
+    qi.queryCount = kOccqPerSlot * kRecordings;
+    if (vkCreateQueryPool(dev.device, &qi, nullptr, &occq_pool) != VK_SUCCESS) {
+        occq_pool = VK_NULL_HANDLE;
+        logf("vk: occlusion queries (RX_VK_OCC_QUERY): the query pool could not be made: samples-passed reports stay fixed");
+        return false;
+    }
+    occq_flags = dev.features.occlusionQueryPrecise ? VK_QUERY_CONTROL_PRECISE_BIT : 0;
+    occq_host_reset = dev.vk12.hostQueryReset != VK_FALSE;
+    if (occq_host_reset) vkResetQueryPool(dev.device, occq_pool, 0, qi.queryCount);   // (all of them, once: then as they are read)
+    occq_skip = occ::parse_addrs(getenv("RX_VK_OCC_QUERY_SKIP"));
+    occq_cond_on = !getenv("RX_VK_OCC_COND") || atoi(getenv("RX_VK_OCC_COND")) != 0;
+    occq_log_cond = getenv("RX_VK_OCC_LOG_COND") && atoi(getenv("RX_VK_OCC_LOG_COND")) != 0;
+    logf("vk: occlusion queries (RX_VK_OCC_QUERY=1, from Triforce v0.5.0): samples-passed reports written 4096 at the replay as "
+         "before, and their counts written into the records once the GPU is done; %s counts, %d recordings x %u queries, reset %s; "
+         "done recordings found on %s; %zu report addresses kept fixed (RX_VK_OCC_QUERY_SKIP); render conditions on their words: %s%s",
+         occq_flags ? "precise" : "non-precise (no occlusionQueryPrecise)", kRecordings, kOccqPerSlot,
+         occq_host_reset ? "on the host once read" : "in each recording (no hostQueryReset)",
+         rec_timeline ? "the recordings' timeline" : "their fences (no recordings' timeline: the replay thread only)", occq_skip.size(),
+         occq_cond_on ? "a count still to come renders, a written one is read from memory (a 0 skips)"
+                      : "always rendered (RX_VK_OCC_COND=0)",
+         occq_log_cond ? "; RX_VK_OCC_LOG_COND=1: one in 499 logged" : "");
+    return true;
+}
+/// The recording slot whose command buffer this is, its block armed (-1: none)
+int occq_slot_of(VkCommandBuffer cmd) {
+    for (int i = 0; i < kRecordings; i++)
+        if (recordings[i].cmd == cmd) return occq_slots[i].armed ? i : -1;
+    return -1;
+}
+/// The serial of the recording being made in cmd (0: none)
+uint64_t occq_serial_of(VkCommandBuffer cmd, int* slot) {
+    *slot = occq_slot_of(cmd);
+    return *slot >= 0 ? occq_slots[*slot].serial : 0;
+}
+/// (occq_mu held) A count into its report's record, the count word only (the timestamp beside it stays the replay's), and
+/// only while the word still holds expect, what the replay left there: a compare-and-write on the guest word itself, so a
+/// count read back late never lands over the game's CPU re-arming the record for its next frame. Then as the replay writes a
+/// record (NOP_REPORT_COUNTER): the guest page marked written and the word kept out of the mirrors' write-backs
+/// (memory_cpu_owned). (HeyListen: no guest_cpu_wrote, which Triforce calls here for its write-back diff's shadows.) False:
+/// not written
+bool occq_write(uint64_t addr, uint64_t expect, uint64_t count) {
+    uint64_t avail = 0;
+    uint8_t* const p = host->gpu_ptr ? host->gpu_ptr(addr, &avail) : nullptr;
+    bool ok;
+    if (p && avail >= 8 && !((uintptr_t)p & 7)) {
+        ok = __atomic_compare_exchange_n(reinterpret_cast<uint64_t*>(p), &expect, count, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+        if (ok && host->mark_written) host->mark_written(p, 8);
+    } else {   // (not one aligned word of the window: read, compare and write; no record of the game's is like that)
+        uint64_t now = 0;
+        ok = host->gpu_read(addr, &now, 8) && now == expect && host->gpu_write(addr, &count, 8);
+    }
+    if (!ok) return false;
+    memory_cpu_owned(host->gpu_guest(addr), 16);
+    return true;
+}
+/// (occq_mu held) A sealed slot whose recording the GPU is done with: its block read (no WAIT bit) and the whole counts
+/// written into their records (occ::complete); then the queries it took reset on the host (hostQueryReset). at: where
+void occq_read_slot(int i, occ::Stats::At at) {
+    OccqSlot& sl = occq_slots[i];
+    if (!sl.reps.empty()) {
+        static std::vector<uint64_t> v;   // (occq_mu)
+        v.assign(2 * (size_t)sl.used, 0);
+        const VkResult res = sl.used ? vkGetQueryPoolResults(dev.device, occq_pool, (uint32_t)i * kOccqPerSlot, sl.used, v.size() * 8,
+                                                             v.data(), 16, VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT)
+                                     : VK_SUCCESS;
+        occ::complete(sl.reps, v.data(), sl.used, res == VK_SUCCESS || res == VK_NOT_READY, occq_writers,
+                      occq_presents.load(std::memory_order_relaxed), occq_st,
+                      [](uint64_t addr, uint64_t expect, uint64_t count) {
+                          const bool ok = occq_write(addr, expect, count);
+                          if (ok) occq_sites.wrote(addr);
+                          return ok;
+                      },
+                      [](uint64_t addr, uint64_t count) { occq_sites.measured(addr, count); });
+        occq_st.at[at]++;
+        sl.reps.clear();
+        if (sl.sealed) occq_pending.fetch_sub(1, std::memory_order_relaxed);
+    }
+    if (occq_host_reset && sl.used) vkResetQueryPool(dev.device, occq_pool, (uint32_t)i * kOccqPerSlot, sl.used), sl.used = 0;
+    sl.sealed = false;
+}
+/// The sealed recordings the GPU is done with, read and their counts written: one look at the recordings' timeline, nothing
+/// waits. From any thread: a game's fence wait that ended (wait_core), a recording's begin and a present (the replay
+/// thread's, replay_mu). A slot without a timeline number (no recordings' timeline, or an RX_VK_EARLY_GPU segment) is
+/// looked at by the replay thread only, at its fence or batch
+void occq_harvest_done(occ::Stats::At at) {
+    if (!occq_pending.load(std::memory_order_acquire)) return;
+    if (!rec_timeline && at == occ::Stats::kAtWait) return;
+    std::lock_guard lk(occq_mu);
+    uint64_t done = 0, batch_done = 0;
+    bool batch_read = false;
+    if (rec_timeline) vkGetSemaphoreCounterValue(dev.device, rec_timeline, &done);
+    for (int i = 0; i < kRecordings && occq_pending.load(std::memory_order_relaxed); i++) {
+        OccqSlot& sl = occq_slots[i];
+        if (!sl.sealed || sl.reps.empty()) continue;
+        bool is_done;
+        if (sl.seq) {
+            is_done = sl.seq <= done;
+        } else {   // (the replay thread, as recording_wait knows the slot)
+            if (at == occ::Stats::kAtWait) continue;
+            const Recording& o = recordings[i];
+            if (!o.submitted) continue;
+            if (o.batch) {
+                if (!batch_read) vkGetSemaphoreCounterValue(dev.device, batch_tl, &batch_done), batch_read = true;
+                is_done = batch_done >= o.batch;
+            } else {
+                is_done = vkWaitForFences(dev.device, 1, &o.fence, VK_TRUE, 0) == VK_SUCCESS;
+            }
+        }
+        if (is_done) occq_read_slot(i, at);
+    }
+}
+/// Before a recording slot is begun again (recording_wait has waited for its last recording): its block read if it was
+/// sealed (submitted), else its reports dropped (it never went to the GPU); its queries reset either way. Then the other
+/// sealed slots the GPU is done with
+void occq_before_begin(Recording& r) {
+    {
+        std::lock_guard lk(occq_mu);
+        OccqSlot& sl = occq_slots[r.slot];
+        if (sl.sealed) {
+            occq_read_slot(r.slot, occ::Stats::kAtReuse);
+        } else if (!sl.reps.empty()) {
+            occ::dropped(sl.reps, occq_writers, occq_st);
+            sl.reps.clear();
+        }
+        if (occq_host_reset && sl.used) vkResetQueryPool(dev.device, occq_pool, (uint32_t)r.slot * kOccqPerSlot, sl.used), sl.used = 0;
+        sl.armed = false, sl.sealed = false, sl.seq = 0;
+    }
+    occq_harvest_done(occ::Stats::kAtBegin);
+}
+/// A recording slot begun (its command buffer just begun): a new serial; the block reset in it (without hostQueryReset:
+/// with it, it was reset on the host once read); queries may begin. Not sealed: nothing but its recording thread touches it
+void occq_slot_begin(Recording& r) {
+    OccqSlot& sl = occq_slots[r.slot];
+    if (!occq_host_reset) vkCmdResetQueryPool(r.cmd, occq_pool, (uint32_t)r.slot * kOccqPerSlot, kOccqPerSlot), sl.used = 0;
+    sl.serial = occq_serial_next.fetch_add(1, std::memory_order_relaxed) + 1;
+    sl.armed = true;
+}
+/// A recording went to the queue (submit_recording, or a segment's submit, with dev.present_mu no longer held: a reader
+/// writes guest memory under occq_mu). seq: its number on the recordings' timeline (0: none). From now on its block and
+/// reports are the readers', and read once that timeline reaches seq (or, without one, its fence or batch is done)
+void occq_seal(Recording& r, uint64_t seq) {
+    std::lock_guard lk(occq_mu);
+    OccqSlot& sl = occq_slots[r.slot];
+    if (!sl.armed || sl.sealed) return;
+    sl.sealed = true, sl.seq = seq;
+    if (!sl.reps.empty()) occq_pending.fetch_add(1, std::memory_order_release);
+}
+/// (Triforce's OccSeal) Seals r once the scope it is declared in ends: declared before the lock on dev.present_mu, so it runs
+/// after that lock is let go (occq_mu is never taken with dev.present_mu held)
+struct OccqSeal {
+    Recording& rec;
+    uint64_t at;
+    ~OccqSeal() {
+        if (occq_live && rec.submitted) occq_seal(rec, at);
+    }
+};
+/// The open query of c ends (inside its pass: at the pass's end, a report or a reset). Only in the recording it was begun
+/// in: elsewhere it cannot be ended, and the count is lost
+void occq_close(occ::Counter& c, VkCommandBuffer cmd) {
+    if (c.open < 0) return;
+    int slot;
+    if (c.slot >= 0 && occq_serial_of(cmd, &slot) == c.serial && slot == c.slot)
+        vkCmdEndQuery(cmd, occq_pool, (uint32_t)c.slot * kOccqPerSlot + (uint32_t)c.open);
+    else
+        c.lost = true, c.why = occ::Counter::kOtherCmd;
+    c.open = -1;
+    occq_open_here = false;
+}
+/// A parallel replay's segment begins or ends on this thread (record_segment): the segment's counting starts afresh (the
+/// query of its pass ended first)
+void occq_segment_edge(VkCommandBuffer cmd) {
+    occ::Counter& c = occq_ctr();
+    occq_close(c, cmd);
+    c.segment();
+}
+/// A command buffer replayed in parallel (replay_handle, before its dry pass; the replay thread, replay_mu): the replay's
+/// counting given up, its query ended in cmd: a report after it is measured only from a reset of its own
+void occq_serial_give_up(VkCommandBuffer cmd) {
+    occ::Counter& c = occq_ctr();
+    occq_close(c, cmd);
+    c.segment();
+}
+/// NOP_RESET_COUNTER of SAMPLES_PASSED, on the thread recording cmd (not the dry pass)
+void occq_reset(VkCommandBuffer cmd) {
+    occ::Counter& c = occq_ctr();
+    occq_close(c, cmd);
+    int slot;
+    const uint64_t serial = occq_serial_of(cmd, &slot);
+    c.reset(slot, serial, slot >= 0 ? occq_slots[slot].used : 0);
+}
+/// NOP_REPORT_COUNTER of SAMPLES_PASSED, on the thread recording cmd (not the dry pass): what the queries since the reset
+/// counted, when whole, goes with the recording, its count to be written once the recording is done. pos: the report's
+/// place in the stream (occq_pos); writable false: its count word is a clear flag (not written, but the counting goes on)
+void occq_report_measure(VkCommandBuffer cmd, uint64_t addr, uint64_t pos, bool writable) {
+    occ::Counter& c = occq_ctr();
+    occq_close(c, cmd);
+    int slot;
+    const uint64_t serial = occq_serial_of(cmd, &slot);
+    occ::Rep rep;
+    bool keep_now = false;
+    const occ::Counter::Outcome o = c.report(occq_keep.load(std::memory_order_relaxed), serial,
+                                             c.slot >= 0 && c.slot == slot ? occq_slots[c.slot].used : 0, &rep, &keep_now);
+    if (keep_now && !occq_keep.exchange(true))
+        logf("vk: occlusion queries: samples passed reported twice without a reset: counting goes on past reports from now on");
+    if (o == occ::Counter::kMeasured && writable) {   // (its slot is the recording being made here: not sealed yet)
+        rep.addr = addr, rep.pos = pos, rep.present = occq_presents.load(std::memory_order_relaxed);
+        occq_slots[c.slot].reps.push_back(rep);
+    }
+    std::lock_guard lk(occq_mu);
+    if (o != occ::Counter::kMeasured) occq_writers.settle(addr, pos);   // (no count comes: a condition reads memory, as before)
+    switch (o) {
+    case occ::Counter::kMeasured: occq_st.measured++; break;
+    case occ::Counter::kNoReset: occq_st.no_reset++; break;
+    case occ::Counter::kDouble: occq_st.doubles++; break;
+    case occ::Counter::kIncomplete:
+        occq_st.incomplete++;
+        (c.why == occ::Counter::kOtherCmd ? occq_st.inc_other_cmd : c.why == occ::Counter::kFull ? occq_st.inc_full : occq_st.inc_skipped)++;
+        break;
+    }
+}
+/// (occq_mu held, the placeholder's write right after it) A samples-passed report written at the replay, in stream order
+/// (dry: by a parallel replay's dry pass; flag: its count word a clear flag nvn_native.c wrote, left alone): the newest report
+/// at its address from now on, and whether its count is to be written there once read back. value: what the replay writes
+/// in the count word (the placeholder: a count goes in only over it). (HeyListen: no lab knob phase to check)
+void occq_placed(uint64_t addr, uint64_t pos, bool dry, bool flag, uint64_t value) {
+    occq_st.reports++;
+    occq_st.in_segments += dry ? 1 : 0;
+    occq_distinct.note(addr);
+    occq_sites.reported(addr);
+    bool write = !flag;
+    if (flag) occq_st.flagged++;
+    else if (occ::listed(occq_skip, addr)) occq_st.skipped++, write = false;
+    occq_writers.placed(addr, pos, occq_presents.load(std::memory_order_relaxed), write, value);
+}
+/// A record rewritten in the stream (the replay thread, in stream order: the serial replay or the dry pass): a report of
+/// another counter type at addr, or a small buffer clear of [addr, addr + size) the replay applies on the CPU. The
+/// samples-passed reports there are no longer the newest: their counts are not written over it, and a condition reads
+/// memory, as before. occq_mu held, the record's write with it: no count lands after it
+void occq_rewritten(uint64_t addr, uint64_t size, bool report) {
+    occq_st.rewritten += report ? (occq_writers.erase(addr) ? 1 : 0) : occq_writers.cleared(addr, addr + size);
+}
+/// A render condition over the words at addr and addr + 16 (the replay thread, in stream order with the placements: the
+/// serial replay or the dry pass, whose answers the segments take; not one snapped at record). *enabled: the replay's answer
+/// from memory, as before; it renders instead when a word's newest report is a samples-passed one whose count is still to
+/// come (unknown, NX2navi's cond_enabled), and stays the answer from memory when a word's count was written (a 0 skips) or
+/// none comes (occ::cond_decide). RX_VK_OCC_COND=0: such a condition always renders. x, y: the words, read again under
+/// occq_mu when a count was written
+void occq_cond(const NvnState& s, uint64_t addr, int mode, uint64_t& x, uint64_t& y, bool* enabled) {
+    occq_cond_off = nullptr;
+    std::lock_guard lk(occq_mu);
+    const int64_t now = occq_presents.load(std::memory_order_relaxed);
+    const occ::Writers::Src sx = occq_writers.word(addr, now), sy = occq_writers.word(addr + 16, now);
+    if (sx == occ::Writers::kNone && sy == occ::Writers::kNone) return;   // (no samples-passed report: as before)
+    const bool active = occq_env_real;   // (HeyListen: no lab knob; always true while the switch is live)
+    if (active && (sx == occ::Writers::kWrittenSrc || sy == occ::Writers::kWrittenSrc)) {
+        // (read again under occq_mu: a count written between the replay's read and here is what memory holds now)
+        host->gpu_read(addr, &x, 8);
+        host->gpu_read(addr + 16, &y, 8);
+        *enabled = mode == 0 ? x == y : x != y;
+    }
+    const occ::Cond c = occ::cond_decide(*enabled, sx, sy, active, occq_cond_on);
+    occq_st.cond(c.kind);
+    *enabled = c.enabled;
+    if (c.kind == occ::Cond::kWrittenOff) occq_cond_off = &s;
+    static int64_t seen = 0, logged = 0;
+    if (occq_log_cond && seen++ % 499 == 0 && logged < 300) {
+        logged++;
+        logf("vk: occlusion condition at %#llx mode %d: %llu (%s) vs %llu (%s): %s (present %lld)", (unsigned long long)addr,
+             mode, (unsigned long long)x, occ::src_name(sx), (unsigned long long)y, occ::src_name(sy),
+             c.kind == occ::Cond::kUnknown ? "renders, a count pending"
+             : c.kind == occ::Cond::kForced ? "renders (RX_VK_OCC_COND=0)"
+             : c.kind == occ::Cond::kBase ? (c.enabled ? "on, as before" : "off, as before")
+             : c.kind == occ::Cond::kWrittenOff ? "SKIPS, from a written count"
+             : c.kind == occ::Cond::kWrittenOn ? "renders, from a written count"
+             : (c.enabled ? "on, from memory" : "off, from memory"),
+             (long long)now);
+    }
+}
+/// The draw, dispatch or clear the replay thread passes with rendering off (the serial replay or the dry pass): one a
+/// written count's condition skips, counted for the line
+void occq_skip_note(const NvnState& s, bool clear) {
+    if (s.render_enabled || occq_cond_off != &s) return;
+    (clear ? occq_skips_clear : occq_skips_draw).fetch_add(1, std::memory_order_relaxed);
+}
+/// Once a present: the sealed recordings done read; Writers' addresses not reported for occ::kKeepAge presents pruned every
+/// 60, and the line every 600 presents (and the first 64 report addresses at its 1st and every 10th)
+void occq_present_tick() {
+    static int64_t n = 0, lines = 0;
+    occq_presents.store(presents_now, std::memory_order_relaxed);
+    occq_harvest_done(occ::Stats::kAtPresent);
+    if (++n % 60) return;
+    std::lock_guard lk(occq_mu);
+    occq_writers.prune(presents_now, occ::kKeepAge);
+    if (n % 600) return;
+    occq_st.addrs = occq_distinct.take();
+    occq_st.draws_skipped = occq_skips_draw.exchange(0, std::memory_order_relaxed);
+    occq_st.clears_skipped = occq_skips_clear.exchange(0, std::memory_order_relaxed);
+    char line[2048];
+    occq_st.line(line, sizeof line, 600, occq_writers.size());
+    // (the log's lines hold about 1000 characters: the line in two, at its render conditions)
+    if (char* cut = strstr(line, " Render conditions")) {
+        *cut = 0;
+        logf("%s", line);
+        logf("vk: occlusion queries (RX_VK_OCC_QUERY), 600 presents (2): %s", cut + 1);
+    } else {
+        logf("%s", line);
+    }
+    if (lines++ % 10 == 0) occq_sites.log([](const char* l) { logf("%s", l); });
+    occq_st = occ::Stats{};
+}
+} // namespace
+bool occq_live = false;   // (vk_draw.h: RX_VK_OCC_QUERY's queries run)
+void occq_draw_enter() { occq_ctr().draw_enter(occq_keep.load(std::memory_order_relaxed)); }
+void occq_draw_issued() { occq_ctr().draw_issued(occq_keep.load(std::memory_order_relaxed)); }
+void occq_draw_begin(VkCommandBuffer cmd) {
+    occ::Counter& c = occq_ctr();
+    const bool keep = occq_keep.load(std::memory_order_relaxed);
+    if (!c.may_begin(keep)) return;
+    int slot;
+    if (!c.begin(keep, occq_serial_of(cmd, &slot))) return;
+    OccqSlot& sl = occq_slots[c.slot];
+    if (sl.used >= kOccqPerSlot) return c.full();
+    c.open = (int)sl.used++;
+    vkCmdBeginQuery(cmd, occq_pool, (uint32_t)c.slot * kOccqPerSlot + (uint32_t)c.open, occq_flags);
+    occq_open_here = true;
+}
+void occq_pass_end(VkCommandBuffer cmd) {   // (a pass of this thread's: only where this thread began the query open now. The
+    if (occq_open_here) occq_close(occq_ctr(), cmd);   // replay's counting is under replay_mu, which a pass's end may not hold)
+}
+namespace {
+
 /// The next recording slot, begun, for the submission that will signal value
 Recording& begin_recording(uint64_t value) {
+    static const bool occq_on = (occq_live = occq_init());   // (Triforce, RX_VK_OCC_QUERY: once; off (the default here): nothing below runs)
+    (void)occq_on;
     Recording& r = recordings[recording_index];
     recording_index = (recording_index + 1) % kRecordings;
     if (r.value) {
@@ -972,12 +1405,14 @@ Recording& begin_recording(uint64_t value) {
         gpu_time_collect(r);
         gprof_collect(r.slot);
     }
+    if (occq_live) occq_before_begin(r);   // (Triforce, RX_VK_OCC_QUERY: its counts read and written)
     vkResetCommandPool(dev.device, r.pool, 0);
     vkResetCommandPool(dev.device, r.upload_pool, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(r.cmd, &bi);
     vkBeginCommandBuffer(r.upload, &bi);
+    if (occq_live) occq_slot_begin(r);   // (Triforce, RX_VK_OCC_QUERY: its block of occlusion queries reset in it)
     gpu_time_begin(r);
     gprof_begin_recording(r.slot, r.cmd, r.upload);
     r.value = value;
@@ -1043,6 +1478,10 @@ void submit_recording(Recording& r, bool signal_value = true, uint64_t signal_at
     si.signalSemaphoreInfoCount = nsig;
     si.pSignalSemaphoreInfos = nsig ? signals : nullptr;
     if (batch_tl == VK_NULL_HANDLE) late_fix_wait_unlocked();   // (TICK-060: nothing can be held without the batch semaphore)
+    // (Triforce, RX_VK_OCC_QUERY: once on the queue (or held in a batch, which recording_wait and the harvest see by its
+    // batch), its occlusion queries are the readers', by seq. Declared before the lock below, so run after it is let go:
+    // occq_mu is never taken with dev.present_mu held)
+    OccqSeal occq_sealed{r, seq};
     std::lock_guard lk(dev.present_mu);   // (one queue: submits and presents take turns)
     // (TICK-060, RX_VK_LATE_DEFER) a late fix pending: held with the batched ones until its value is reached (the fix thread
     // sends them then); one already reached is applied here
@@ -1229,6 +1668,23 @@ thread_local uint64_t ub_gen = 0;   // (each recording thread's: its draws' over
 // submitted in order. ----
 enum class Mode { Serial, Dry, Worker };
 thread_local Mode rmode = Mode::Serial;
+// (Triforce, RX_VK_OCC_QUERY: "occlusion queries" above) The samples-passed counting of the replay, one per NVN queue's state
+// (replay_mu: whichever thread holds it replays the main stream), and of a parallel replay's segment, the recording thread's
+// own (a helper thread's, or the replay thread's while it records a segment: rmode Worker)
+std::unordered_map<const NvnState*, occ::Counter> occq_mains;
+thread_local occ::Counter occq_seg;
+occ::Counter& occq_ctr() {
+    if (rmode == Mode::Worker) return occq_seg;
+    static const NvnState* at = nullptr;   // (the last queue's, kept: its node does not move)
+    static occ::Counter* c = nullptr;
+    if (at != cur_state || !c) at = cur_state, c = &occq_mains[cur_state];
+    return *c;
+}
+// (Triforce, RX_VK_OCC_QUERY) A samples-passed report's place in the stream, the same for the dry pass that writes its
+// placeholder and the thread that records its draws. (HeyListen: TICK-033's draw serial, occ_serial on the replay thread
+// (serial replay and dry pass) and occ_wserial on a segment's thread (record_segment: from the dry pass's number at the
+// segment's start), counted over the same draws and dispatches; Triforce counts stream_cb << 32 | stream_work)
+uint64_t occq_pos() { return rmode == Mode::Worker ? occ_wserial : occ_serial; }
 thread_local size_t ub_limit = SIZE_MAX;   // (a worker: the uniform updates before its place in the stream)
 thread_local size_t cond_at = 0;           // (a worker: the next render condition's result)
 std::vector<uint8_t> par_conds;            // (the render conditions' results, in stream order: the dry pass's)
@@ -1790,7 +2246,14 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
             break;
         }
         case NOP_REPORT_COUNTER: {
-            if (worker) break;   // (written by the dry pass, in stream order)
+            if (worker) {   // (written by the dry pass, in stream order)
+                if (occq_live) {   // (Triforce, RX_VK_OCC_QUERY: counted by the queries of the draws this segment recorded)
+                    const auto c = payload<nvn_p_counter>(a, avail);
+                    if ((uint32_t)c.type == NVN_COUNTER_TYPE_SAMPLES_PASSED)
+                        occq_report_measure(cmd, c.addr, occq_pos(), (c.type & NVN_COUNTER_WRITTEN) == 0);
+                }
+                break;
+            }
             const auto c = payload<nvn_p_counter>(a, avail);
             const bool flag_written = (c.type & NVN_COUNTER_WRITTEN) != 0;   // (a clear flag: nvn_native.c wrote it as it was recorded)
             const bool samples = (uint32_t)c.type == NVN_COUNTER_TYPE_SAMPLES_PASSED;
@@ -1827,9 +2290,32 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
             // after the clear resets it). A GPU-timeline write left the 1 in place for the stream's later conditions on
             // the same words, depending on how far the GPU was: extra clears of the HDR target, black frames at random;
             // and its late write could undo the game's next request. No pass ends for it either.)
-            if (flag_written) host->gpu_write(c.addr + 8, rec + 1, 8);
-            else host->gpu_write(c.addr, rec, sizeof rec);
-            memory_cpu_owned(host->gpu_guest(c.addr), sizeof rec);   // (vk_memory.cpp: kept out of the mirrors' write-backs)
+            const auto write_record = [&] {
+                if (flag_written) host->gpu_write(c.addr + 8, rec + 1, 8);
+                else host->gpu_write(c.addr, rec, sizeof rec);
+                memory_cpu_owned(host->gpu_guest(c.addr), sizeof rec);   // (vk_memory.cpp: kept out of the mirrors' write-backs)
+            };
+            // (Triforce, RX_VK_OCC_QUERY=1: the record written here as before, 4096 for the count; the draws since the reset are
+            // counted by occlusion queries (recorded here, or by the segment's thread after the dry pass), and once the GPU is
+            // done the count goes over the 4096 if this is still the newest report at the address ("occlusion queries" above).
+            // The placeholder's write and its entry under occq_mu: no count lands between them. Another counter type (or a
+            // clear flag's report) at the address is the newest there from now on: no count of an earlier samples-passed
+            // report is written over it, and a condition reads it from memory as before. Off: write_record() alone, as before)
+            if (samples && occq_live) {
+                const uint64_t pos = occq_pos();
+                {
+                    std::lock_guard lk(occq_mu);
+                    occq_placed(c.addr, pos, dry, flag_written, count);
+                    write_record();
+                }
+                if (!dry) occq_report_measure(cmd, c.addr, pos, !flag_written);
+            } else if (occq_live) {
+                std::lock_guard lk(occq_mu);
+                occq_rewritten(c.addr, 16, true);
+                write_record();
+            } else {
+                write_record();
+            }
             break;
         }
         case NOP_RESET_COUNTER: {
@@ -1837,6 +2323,7 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
             if (c.type == NVN_COUNTER_TYPE_SAMPLES_PASSED) {
                 s.samples_passed = 0;
                 if (!worker) occ_win_lo = occ_serial;
+                if (occq_live && !dry) occq_reset(cmd);   // (Triforce, RX_VK_OCC_QUERY: counting by occlusion queries from here)
             }
             break;
         }
@@ -1889,7 +2376,13 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
             if (in_stream && !worker) {
                 uint32_t words[64];
                 for (auto& w : words) w = c0.value;
-                host->gpu_write(c0.dst, words, std::min<uint64_t>(c0.size, sizeof words));   // (hookshot: not past words)
+                if (occq_live) {   // (Triforce, RX_VK_OCC_QUERY: a samples-passed record it covers is the clear's from now on)
+                    std::lock_guard lk(occq_mu);
+                    occq_rewritten(c0.dst, std::min<uint64_t>(c0.size, sizeof words), false);
+                    host->gpu_write(c0.dst, words, std::min<uint64_t>(c0.size, sizeof words));
+                } else {
+                    host->gpu_write(c0.dst, words, std::min<uint64_t>(c0.size, sizeof words));   // (hookshot: not past words)
+                }
             }
             if (dry) break;
             ParLock lk;
@@ -2155,6 +2648,7 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
         case NOP_RASTER_DISCARD: s.raster_discard = payload<nvn_p_flag>(a, avail).value != 0; break;
         case NOP_RENDER_ENABLE:
             s.render_enabled = payload<nvn_p_flag>(a, avail).value != 0;
+            if (occq_live && !worker && occq_cond_off == &s) occq_cond_off = nullptr;   // (Triforce, RX_VK_OCC_QUERY: no condition's from here)
             if (dump_on()) logf("vk: dump-op %03d RENDER_ENABLE %d", dump_seq(), (int)s.render_enabled);
             break;
         case NOP_RENDER_COND: {   // (read on the CPU for now; VK_EXT_conditional_rendering later)
@@ -2180,6 +2674,12 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
                 host->gpu_read(r.addr + 16, &y, 8);
             }
             s.render_enabled = r.mode == 0 ? x == y : x != y;
+            // (Triforce, RX_VK_OCC_QUERY: a samples-passed word whose count is still to come renders; one whose count was
+            // written is read from memory as above, where a 0 skips; "occlusion queries" above)
+            if (occq_live) {
+                if (r.snapped) occq_cond_off = nullptr;
+                else occq_cond(s, r.addr, (int)r.mode, x, y, &s.render_enabled);
+            }
             {   // (RX_VK_COND_ALWAYS=1 (test): every condition holds. The frame log's dark frames dump the last ones)
                 static const bool always = getenv("RX_VK_COND_ALWAYS") != nullptr;
                 const uint32_t at = cond_ring_at++ % (1 << 15);
@@ -2230,6 +2730,7 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
             break;
         // ---- work ----
         case NOP_CLEAR_COLOR:
+            if (occq_live && !worker) occq_skip_note(s, true);   // (Triforce, RX_VK_OCC_QUERY: one a written count's condition skips, counted)
             if (s.render_enabled && !dry) {
                 const auto c = payload<nvn_p_clear_color>(a, avail);
                 clear_color_target(cmd, s, c.index, c.rgba, (uint32_t)c.mask);
@@ -2238,6 +2739,7 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
             }
             break;
         case NOP_CLEAR_DS:
+            if (occq_live && !worker) occq_skip_note(s, true);   // (Triforce, RX_VK_OCC_QUERY: as NOP_CLEAR_COLOR above)
             if (s.render_enabled && !dry) {
                 const auto c = payload<nvn_p_clear_ds>(a, avail);
                 clear_depth_stencil(cmd, s, c.depth, c.depth_mask != 0, (uint32_t)c.stencil, (uint32_t)c.stencil_mask);
@@ -2317,6 +2819,7 @@ void replay(VkCommandBuffer& cmd, NvnState& s, const uint8_t* p, const uint8_t* 
         }
         if (h.op == NOP_DRAW || h.op == NOP_DRAW_IDX || h.op == NOP_DRAW_INDIRECT || h.op == NOP_DRAW_MESH ||
             h.op == NOP_DISPATCH || h.op == NOP_DISPATCH_INDIRECT) {
+            if (occq_live && !worker) occq_skip_note(s, false);   // (Triforce, RX_VK_OCC_QUERY: one a written count's condition skips, counted)
             if (worker) occ_wserial++;
             else if (occ_mode()) occ_advance(++occ_serial, rec_value_now);
             else ++occ_serial;
@@ -2592,10 +3095,12 @@ Recording& begin_segment_recording(uint64_t value) {
         gpu_time_collect(r);
         gprof_collect(r.slot);
     }
+    if (occq_live) occq_before_begin(r);   // (Triforce, RX_VK_OCC_QUERY: its counts read and written)
     vkResetCommandPool(dev.device, r.pool, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(r.cmd, &bi);
+    if (occq_live) occq_slot_begin(r);   // (Triforce, RX_VK_OCC_QUERY: its block of occlusion queries reset in it, for the helper thread's draws)
     r.value = value;
     return r;
 }
@@ -2630,6 +3135,9 @@ Recording& begin_segment_slot(uint64_t value) {   // (begin_segment_recording wi
         gpu_time_collect(r);
         gprof_collect(r.slot);
     }
+    // (Triforce, RX_VK_OCC_QUERY: its counts read and written. HeyListen: begin_segment_recording split in two here (TICK-061
+    // D7), so the slot's block is armed in segment_begin_here, once its command buffer is begun on the recording thread)
+    if (occq_live) occq_before_begin(r);
     r.value = value;
     return r;
 }
@@ -2638,6 +3146,7 @@ void segment_begin_here(Recording& r) {   // (the rest of it and of the upload's
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkResetCommandPool(dev.device, r.pool, 0);
     vkBeginCommandBuffer(r.cmd, &bi);
+    if (occq_live) occq_slot_begin(r);   // (Triforce, RX_VK_OCC_QUERY: as begin_segment_recording's)
     vkResetCommandPool(dev.device, r.upload_pool, 0);
     vkBeginCommandBuffer(r.upload, &bi);
     gpu_time_begin(r);
@@ -2658,9 +3167,13 @@ void record_segment(VkCommandBuffer& cmd, const Segment& g) {
     ub_limit = g.ub, cond_at = g.cond;
     occ_wserial = g.serial;
     ub_gen++;
+    // (Triforce, RX_VK_OCC_QUERY: the segment counts samples passed from its own resets on; the query this thread's segment
+    // counting has open ends first)
+    if (occq_live) occq_segment_edge(cmd);
     full_barrier(cmd);   // (after what the command buffers before it did)
     replay(cmd, s, g.p, g.end);
     end_pass(cmd);
+    if (occq_live) occq_segment_edge(cmd);   // (Triforce: what this thread counted is the segment's: not the next one's, nor the replay's)
     full_barrier(cmd);
     par_stats_segment(false);
     rmode = Mode::Serial;
@@ -2924,7 +3437,7 @@ const uint8_t* replay_handle_early(VkCommandBuffer& cmd, const uint8_t* h, bool 
         texture_upload_watch(&dry_uploaded);
     }
     bool init_lost = false;
-    const auto submit_job = [&init_lost](Job* j) {   // (a segment, in the queue's order: the caller's)
+    const auto submit_job = [&init_lost, egpu](Job* j) {   // (a segment, in the queue's order: the caller's)
         if (j->inits < 0) init_lost = true;   // (its init command buffer could not be ended: the replay stops, below)
         if (init_lost) return;                // (nothing from it on is submitted)
         VkCommandBufferSubmitInfo cb[3]{{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO}, {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO},
@@ -2936,7 +3449,19 @@ const uint8_t* replay_handle_early(VkCommandBuffer& cmd, const uint8_t* h, bool 
         VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
         si.commandBufferInfoCount = n;
         si.pCommandBufferInfos = cb;
+        // (Triforce, RX_VK_OCC_QUERY: as replay_handle's segments: the recordings' timeline signalled with the next number and
+        // the slot sealed by it once dev.present_mu is let go. HeyListen: only without RX_VK_EARLY_GPU, where this runs on the
+        // replay thread in rec_seq's order; with it a segment may go out from a worker thread, so it takes no number (seq 0)
+        // and the replay thread finds it done by its fence. Off: the submit as before)
+        VkSemaphoreSubmitInfo occq_sig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        uint64_t occq_seq = 0;
+        if (occq_live && rec_timeline && !egpu) {
+            occq_seq = ++rec_seq;
+            occq_sig.semaphore = rec_timeline, occq_sig.value = occq_seq, occq_sig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            si.signalSemaphoreInfoCount = 1, si.pSignalSemaphoreInfos = &occq_sig;
+        }
         late_fix_wait_unlocked();   // (TICK-060)
+        OccqSeal occq_sealed{*j->r, occq_seq};   // (Triforce, RX_VK_OCC_QUERY: declared before the lock, run after it)
         std::lock_guard lk(dev.present_mu);
         queue_flush_locked();
         gpu_time_segment_submitted(*j->r);   // (the blits' places among the timed recordings)
@@ -3188,6 +3713,9 @@ const uint8_t* replay_handle(VkCommandBuffer& cmd, const uint8_t* h, bool may_st
     }
     // the dry pass: the state at every 64 draws and dispatches, the render conditions, the uniform updates
     occ_stop_at = nullptr;
+    // (Triforce, RX_VK_OCC_QUERY: the segments count from here, each from its own resets; the dry pass's reports placed at
+    // occ_serial, which the segments' occ_wserial matches. Before replay_handle_early too, which is called from below)
+    if (occq_live) occq_serial_give_up(cmd);
     const auto t_dry0 = std::chrono::steady_clock::now();
     const NvnState start = state;
     const size_t ub0 = ub_updates.size();
@@ -3555,7 +4083,19 @@ const uint8_t* replay_handle(VkCommandBuffer& cmd, const uint8_t* h, bool may_st
         VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
         si.commandBufferInfoCount = n;
         si.pCommandBufferInfos = cb;
+        // (Triforce, RX_VK_OCC_QUERY: the segment's recording holds the queries of the reports it measured, and is submitted
+        // here, not by submit_recording: it signals the recordings' timeline with the next number too (the replay thread,
+        // replay_mu, in queue order: the batch before it is flushed first) and is sealed by it once dev.present_mu is let
+        // go (declared before the lock), so its counts are read and written when the GPU is done. Off: the submit as before)
+        VkSemaphoreSubmitInfo occq_sig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        uint64_t occq_seq = 0;
+        if (occq_live && rec_timeline) {
+            occq_seq = ++rec_seq;
+            occq_sig.semaphore = rec_timeline, occq_sig.value = occq_seq, occq_sig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            si.signalSemaphoreInfoCount = 1, si.pSignalSemaphoreInfos = &occq_sig;
+        }
         late_fix_wait_unlocked();   // (TICK-060)
+        OccqSeal occq_sealed{*j->r, occq_seq};
         std::lock_guard lk(dev.present_mu);
         queue_flush_locked();
         gpu_time_segment_submitted(*j->r);   // (the blits' places among the timed recordings)
@@ -4306,7 +4846,12 @@ uint64_t fence();
 /// (TICK-017) the game's fence waits that block (nvnSyncWait, nvnQueueFinish): how long, how far ahead of the GPU, by path.
 /// RX_VK_FENCE_WAIT_LOG=1: also the first 60 over 5 ms, one by one
 int wait_core(uint64_t f, uint64_t timeout_ns) {
-    if (completed() >= f) return 1;
+    // (Triforce, RX_VK_OCC_QUERY: a wait that ends lets the game read what the GPU finished: the counts of the recordings
+    // done are written first. occq_pending is 0 with the switch off. Triforce's wait_counted; HeyListen's is wait_core)
+    if (completed() >= f) {
+        if (occq_pending.load(std::memory_order_relaxed)) occq_harvest_done(occ::Stats::kAtWait);
+        return 1;
+    }
     const uint64_t done0 = completed(), latest = fence();
     bool recorded;
     {
@@ -4318,6 +4863,7 @@ int wait_core(uint64_t f, uint64_t timeout_ns) {
     wait_path = 0;
     tl_ev("fence-wait+", f, timeout_ns);
     const int r = wait_inner(f, timeout_ns);
+    if (r && occq_pending.load(std::memory_order_relaxed)) occq_harvest_done(occ::Stats::kAtWait);   // (Triforce, RX_VK_OCC_QUERY)
     tl_ev("fence-wait-", f, (uint64_t)wait_path);
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     static std::mutex mu;
@@ -5531,6 +6077,7 @@ void do_present(const nvn_tex* t, const int crop[4]) {
         presents++;
         presents_now = presents;
         occ_present(presents, occ_serial, completed());
+        if (occq_live) occq_present_tick();   // (Triforce, RX_VK_OCC_QUERY: its line every 600 presents)
         if (presents == 1) hang_watch_start();
         {   // (EvilBoyce, diagnostics) RX_VK_WATCH_CPU=<present>:<gpu address>[,...] (hex addresses): from that present on, the
             // CPU's writes to those 4 KB pages logged with the writer's stack (host page watch: 12 reports)
