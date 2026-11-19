@@ -34,7 +34,7 @@
 #include <windows.h>
 #include <xinput.h>
 #include "../gpu/vk/vk_api.h"   /* (the controls' names: HOS_SW_*, HOS_PAD_*) */
-#include "../gpu/vk/vk_opt_ids.h"   /* (HL_OPT_FIRST_PERSON) */
+#include "../gpu/vk/vk_opt_ids.h"   /* (fork: HL_OPT_FIRST_PERSON; HL_OPT_SCREENSHOT, HL_OPT_CLIP for the live file's !shot and !clip) */
 #include "hos_motion.h"
 #include "hos_atomic_file.h"   /* (the sensitivity is written whole or not at all) */
 
@@ -311,6 +311,12 @@ static void live_input(void) {
                 if (!strncmp(line, "!dump", 5)) rx_request_frame_dump();
                 extern volatile int hos_nvn_sync_log_on;   /* nvn_native.c: "!synclog" */
                 if (!strncmp(line, "!synclog", 8)) hos_nvn_sync_log_on = 1;
+                {   /* (fork) "!shot": a player screenshot, "!clip": a clip started or ended, as the Capture button does
+                       (gpu/vk/vk_replay.cpp): a test's check of both without keys sent to a window in front */
+                    void rx_option_set(int id, int value);
+                    if (!strncmp(line, "!shot", 5)) rx_option_set(HL_OPT_SCREENSHOT, 1);
+                    if (!strncmp(line, "!clip", 5)) rx_option_set(HL_OPT_CLIP, 1);
+                }
                 void rx_set_screenshot_ms(int64_t ms);   /* gpu/render/rx_core.cpp: "!shots <ms>" */
                 if (!strncmp(line, "!shots ", 7)) rx_set_screenshot_ms(atoll(line + 7));
                 void rx_request_rdoc_capture(int frames);   /* gpu/render/rx_debug.cpp: "!rdoc [frames]" */
