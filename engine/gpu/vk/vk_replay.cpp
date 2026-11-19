@@ -5468,8 +5468,95 @@ std::shared_ptr<std::vector<uint8_t>> shot_pixels(uint64_t at_value, int64_t at_
     const uint8_t* const sm = (const uint8_t*)shot_maps[at_present & 1];
     return std::make_shared<std::vector<uint8_t>>(sm, sm + (size_t)kShotW * kShotH * 4);
 }
+// (fork) The player's screenshot: the Screenshot key (the Controls page's row, F12 unless changed) or the controller's Capture
+// button (a short press: host/pad_sdl.c, through option_set HL_OPT_SCREENSHOT) writes the presented frame at its full size,
+// the game's own picture with its HUD (not this menu or the FPS counter), as <folder>/shot-YYYYMMDD-HHMMSS-mmm.png. The
+// folder is hookshot_options.ini's screenshot_folder= line (kept by the menu's saves), else "screenshots" beside the game.
+// As the test shots: copied out in the present's own recording, read at a later present once the GPU is past it, and
+// encoded on a thread of its own. From the OoT recomp's F12 shot (the menu branch).
+std::atomic<bool> user_shot_wanted{false};
+HWND app_window();   // (vk_main.cpp)
+struct UserShot {
+    VkImage image = VK_NULL_HANDLE;
+    VmaAllocation image_alloc = nullptr;
+    VkBuffer buf = VK_NULL_HANDLE;
+    VmaAllocation buf_alloc = nullptr;
+    void* map = nullptr;
+    uint32_t w = 0, h = 0;
+    bool pending = false;
+    uint64_t value = 0;
+} user_shot;
+bool user_shot_init(uint32_t w, uint32_t h) {
+    if (user_shot.image && user_shot.w == w && user_shot.h == h) return true;
+    if (!w || !h || w > dev.props.limits.maxImageDimension2D || h > dev.props.limits.maxImageDimension2D) return false;
+    if (user_shot.image) {   // (another size: the old pair is not in use, a pending shot having been taken first)
+        destroy_buffer(user_shot.buf, user_shot.buf_alloc);
+        destroy_image(user_shot.image, user_shot.image_alloc);
+        user_shot = {};
+    }
+    VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    ci.imageType = VK_IMAGE_TYPE_2D;
+    ci.format = VK_FORMAT_R8G8B8A8_UNORM;
+    ci.extent = {w, h, 1};
+    ci.mipLevels = ci.arrayLayers = 1;
+    ci.samples = VK_SAMPLE_COUNT_1_BIT;
+    ci.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    if (!create_image(ci, user_shot.image, user_shot.image_alloc)) return user_shot = {}, false;
+    if (!create_buffer((uint64_t)w * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true, user_shot.buf, user_shot.buf_alloc,
+                       &user_shot.map)) {
+        destroy_image(user_shot.image, user_shot.image_alloc);
+        return user_shot = {}, false;
+    }
+    user_shot.w = w, user_shot.h = h;
+    return true;
+}
+std::string user_shot_folder() {
+    char exe[MAX_PATH];
+    const DWORD n = GetModuleFileNameA(nullptr, exe, MAX_PATH);
+    std::string dir(exe, n < MAX_PATH ? n : 0);
+    dir = dir.substr(0, dir.find_last_of("\\/") + 1);
+    std::string folder = dir + "screenshots";
+    if (FILE* f = fopen((dir + "hookshot_options.ini").c_str(), "r")) {
+        char line[600];
+        while (fgets(line, sizeof line, f))
+            if (!strncmp(line, "screenshot_folder=", 18)) {
+                std::string v(line + 18);
+                while (!v.empty() && (v.back() == '\n' || v.back() == '\r' || v.back() == ' ')) v.pop_back();
+                if (!v.empty()) folder = v;
+            }
+        fclose(f);
+    }
+    for (size_t i = 3; i <= folder.size(); i++)   // (each part of the path made in turn: a new folder deep down)
+        if (i == folder.size() || folder[i] == '\\' || folder[i] == '/') CreateDirectoryA(folder.substr(0, i).c_str(), nullptr);
+    return folder;
+}
+void user_shot_write() {
+    auto px = std::make_shared<std::vector<uint8_t>>((const uint8_t*)user_shot.map,
+                                                     (const uint8_t*)user_shot.map + (size_t)user_shot.w * user_shot.h * 4);
+    for (size_t i = 3; i < px->size(); i += 4) (*px)[i] = 255;   // (the game's alpha is not the picture's: opaque)
+    const uint32_t w = user_shot.w, h = user_shot.h;
+    std::thread([px, w, h] {
+        SYSTEMTIME s;
+        GetLocalTime(&s);
+        char name[64];
+        snprintf(name, sizeof name, "\\shot-%04d%02d%02d-%02d%02d%02d-%03d.png", s.wYear, s.wMonth, s.wDay, s.wHour, s.wMinute,
+                 s.wSecond, s.wMilliseconds);
+        const std::string path = user_shot_folder() + name;
+        if (write_png(path.c_str(), px->data(), w, h)) logf("vk: screenshot %ux%u written to %s", w, h, path.c_str());
+        else logf("vk: screenshot: %s could not be written", path.c_str());
+    }).detach();
+}
+
 void do_present(const nvn_tex* t, const int crop[4]) {
     static PendingShot pending;
+    {   // (fork) the Screenshot key, while the game's window is in front and the menu is closed
+        static const int keys[] = {0, VK_F12, VK_F11, VK_F10, VK_SNAPSHOT};
+        const int key = keys[std::clamp(opts.screenshot_key, 0, 4)];
+        static bool was_down;
+        const bool down = key && GetForegroundWindow() == app_window() && (GetAsyncKeyState(key) & 0x8000) != 0;
+        if (down && !was_down && !menu_is_open()) user_shot_wanted.store(true);
+        was_down = down;
+    }
     // (hookshot) NVIDIA Reflex (vk_reflex.cpp): this frame's simulation ended, its submission starts; on the way out (after the
     // present) the driver's sleep until the next frame should begin
     temporal_idle();   // (DLSS, FSR: their video memory let go once not used for a while)
@@ -5549,6 +5636,20 @@ void do_present(const nvn_tex* t, const int crop[4]) {
         }
         ts_anchor_ns = host->ticks() * 32;
         dump_present(presents);
+        if (src && !user_shot.pending && user_shot_wanted.exchange(false)) {   // (fork: the player's screenshot, full size)
+            const uint32_t w = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[2] : sw;
+            const uint32_t h = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[3] : sh;
+            if (user_shot_init(w, h)) {
+                image_barrier(r.cmd, user_shot.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                blit_crop(r.cmd, src, sw, sh, crop, user_shot.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, w, h);
+                image_barrier(r.cmd, user_shot.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                const VkBufferImageCopy c{0, 0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {w, h, 1}};
+                vkCmdCopyImageToBuffer(r.cmd, user_shot.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, user_shot.buf, 1, &c);
+                user_shot.pending = true, user_shot.value = value;
+            } else {
+                logf("vk: screenshot: no %ux%u image for it", w, h);
+            }
+        }
         if (src && (dev.offscreen || shots) && offscreen_init()) {
             if (dev.offscreen) {
                 image_barrier(r.cmd, off_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -5806,6 +5907,7 @@ void do_present(const nvn_tex* t, const int crop[4]) {
             }).detach();
         };
         if (pending.on && (shot || completed() >= pending.value)) take(pending.value, pending.presents), pending.on = false;
+        if (user_shot.pending && completed() >= user_shot.value) user_shot_write(), user_shot.pending = false;   // (fork)
         if (shot && made_src && made_map) {
             take(value, presents);
             char path[1024];
@@ -5821,6 +5923,10 @@ void do_present(const nvn_tex* t, const int crop[4]) {
 }
 
 } // namespace
+// (fork) the player's screenshot asked for from outside the present: the menu's option_set (HL_OPT_SCREENSHOT, the controller's
+// Capture button through host/pad_sdl.c)
+void screenshot_request() { user_shot_wanted.store(true); }
+
 
 // (hookshot) RX_VK_FRAMELOG=<file>: every frame shown, the game's and the made ones, as they go to the screen, 320x180, while
 // <file>.go exists (scripts/framelog.py finds the flashes). Taken at the last step and written on a thread of its own, so
