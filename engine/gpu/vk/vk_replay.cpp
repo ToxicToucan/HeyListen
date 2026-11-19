@@ -6125,6 +6125,7 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
     const bool pressed = clip_toggle.exchange(false);
     if (g.phase == 2) return;
     const auto now = std::chrono::steady_clock::now();
+    const bool was_recording = g.phase == 1;   // (the press that starts a clip is not also the one that ends it)
     if (g.phase == 0) {
         if (!pressed || !src) return;
         const clip::Settings s = clip::settings();
@@ -6151,7 +6152,7 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
         clip_rec_on.store(true);
     }
     const double el = std::chrono::duration<double>(now - g.t0).count();
-    if (pressed || el >= g.seconds || clip::failed()) {
+    if ((pressed && was_recording) || el >= g.seconds || clip::failed()) {
         g.phase = 2;
         clip_rec_on.store(false);
         g.end_index = std::min<int64_t>((int64_t)(el * g.fps), (int64_t)g.seconds * g.fps);
