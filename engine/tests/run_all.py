@@ -32,6 +32,7 @@ ARGS = {
     "tests/test_dummy_views.py": ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"],
     "tests/test_sparse_bind_failure.py": ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"],
     "tests/test_dead_targets_sweep.py": ["--cxx", "{cxx}"],
+    "tests/test_hidden_mesh_depth.py": ["--cxx", "{cxx}"],   # (longshot 29c0f5ea6, ported)
     "tests/test_precompile_save.py": ["--cxx", "{cxx}"],
     "tests/test_settings_atomic.py": ["--cc", "gcc"],
     "tests/test_host_alloc_wait.py": ["--cc", "gcc"],
