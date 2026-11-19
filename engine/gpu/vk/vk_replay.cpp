@@ -65,6 +65,7 @@
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
 namespace mkwvk {
+HWND app_window();   // (vk_main.cpp; fork: the screenshot and clip keys only while the game's window is in front)
 // (HeyListen, TICK-054) the host's frame-timeline marks (HOS_JOBTRACE, tools/bench/frameline.py): hos_jt_mark_ext, exported by
 // the game's exe and looked up there (the host's headers are not included here; vk_api.h is a shader-stamp input). A call that
 // returns at once while the trace window is closed. Kinds: 9/10 the replay thread waiting for its segments, 11/12 a submit's
@@ -5476,7 +5477,6 @@ std::shared_ptr<std::vector<uint8_t>> shot_pixels(uint64_t at_value, int64_t at_
 // As the test shots: copied out in the present's own recording, read at a later present once the GPU is past it, and
 // encoded on a thread of its own. From the OoT recomp's F12 shot (the menu branch).
 std::atomic<bool> user_shot_wanted{false};
-HWND app_window();   // (vk_main.cpp)
 struct UserShot {
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation image_alloc = nullptr;
