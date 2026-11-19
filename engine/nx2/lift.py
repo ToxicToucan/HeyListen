@@ -167,6 +167,8 @@ def main():
         oot_occlusion.install(L, img)
         import oot_shadow   # (longshot 9f8958a5c: the sun's shadow resolution, after the game sizes its cascades; host/oot_shadow.c)
         oot_shadow.install(L, img, next((m["build_id"] for m in meta["modules"] if m["name"] == "main"), ""))
+        import oot_fov   # (fork: the Field of view row, host/oot_fov.c; Hookshot's)
+        oot_fov.install(L, img)
     L.discover(max_insns=a.max_func)
     print("discovered %d functions (%.0fs)" % (len(L.funcs), time.time() - t0))
     total = coverage(L, img, img_dir)

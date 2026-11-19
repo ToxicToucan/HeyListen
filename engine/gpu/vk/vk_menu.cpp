@@ -687,6 +687,9 @@ Row rows[] = {
     {TAB_GAMEPLAY, "First person", &opts.first_person, 0, 1, 1, tx_onoff,   // (fork: HL_OPT_FIRST_PERSON, vk_opt_ids.h, host/hos_main.c)
      "Plays from Link's eyes: the right stick looks around, Link walks the way you look, and his head is hidden. The free "
      "camera, while on, takes its place.", nullptr, false, true},
+    {TAB_GAMEPLAY, "Field of view", &opts.fov, 50, 150, 5, tx_percent,   // (fork: HL_OPT_FOV, vk_opt_ids.h, host/oot_fov.c)
+     "How wide the view is in play, as a share of the game's own angle (100% is the game's). Cutscenes keep the game's "
+     "view: the change eases out as one starts and back in as it ends. Applies at once.", nullptr, false, true},
     {TAB_GAMEPLAY, "Send performance statistics", &opts.send_perf, 0, 1, 1, tx_telemetry,
      "Off by default. On: the game counts how its frames go (frame times, stutters and what they waited on, per map) and sends "
      "a summary of the counts, without your name or any ID; what is kept of it is totals for all players. Every 5 minutes of play "

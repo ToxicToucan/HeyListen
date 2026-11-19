@@ -16,3 +16,5 @@
 #define HL_OPT_SHADOW_RES 56
 /* The Debug tab's First person row (host/hos_main.c and host/nn_hid.c ask, gpu/vk/vk_replay.cpp answers 0 or 1) */
 #define HL_OPT_FIRST_PERSON 91
+/* The Gameplay page's Field of view row, in percent of the game's angle, 50 to 150 (host/oot_fov.c asks) */
+#define HL_OPT_FOV 92
