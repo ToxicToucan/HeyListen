@@ -2236,6 +2236,8 @@ void menu_option_set(int id, int value) {
     if (id == HL_OPT_CLIP) {   // (fork: the Capture button held, host/pad_sdl.c)
         void clip_request();   // (vk_replay.cpp)
         if (value) clip_request();
+        return;
+    }
     if (id == HL_OPT_RESTART) {   // (fork: host/hos_main.c's quick load: as the Restart row's Restart now)
         if (!value) return;
         save();
