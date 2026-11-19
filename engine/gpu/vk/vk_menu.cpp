@@ -46,6 +46,7 @@
 #include "vk_temporal.h"
 #include "vk_reflex.h"
 #include "upscaler_rows.h"
+#include "vk_opt_ids.h"   // (fork: HL_OPT_RESTART, menu_option_set)
 #include "menu_restart.h"
 #ifndef HOOKSHOT_VERSION   // (nx2/build.py gives it to this file: nx2/version.py)
 #define HOOKSHOT_VERSION "unknown"
@@ -2191,6 +2192,14 @@ void menu_option_set(int id, int value) {
             int expected = value ? 0 : 1;
             player_flight.compare_exchange_strong(expected, value != 0, std::memory_order_relaxed);
         }
+        return;
+    }
+    if (id == HL_OPT_RESTART) {   // (fork: host/hos_main.c's quick load: as the Restart row's Restart now)
+        if (!value) return;
+        save();
+        pipeline_cache_save(true);
+        logf("menu: restart (asked by the host: a quick load)");
+        if (const HWND window = app_window()) PostMessageA(window, WM_APP + 9, 0, 0);
         return;
     }
     if (id != 7) return;

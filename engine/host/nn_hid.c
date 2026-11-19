@@ -310,6 +310,9 @@ static void live_input(void) {
                 if (!strncmp(line, "!dump", 5)) rx_request_frame_dump();
                 extern volatile int hos_nvn_sync_log_on;   /* nvn_native.c: "!synclog" */
                 if (!strncmp(line, "!synclog", 8)) hos_nvn_sync_log_on = 1;
+                extern volatile int hos_qs_live;   /* (fork) host/hos_main.c: "!qsave", "!qload" (a quick load at once) */
+                if (!strncmp(line, "!qsave", 6)) __atomic_store_n(&hos_qs_live, 1, __ATOMIC_RELAXED);
+                if (!strncmp(line, "!qload", 6)) __atomic_store_n(&hos_qs_live, 2, __ATOMIC_RELAXED);
                 void rx_set_screenshot_ms(int64_t ms);   /* gpu/render/rx_core.cpp: "!shots <ms>" */
                 if (!strncmp(line, "!shots ", 7)) rx_set_screenshot_ms(atoll(line + 7));
                 void rx_request_rdoc_capture(int frames);   /* gpu/render/rx_debug.cpp: "!rdoc [frames]" */

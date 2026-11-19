@@ -72,6 +72,7 @@ def main():
     cheat_state = re.search(r"^static uint64_t flight_input;\nstatic uint64_t free_camera_axes;\nstatic int free_camera_height;", hid, re.M).group(0)
     cheat_spies = """
 volatile int hos_oot_live_action;
+volatile int hos_qs_live;
 int hos_oot_flight_shortcut_ready(void) { CHECK(!"unexpected cheat readiness query"); return 0; }
 void rx_option_set(int id, int value) { (void)id; (void)value; CHECK(!"unexpected cheat option change"); }
 void hos_oot_autoload_input(void) {}

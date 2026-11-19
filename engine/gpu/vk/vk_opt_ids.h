@@ -10,3 +10,7 @@
 /* The Skip title screen row (host/oot_autoload.c asks, gpu/vk/vk_replay.cpp answers 0 or 1). 44 is the id Longshot's change
    of the same row uses in vk_api.h (free in this tree: the ids there run 32 to 35, 40 to 43), so the two agree. */
 #define HL_OPT_SKIP_TITLE 44
+
+/* (fork) The host asks for the Restart row's restart (option_set: host/hos_main.c's quick load): options and pipeline cache
+   saved, the window closed for a restart (gpu/vk/vk_menu.cpp menu_option_set) */
+#define HL_OPT_RESTART 95
