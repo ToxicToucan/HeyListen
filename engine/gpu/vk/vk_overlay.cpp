@@ -316,6 +316,25 @@ void overlay_prepare() {
     if (!roboto && ImGui::GetCurrentContext()) add_font();
 }
 
+// (fork) While a clip records (vk_clip.h): a red dot and REC in the top right corner, under the FPS box when it shows
+void overlay_rec(uint32_t w, uint32_t h, int fps_mode) {
+    if (!w || !h || !roboto || !ImGui::GetCurrentContext()) return;
+    const float scale = overlay_scale(h);
+    ImGui::PushFont(roboto, 26.0f * scale);
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    const char* text = "REC";
+    const ImVec2 sz = ImGui::CalcTextSize(text);
+    const float pad = 6 * scale, dot = sz.y * 0.32f;
+    const float y = 12 * scale + (fps_mode == 1 ? sz.y + pad * 2 + 8 * scale : 0);
+    const float bw = pad * 3 + dot * 2 + sz.x;
+    const ImVec2 p((float)w - 12 * scale - bw, y);
+    dl->AddRectFilled(p, ImVec2(p.x + bw, p.y + sz.y + pad * 2), IM_COL32(0, 0, 0, 150), 4 * scale);
+    if ((prof_now() / 500000000) % 2 == 0)   // (the dot blinks once a second)
+        dl->AddCircleFilled(ImVec2(p.x + pad + dot, p.y + pad + sz.y * 0.5f), dot, IM_COL32(230, 40, 40, 255));
+    dl->AddText(ImVec2(p.x + pad * 2 + dot * 2, p.y + pad), IM_COL32(255, 255, 255, 235), text);
+    ImGui::PopFont();
+}
+
 void overlay_draw(uint32_t w, uint32_t h, int mode, bool menu_open) {
     if (mode < 1 || !w || !h || !roboto || !ImGui::GetCurrentContext()) return;
     if (!style_ok) style_init(base_style), style_ok = true;
