@@ -1294,8 +1294,16 @@ static void fp_navi_search(Ctx *c, uint64_t link, uint64_t components) {
     hos_log("first person: Navi search: not found (%d pointers, %d objects one step on, %d with a model near Link)", tried, n, logged);
 }
 static void fp_navi(Ctx *c, uint64_t link, uint64_t components, int want, int64_t now) {
-    static int hidden, logs, searches;
+    static int hidden, logs, searches, test = -1;
     static int64_t at, searched_at;
+    /* HL_FP_NAVI_TEST=1 (a check, not for play): she is hidden and shown in turn, five seconds each, whether first person
+       is on or not, so a third-person screenshot either side shows what is hidden */
+    if (test < 0) test = getenv("HL_FP_NAVI_TEST") && atoi(getenv("HL_FP_NAVI_TEST")) == 1;
+    if (test) {
+        const int turn = (int)((now / 5000000000LL) & 1) == 0;
+        if (turn != want) at = 0;   /* (a change: at once) */
+        want = turn;
+    }
     if (want && !fp_navi_found && searches < 5 && now - searched_at > 2000000000LL)
         searched_at = now, searches++, fp_navi_search(c, link, components);
     const uint64_t navi = fp_navi_found;
