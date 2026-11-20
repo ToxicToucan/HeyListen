@@ -182,9 +182,13 @@ def movie_site(s, addr, off):
 #   step back (hos_loop_step_out); the entry's address is the variable given (x20_ where the lift keeps x20 in a local).
 # - HL_POSE_HOOK(80944aa0, "<hash>"): (the same) the skeletons' drawn time store: a line before it sets vreg 0 to
 #   hos_loop_pose_in (the loop's start for a range of one frame or less above a 60 cap), a line after puts the game's back.
+# - HL_CLOTHTIME_HOOK(81b3aa48, "<hash>"): (fork, after Longshot 24e73f1f0) Havok cloth's per-frame setup: after its load of
+#   the step context's time into vreg 0, a line sets it to hos_oot_cloth_seconds' (times the frame step below 60 fps).
+# - HL_CLOTHSOLVE_HOOK(81b47080, "<hash>"): (the same) the cloth's solve job: before its first store, a line returns with the
+#   job's own result (0) when hos_oot_cloth_solve holds the cloth this frame (at most 60 solves a second above a 60 cap).
 # Each goes in only where its function's text hashes as recorded, both lines of a kind or none. The marker is the address
 # plus one, as a step hook's (one hook a function), so a tree that does not ask for it takes it out as a stale gate.
-WANT_LIFT = re.compile(r'^HL_(SOUND|SOLVER|WHOLE|HEAP|BGM|TURN|HORSE|FLOOR|CUE|LOOP|POSE)_HOOK\(\s*([0-9a-f]{8})\s*,\s*"([0-9a-f]*)"((?:\s*,\s*(?:\d+|"[^"\n]*"))*)\s*\)',
+WANT_LIFT = re.compile(r'^HL_(SOUND|SOLVER|WHOLE|HEAP|BGM|TURN|HORSE|FLOOR|CUE|LOOP|POSE|CLOTHTIME|CLOTHSOLVE)_HOOK\(\s*([0-9a-f]{8})\s*,\s*"([0-9a-f]*)"((?:\s*,\s*(?:\d+|"[^"\n]*"))*)\s*\)',
                        re.M)
 CUT = "    c->x[%d]=recomp_fp_to_int(c->vreg[0][0]&UINT64_C(0xffffffff),32,32,1,3,c->fpcr,&c->fpsr);\n"
 SOUND_SLOT = "g_module_base + 0x80435000ULL + (int64_t)75927552"   # (the page of the step's pointer, whose +2192 holds it)
@@ -225,6 +229,9 @@ LOOP_MUL = ("    {uint64_t _a=0,_b=0,_z,_v;memcpy(&_a,c->vreg[8],4);memcpy(&_b,c
 POSE_STORE = "    { { uint64_t _v=0; memcpy(&_v,&c->vreg[0][0],4); recomp_store32(c,(c->x[22]+0ULL),_v); } }\n"
 
 
+CLOTH_TIME = "    { { uint64_t _v=recomp_load64(c,(c->x[22]+8ULL)); a64_vset64(c->vreg[0],_v); } }\n"
+CLOTH_SOLVE = ("    { uint64_t _b=x31_; int64_t _o=-128; { uint64_t _v=0; memcpy(&_v,&c->vreg[10][0],8); recomp_store64(c,(_b+_o),_v); } "
+               "x31_=_b+_o; }\n")
 HEAP_CPU = (0x80456910, 0x80456da4)   # (f_804566e0's tryAlloc calls, by their return addresses, and the GPU memory's)
 HEAP_GPU = (0x80456f1c, 0x80457098)
 HEAP_CPU_LINE = "{ uint64_t _t = c->x[8]; c->x[30] = %#xULL; A64_ICALL(c, _t); }\n"
@@ -282,6 +289,11 @@ def lift_lines(kind, addr, args):
         return ["    { extern uint32_t hos_loop_pose_in(uint32_t, uint32_t, uint32_t); a64_vset64(c->vreg[0], hos_loop_pose_in("
                 "(uint32_t)c->vreg[0][0], (uint32_t)recomp_load32(c,c->x[22] + 4), (uint32_t)recomp_load32(c,c->x[22] + 8))); }" + mark,
                 "    { extern uint32_t hos_loop_pose_out(void); a64_vset64(c->vreg[0], hos_loop_pose_out()); }" + mark]
+    if kind == "clothtime":
+        return ["    { extern uint64_t hos_oot_cloth_seconds(uint64_t); "
+                "a64_vset64(c->vreg[0], hos_oot_cloth_seconds(c->vreg[0][0])); }" + mark]
+    if kind == "clothsolve":
+        return ["    { extern int hos_oot_cloth_solve(void); if (!hos_oot_cloth_solve()) { c->x[0] = 0; return; } }" + mark]
     if kind == "heap":
         lines = []
         for lr in HEAP_CPU:
@@ -376,6 +388,15 @@ def lift_places(body, addr, kind, args):
             return None
         at = body.index(POSE_STORE)
         return [at, at + len(POSE_STORE)]
+    if kind == "clothtime":
+        if body.count(CLOTH_TIME) != 1:
+            return None
+        return [body.index(CLOTH_TIME) + len(CLOTH_TIME)]
+    if kind == "clothsolve":
+        # (the job's first store, before anything is saved or written back: only the locals' loads and a hint before it)
+        if body.count(CLOTH_SOLVE) != 1 or body[:body.index(CLOTH_SOLVE)].count("\n") > 4:
+            return None
+        return [body.index(CLOTH_SOLVE)]
     if kind == "heap":
         places = []
         for lines in ((HEAP_CPU_LINE, HEAP_CPU), (HEAP_GPU_LINE, HEAP_GPU)):
