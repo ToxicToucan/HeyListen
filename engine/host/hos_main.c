@@ -1215,48 +1215,62 @@ static int fp_set_head_visible(Ctx *c, uint64_t components, int visible, int log
    game's AI query QueryNaviGetWaitPos (main+0x2a74700) reads her wait position through (main+0x4c7e178). While first person is on, her materials Mt_Body and Mt_Wings (Npc_Navi's two) are hidden while she is
    within 1 m of the eye and shown again beyond it; turned off, she is shown. Her light (the scene's point light) stays. */
 static const char *const kNaviMaterials[] = {"Mt_Body", "Mt_Body_AlphaMask", "Mt_Wings"};
-/* Her actor: found by its model, not by a pointer path. Each kind of actor the movement update (hos_oot_lift_player) runs
-   while first person is on is looked at once: one whose model has a material named Mt_Wings (Npc_Navi's) is hers, and its
-   kind (vtable) is kept; from then on the actor of that kind updated within 3 m of Link is taken as her. (The singleton at
-   main+0x4c7e178 the AI query reads through, tried first, is not her actor: no models.) */
+/* Her actor: found by its model. The actor movement update only runs for Link (navi-find-1: no other actor passed it), so
+   she is looked for from Link: the 8-byte words of his actor (0x2000 bytes) and of his components (0x400), and one step
+   further from each object found there, are taken as pointers. An object counts only if it is in the heap, starts with a
+   vtable in main, has components (+624) whose model component (+8) is of the class Link's is (the same getter at its
+   vtable +248: no other code is called on a guess), and stands within 5 m of Link (+796); then its models are asked,
+   look-up only, for a material named Mt_Wings (Npc_Navi's). The first such object is hers. Looked for a few times while
+   first person is on, each candidate logged. */
 static const char *const kNaviWings[] = {"Mt_Wings"};
 static volatile uint64_t fp_navi_vt, fp_navi_found;
-static void fp_navi_seen(Ctx *c, uint64_t actor) {
-    const uint64_t vt = recomp_load64(c, actor);
-    if (!fp_in_main(vt) || vt == 0x84b45e18ULL) return;   /* (not an actor of the game's, or Link) */
-    if (fp_navi_vt) {
-        if (vt != fp_navi_vt || !fp_link_known) return;
-        float l2 = 0;
-        for (unsigned i = 0; i < 3; i++) {
-            const float d = oot_load_float(c, actor + 796 + i * 4) - fp_link[i];
-            l2 += d * d;
-        }
-        if (l2 < 9.0f) fp_navi_found = actor;
-        return;
+extern uint64_t hos_heap_size;
+static int fp_heap_ptr(uint64_t a) { return !(a & 7) && a >= HOS_HEAP_BASE && a + 0x1000 < HOS_HEAP_BASE + hos_heap_size; }
+static int fp_navi_try(Ctx *c, uint64_t obj, uint64_t link, uint64_t getter, int *logged) {
+    if (obj == link || !fp_heap_ptr(obj) || !fp_in_main(recomp_load64(c, obj))) return 0;
+    const uint64_t comps = recomp_load64(c, obj + 624);
+    if (!fp_heap_ptr(comps)) return 0;
+    const uint64_t comp = recomp_load64(c, comps + 8);
+    if (!fp_heap_ptr(comp) || !fp_in_main(recomp_load64(c, comp)) || recomp_load64(c, recomp_load64(c, comp) + 248) != getter)
+        return 0;
+    float l2 = 0;
+    for (unsigned i = 0; i < 3; i++) {
+        const float d = oot_load_float(c, obj + 796 + i * 4) - fp_link[i];
+        l2 += d * d;
     }
-    static SRWLOCK lock = SRWLOCK_INIT;
-    static uint64_t seen[128];
-    static int nseen;
-    if (!TryAcquireSRWLockExclusive(&lock)) return;
-    int known = nseen >= 128;
-    for (int i = 0; i < nseen && !known; i++) known = seen[i] == vt;
-    if (!known) {
-        seen[nseen++] = vt;
-        const uint64_t comps = recomp_load64(c, actor + 624);
-        const int wings = comps ? fp_set_materials(c, comps, kNaviWings, 1, -1, 0, "Navi") : -1;
-        float l2 = 0;
-        for (unsigned i = 0; i < 3; i++) {
-            const float d = oot_load_float(c, actor + 796 + i * 4) - fp_link[i];
-            l2 += d * d;
+    if (!(l2 < 25.0f)) return 0;
+    const int wings = fp_set_materials(c, comps, kNaviWings, 1, -1, 0, "Navi");
+    if (*logged < 24)
+        (*logged)++, hos_log("first person: Navi search: object %#llx (vtable %#llx) %.2f m from Link, wings %d", (unsigned long long)obj,
+                             (unsigned long long)recomp_load64(c, obj), sqrtf(l2), wings);
+    if (wings <= 0) return 0;
+    fp_navi_vt = recomp_load64(c, obj), fp_navi_found = obj;
+    hos_log("first person: Navi is %#llx (vtable %#llx)", (unsigned long long)obj, (unsigned long long)fp_navi_vt);
+    return 1;
+}
+static void fp_navi_search(Ctx *c, uint64_t link, uint64_t components) {
+    const uint64_t lcomp = recomp_load64(c, components + 8);
+    if (!fp_heap_ptr(lcomp)) return;
+    const uint64_t getter = recomp_load64(c, recomp_load64(c, lcomp) + 248);
+    static uint64_t first[1280];
+    int n = 0, logged = 0, tried = 0;
+    const uint64_t roots[2][2] = {{link, 0x2000}, {components, 0x400}};
+    for (int r = 0; r < 2; r++)
+        for (uint64_t off = 0; off < roots[r][1]; off += 8) {
+            const uint64_t p = recomp_load64(c, roots[r][0] + off);
+            if (!fp_heap_ptr(p)) continue;
+            tried++;
+            if (fp_navi_try(c, p, link, getter, &logged)) return;
+            if (n < 1280) first[n++] = p;
         }
-        hos_log("first person: actor kind %d: vtable %#llx, actor %#llx, components %#llx, wings %d, %.2f m from Link", nseen,
-                (unsigned long long)vt, (unsigned long long)actor, (unsigned long long)comps, wings, sqrtf(l2));
-        if (wings > 0) {
-            fp_navi_vt = vt, fp_navi_found = actor;
-            hos_log("first person: Navi's kind is vtable %#llx", (unsigned long long)vt);
+    for (int i = 0; i < n; i++)   /* (one step further: 0x400 bytes of each) */
+        for (uint64_t off = 0; off < 0x400; off += 8) {
+            const uint64_t p = recomp_load64(c, first[i] + off);
+            if (!fp_heap_ptr(p)) continue;
+            tried++;
+            if (fp_navi_try(c, p, link, getter, &logged)) return;
         }
-    }
-    ReleaseSRWLockExclusive(&lock);
+    hos_log("first person: Navi search: not found (%d pointers, %d objects one step on, %d with a model near Link)", tried, n, logged);
 }
 static uint64_t fp_navi_actor(Ctx *c, int log) {
     const uint64_t navi = fp_navi_found;
@@ -1378,6 +1392,12 @@ static void oot_first_person_player(Ctx *c, uint64_t actor, uint64_t components,
         int child = 1;
         if (oot_gamedata_bool(c, 0xcea220d3u, &child)) fp_eye_height = child ? 1.15f : 1.55f;
         age_at = now;
+    }
+    {   /* (her actor looked for from Link's: fp_navi_search, five times at most, two seconds apart) */
+        static int64_t searched_at;
+        static int searches;
+        if (want && !fp_navi_vt && searches < 5 && now - searched_at > 2000000000LL)
+            searched_at = now, searches++, fp_navi_search(c, actor, components);
     }
     fp_navi(c, want);
     /* again every half second while on: a scene load or a change of age or tunic makes new models */
@@ -1726,11 +1746,7 @@ void hos_oot_flight_pose(Ctx *c, uint64_t actor, uint64_t matrix) {
 void hos_oot_lift_player(Ctx *c, uint64_t actor) {
 #if defined(_WIN32) || defined(__linux__)   /* (the debug tools: host/posix has what they call) */
     flight_pose_actor = 0;
-    if (recomp_load64(c, actor) != 0x84b45e18ULL) {
-        int rx_option(int id, int otherwise);
-        if (rx_option(HL_OPT_FIRST_PERSON, 0)) fp_navi_seen(c, actor);   /* (Navi's actor, by her model: fp_navi_seen) */
-        return;
-    }
+    if (recomp_load64(c, actor) != 0x84b45e18ULL) return;
     const uint64_t components = recomp_load64(c, actor + 624);
     const uint64_t movement = components ? recomp_load64(c, components + 800) : 0;
     if (movement < HOS_HEAP_BASE + 0x1d50 || recomp_load64(c, movement + 24) != actor ||
