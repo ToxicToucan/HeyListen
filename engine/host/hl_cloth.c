@@ -14,8 +14,8 @@
 #include <stdlib.h>
 #include <windows.h>   /* (SRWLOCK, InterlockedIncrement64) */
 
-HL_CLOTHTIME_HOOK(81b3aa48, "8dae48419ce63b75");    /* the simulate operator's per-frame setup: its time */
-HL_CLOTHSOLVE_HOOK(81b47080, "3f18f25fa883490e");   /* the solve job: its head */
+HL_CLOTHTIME_HOOK(81b3aa48, "5aaec7ba22391517");    /* the simulate operator's per-frame setup: its time */
+HL_CLOTHSOLVE_HOOK(81b47080, "8b45135399d3b829");   /* the solve job: its head */
 
 extern volatile uint32_t hos_frame_seconds_bits;   /* (hl_step.c: the frame's seconds, 0 at a cap of 60) */
 extern volatile uint64_t hos_step_probe;           /* (hl_step.c: f_80706be0's object, its +0xd58 the game clock in 60ths) */
