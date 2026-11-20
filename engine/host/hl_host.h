@@ -68,6 +68,14 @@ void hl_answer(uint64_t guest, A64Fn fn, HlOn on, const char *what);
 /* HL_HEAP_HOOK(804566e0, "<hash>"): a lift hook (nx2/hl_gates.py) around f_804566e0's four allocations that are not checked
    (two CPU buffers, two GPU-memory calls): a failed one is tried again in the heap's parents (host/hl_heap_retry.c). Both
    pairs of lines or none. Nothing in C. */
+/* (fork) an animation loop of one frame (Hookshot f02132ece): the clock's two advances (the entry in var) and the drawn time's
+   store, between lines that set and put back the step / time (nx2/hl_gates.py's "loop" and "pose" kinds, host/hl_loop_step.c) */
+#define HL_LOOP_HOOK(addr, hash, var) \
+    __attribute__((constructor)) static void hl_loop_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
+    extern const int hl_loop_hook_##addr
+#define HL_POSE_HOOK(addr, hash) \
+    __attribute__((constructor)) static void hl_pose_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
+    extern const int hl_pose_hook_##addr
 #define HL_HEAP_HOOK(addr, hash) \
     __attribute__((constructor)) static void hl_heap_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
     extern const int hl_heap_hook_##addr

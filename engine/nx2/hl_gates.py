@@ -172,9 +172,15 @@ def movie_site(s, addr, off):
 #   when it failed (host/hl_heap_retry.c). Upstream replaces those lines; here the game's own line stays, between a line
 #   before it (which saves the arguments and may refuse the call, for the test switch: "if (pre) x0 = 0; else {") and a line
 #   after it ("}" and the retry), so that taking the hook out leaves the lift as it was.
+# - HL_LOOP_HOOK(802cfca0, "<hash>", "x20_"): (fork, after Hookshot f02132ece; the frozen Zoras) the animation clock's two
+#   advances (each after its flag test's goto, the multiply of the step in vreg 8 by the speed): a line before the multiply sets
+#   vreg 8 to hos_loop_step_in (whole frames for a loop of one frame or less above a 60 cap), a line after it puts the game's
+#   step back (hos_loop_step_out); the entry's address is the variable given (x20_ where the lift keeps x20 in a local).
+# - HL_POSE_HOOK(80944aa0, "<hash>"): (the same) the skeletons' drawn time store: a line before it sets vreg 0 to
+#   hos_loop_pose_in (the loop's start for a range of one frame or less above a 60 cap), a line after puts the game's back.
 # Each goes in only where its function's text hashes as recorded, both lines of a kind or none. The marker is the address
 # plus one, as a step hook's (one hook a function), so a tree that does not ask for it takes it out as a stale gate.
-WANT_LIFT = re.compile(r'^HL_(SOUND|SOLVER|WHOLE|HEAP|BGM|TURN|HORSE|FLOOR)_HOOK\(\s*([0-9a-f]{8})\s*,\s*"([0-9a-f]*)"((?:\s*,\s*(?:\d+|"[^"\n]*"))*)\s*\)',
+WANT_LIFT = re.compile(r'^HL_(SOUND|SOLVER|WHOLE|HEAP|BGM|TURN|HORSE|FLOOR|LOOP|POSE)_HOOK\(\s*([0-9a-f]{8})\s*,\s*"([0-9a-f]*)"((?:\s*,\s*(?:\d+|"[^"\n]*"))*)\s*\)',
                        re.M)
 CUT = "    c->x[%d]=recomp_fp_to_int(c->vreg[0][0]&UINT64_C(0xffffffff),32,32,1,3,c->fpcr,&c->fpsr);\n"
 SOUND_SLOT = "g_module_base + 0x80435000ULL + (int64_t)75927552"   # (the page of the step's pointer, whose +2192 holds it)
@@ -205,6 +211,14 @@ WHOLE_STORE = "    recomp_store32(c,%s,c->x[%d]);\n"
 # (the unsigned cut's addition of the elapsed counter: "u<N>" anchors on the cut followed by the addition to x<N>)
 WHOLE_ADD = ("    { uint64_t _a=c->x[%d],_b=((uint64_t)(uint32_t)(((uint32_t)(c->x[8])) << 0)),_r=_a+_b; _r&=0xFFFFFFFFULL; "
              "c->x[8]=_r; }\n")
+
+
+LOOP_SITES = (("L_802d077c", 1, 2), ("L_802d07f4", 0, 1))   # (each advance: its goto's label, the speed's vreg, the result's)
+LOOP_GOTO = "if (((x9_ >> 3) & 1)) { goto %s; }\n"
+LOOP_MUL = ("    {uint64_t _a=0,_b=0,_z,_v;memcpy(&_a,c->vreg[8],4);memcpy(&_b,c->vreg[%d],4);_z=(_a^_b)&0x80000000ULL;\n"
+            "    _v=a64_fpx_hot_mul32_fma32(c,_a,_b,_z);\n"
+            "    a64_vset64(c->vreg[%d],_v);}\n")
+POSE_STORE = "    { { uint64_t _v=0; memcpy(&_v,&c->vreg[0][0],4); recomp_store32(c,(c->x[22]+0ULL),_v); } }\n"
 
 
 HEAP_CPU = (0x80456910, 0x80456da4)   # (f_804566e0's tryAlloc calls, by their return addresses, and the GPU memory's)
@@ -250,6 +264,17 @@ def lift_lines(kind, addr, args):
         reg, key = args[:2]
         return ["    { extern uint32_t hos_frame_whole(uint64_t, uint32_t, uint32_t); c->x[%d] = hos_frame_whole(%s, "
                 "(uint32_t)c->vreg[0][0], (uint32_t)c->x[%d]); }%s" % (reg, key, reg, mark)]
+    if kind == "loop":
+        var = args[0]
+        before = ("    { extern uint32_t hos_loop_step_in(uint64_t, uint32_t, uint32_t, uint32_t); a64_vset64(c->vreg[8], "
+                  "hos_loop_step_in(%s, (uint32_t)c->vreg[8][0], (uint32_t)recomp_load32(c,%s + 16), "
+                  "(uint32_t)recomp_load32(c,%s + 20))); }" % (var, var, var) + mark)
+        after = "    { extern uint32_t hos_loop_step_out(void); a64_vset64(c->vreg[8], hos_loop_step_out()); }" + mark
+        return [before, after] * len(LOOP_SITES)
+    if kind == "pose":
+        return ["    { extern uint32_t hos_loop_pose_in(uint32_t, uint32_t, uint32_t); a64_vset64(c->vreg[0], hos_loop_pose_in("
+                "(uint32_t)c->vreg[0][0], (uint32_t)recomp_load32(c,c->x[22] + 4), (uint32_t)recomp_load32(c,c->x[22] + 8))); }" + mark,
+                "    { extern uint32_t hos_loop_pose_out(void); a64_vset64(c->vreg[0], hos_loop_pose_out()); }" + mark]
     if kind == "heap":
         lines = []
         for lr in HEAP_CPU:
@@ -319,6 +344,20 @@ def lift_places(body, addr, kind, args):
             if body.count(anchor) == 1:
                 return [body.index(anchor) + len(cut)]
         return None
+    if kind == "loop":
+        places = []
+        for label, b, out in LOOP_SITES:
+            anchor = LOOP_GOTO % label + LOOP_MUL % (b, out)
+            if body.count(anchor) != 1:
+                return None
+            at = body.index(anchor) + len(LOOP_GOTO % label)
+            places += [at, at + len(LOOP_MUL % (b, out))]
+        return places if places == sorted(places) else None
+    if kind == "pose":
+        if body.count(POSE_STORE) != 1:
+            return None
+        at = body.index(POSE_STORE)
+        return [at, at + len(POSE_STORE)]
     if kind == "heap":
         places = []
         for lines in ((HEAP_CPU_LINE, HEAP_CPU), (HEAP_GPU_LINE, HEAP_GPU)):
