@@ -65,30 +65,18 @@ void hl_answer(uint64_t guest, A64Fn fn, HlOn on, const char *what);
     __attribute__((constructor)) static void hl_floor_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
     extern const int hl_floor_hook_##addr
 
+/* HL_DRIVE_HOOK(804f5030, "<hash>"); HL_LOOP_HOOK(802cfca0, "<hash>"); HL_POSE_HOOK(80944aa0, "<hash>"); HL_SONG_HOOK(832b2af0, "<hash>"):
+   lift hooks (nx2/hl_gates.py) for four more places that break above a 60 cap: Link's pull-up onto a ledge (Longshot d30b9479),
+   the frozen Zoras (6aa5d653: the clock of a loop of one frame, and the time its skeleton is drawn at) and a song's notes on the
+   ocarina (10010630). host/hl_high_fps.c and host/hl_step.c have the host side. Nothing in C. */
+#define HL_DRIVE_HOOK(addr, hash)     __attribute__((constructor)) static void hl_drive_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_drive_hook_##addr
+#define HL_LOOP_HOOK(addr, hash)     __attribute__((constructor)) static void hl_loop_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_loop_hook_##addr
+#define HL_POSE_HOOK(addr, hash)     __attribute__((constructor)) static void hl_pose_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_pose_hook_##addr
+#define HL_SONG_HOOK(addr, hash)     __attribute__((constructor)) static void hl_song_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_song_hook_##addr
+
 /* HL_HEAP_HOOK(804566e0, "<hash>"): a lift hook (nx2/hl_gates.py) around f_804566e0's four allocations that are not checked
    (two CPU buffers, two GPU-memory calls): a failed one is tried again in the heap's parents (host/hl_heap_retry.c). Both
    pairs of lines or none. Nothing in C. */
-/* (fork) a song playback's note flag (Longshot 10010630b): after the call that returns to lr, the result (in var) through
-   hos_oot_song_cue(site, ...) (nx2/hl_gates.py's "cue" kind) */
-#define HL_CUE_HOOK(addr, hash, site, lr, var) \
-    __attribute__((constructor)) static void hl_cue_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
-    extern const int hl_cue_hook_##addr
-/* (fork) an animation loop of one frame (Hookshot f02132ece): the clock's two advances (the entry in var) and the drawn time's
-   store, between lines that set and put back the step / time (nx2/hl_gates.py's "loop" and "pose" kinds, host/hl_loop_step.c) */
-#define HL_LOOP_HOOK(addr, hash, var) \
-    __attribute__((constructor)) static void hl_loop_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
-    extern const int hl_loop_hook_##addr
-#define HL_POSE_HOOK(addr, hash) \
-    __attribute__((constructor)) static void hl_pose_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
-    extern const int hl_pose_hook_##addr
-/* (fork) Havok cloth (Longshot 24e73f1f0): the setup's time below 60 fps, the solve job's head above a 60 cap
-   (nx2/hl_gates.py's "clothtime" and "clothsolve" kinds, host/hl_cloth.c) */
-#define HL_CLOTHTIME_HOOK(addr, hash) \
-    __attribute__((constructor)) static void hl_clothtime_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
-    extern const int hl_clothtime_hook_##addr
-#define HL_CLOTHSOLVE_HOOK(addr, hash) \
-    __attribute__((constructor)) static void hl_clothsolve_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
-    extern const int hl_clothsolve_hook_##addr
 #define HL_HEAP_HOOK(addr, hash) \
     __attribute__((constructor)) static void hl_heap_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
     extern const int hl_heap_hook_##addr

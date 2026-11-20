@@ -64,13 +64,13 @@ def main():
                  'std::clamp(atoi(getenv("RX_VK_IMPORT_LOW")), 10, 95) : 75;'):
         if want not in l:
             raise SystemExit("FAIL: Linux idle imports changed: missing " + want)
-    if "const bool on = env_high || budget < (12ull << 30);" not in idle:
+    if "small = env_high || budget < (12ull << 30);" not in idle:
         raise SystemExit("FAIL: the small-budget rule for idle imports is gone")
 
     imp = block(text, "bool import_pool(uint64_t lo, uint64_t hi, Pool& p) {")
     if 'if (allocated != VK_SUCCESS && getenv("RX_VK_IMPORT_DIAG")) {' not in imp or imp.count("import diag:") != 1:
         raise SystemExit("FAIL: the refused-import diagnostics are not behind RX_VK_IMPORT_DIAG")
-    if "size_t retired_pools_count() { return retired_pools.size(); }" not in text:
+    if "size_t retired_pools_count() { return retired_pools.size() + retired_done.size(); }" not in text:
         raise SystemExit("FAIL: retired_pools_count is missing")
 
     reap = block(text, "void reap_mirrors() {")
