@@ -1304,10 +1304,13 @@ static void fp_navi(Ctx *c, uint64_t link, uint64_t components, int want, int64_
         if (turn != want) at = 0;   /* (a change: at once) */
         want = turn;
     }
+    if (!want) searches = 0;   /* (a new stretch of first person looks again) */
+    if (fp_navi_found && (recomp_load64(c, fp_navi_found) != fp_navi_vt || !fp_heap_ptr(recomp_load64(c, fp_navi_found + 624))))
+        fp_navi_found = 0, searches = 0, hidden = 0;   /* (gone with a scene load: looked for again) */
     if (want && !fp_navi_found && searches < 5 && now - searched_at > 2000000000LL)
         searched_at = now, searches++, fp_navi_search(c, link, components);
     const uint64_t navi = fp_navi_found;
-    if (!navi || recomp_load64(c, navi) != fp_navi_vt) return;
+    if (!navi) return;
     if (!want && !hidden) return;
     if (want && hidden && now - at < 500000000LL) return;   /* (again every half second while on: new models after a load) */
     const uint64_t comps = recomp_load64(c, navi + 624);
