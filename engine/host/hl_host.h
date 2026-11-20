@@ -68,6 +68,14 @@ void hl_answer(uint64_t guest, A64Fn fn, HlOn on, const char *what);
 /* HL_HEAP_HOOK(804566e0, "<hash>"): a lift hook (nx2/hl_gates.py) around f_804566e0's four allocations that are not checked
    (two CPU buffers, two GPU-memory calls): a failed one is tried again in the heap's parents (host/hl_heap_retry.c). Both
    pairs of lines or none. Nothing in C. */
+/* (fork) Havok cloth (Longshot 24e73f1f0): the setup's time below 60 fps, the solve job's head above a 60 cap
+   (nx2/hl_gates.py's "clothtime" and "clothsolve" kinds, host/hl_cloth.c) */
+#define HL_CLOTHTIME_HOOK(addr, hash) \
+    __attribute__((constructor)) static void hl_clothtime_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
+    extern const int hl_clothtime_hook_##addr
+#define HL_CLOTHSOLVE_HOOK(addr, hash) \
+    __attribute__((constructor)) static void hl_clothsolve_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
+    extern const int hl_clothsolve_hook_##addr
 #define HL_HEAP_HOOK(addr, hash) \
     __attribute__((constructor)) static void hl_heap_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); } \
     extern const int hl_heap_hook_##addr
