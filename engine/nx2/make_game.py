@@ -1193,6 +1193,12 @@ def lift_key(exefs, work, env):
             with open(f, "rb") as src:
                 h.update(hashlib.sha1(src.read(), usedforsecurity=False).digest())
     lift_env = dict(env, **{k: v for k, v in os.environ.items() if k.startswith(("A64_", "OOT_", "RX_"))})
+    # (the lift's own HL_ switches, nx2/guest_locals.py and nx2/fastvec.py: only when set, so a key without them is as before.
+    # With the locals, the functions host/hl_*.c gates and hooks keep the context: a gate added there lifts again)
+    lift_env.update({k: os.environ[k] for k in ("HL_GUEST_LOCALS", "HL_FASTVEC") if k in os.environ})
+    if os.environ.get("HL_GUEST_LOCALS") == "1":
+        import guest_locals
+        lift_env["hl hooks"] = " ".join("%x" % a for a in sorted(guest_locals.hl_hook_addresses()))
     h.update(repr(sorted(lift_env.items())).encode())
     return h.hexdigest()
 

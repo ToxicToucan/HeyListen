@@ -422,5 +422,35 @@ def apply_output_size(gen, required=False):
         print("oot_patches: WARNING: the output size places were found %s times" % found)
 
 
+def touches(text):
+    """(nx2/guest_locals.py, HL_GUEST_LOCALS=1; after Longshot deb08f36f's touches(), GPL-3.0-or-later) Whether the edits apply()
+    makes would find their place in this text: one lifted function, written with its registers and flags in the context (the
+    text the edits find their places in, and the context the host code they call reads). Such a function is left that way by
+    the lift; the rest may get locals. Every edit is asked whether or not its switch is on (protect_hearts, OOT_JOB_ORDER),
+    and one that finds its function but not its anchors counts too: on the safe side. An edit that raises on one function
+    alone (it wants more of the file) counts as touching it. hl_gates.py's gates and hooks are found by address instead
+    (guest_locals.patch_addresses)."""
+    import native_replace
+    import oot_native_resolution
+    s = '#include "a64.h"\n' + text   # (as a file of its own: some edits want the line their declaration goes under)
+    if any(h in s for h in (LIFE_HEAD, MOVE_HEAD, WARP_HEAD, VIEW_HEAD, CAM_HEAD, TEXT_HEAD, JO_RUN_HEAD, JO_PUSH_HEAD)):
+        return True   # (a function an edit is pinned to by its head, whether or not its anchors are all there)
+    try:
+        if patch_dynres(s) is not None or APPLY_OLD in s or FLAGS_OLD in s:   # (fixed_scale wants both: either one counts)
+            return True
+        if any(p(s) is not None for p in (patch_text_speed, patch_life, patch_movement, patch_flight_rotation,
+                                          patch_mouse_camera, patch_job_order, patch_view)):
+            return True
+        if any(old in s or new in s for old, new in OUT_EDITS):
+            return True
+        if oot_native_resolution.patch_config(s) is not None or oot_native_resolution.patch_scene(s) is not None:
+            return True
+        if any(native_replace.apply_one(s, r)[1] is not None for r in native_replace.REPLACEMENTS):
+            return True
+    except Exception:
+        return True
+    return False
+
+
 if __name__ == "__main__":
     apply(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "work", "sa", "gen"))

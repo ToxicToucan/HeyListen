@@ -10,7 +10,10 @@ context's interrupt flag, the same points where dynarmic would see a halt reques
 
 A64_POLL is defined by the generated guest model (rtgen.py): nothing unless A64_POLLING, else one relaxed load of
 c->poll and a call of a64_poll(c) when it is set (the backend's, which switches to the emulator and returns when the
-thread runs again). Polls need the registers in the context: they are not used with A64_LOCAL_REGS.
+thread runs again). In the emulator build the backend may read the context there, so polls need the registers in it: that
+lift has no A64_LOCAL_REGS. In the standalone build a64_poll (host/mkw_glue.c) only yields the virtual core
+(hos_vcore_checkpoint, which never reads or writes the guest context), so HL_GUEST_LOCALS=1 may keep a polled loop's
+registers in locals there (nx2/guest_locals.py, POLLS).
 
 install() wraps Lifter.emit_function; functions with no loop are unchanged.
 """

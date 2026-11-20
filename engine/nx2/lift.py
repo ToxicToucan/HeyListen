@@ -34,6 +34,8 @@ import standalone
 import adr_entries  # noqa: E402
 import nso
 import poll
+import fastvec   # (HL_FASTVEC=1: TBL/EXT, vector loads and DUP as single vector instructions; Longshot deb08f36f)
+import guest_locals   # (HL_GUEST_LOCALS=1: registers and flags as C locals, with the patches' rules; Longshot deb08f36f)
 import nx_image
 import image as eden_image
 import a64emit
@@ -175,6 +177,29 @@ def main():
         oot_view.install(L, img)
     L.discover(max_insns=a.max_func)
     print("discovered %d functions (%.0fs)" % (len(L.funcs), time.time() - t0))
+    # (HeyListen, both off by default: unset, nothing below is installed and the lift is as before, byte for byte)
+    if fastvec.enabled():
+        fastvec.install()   # (before guest_locals.install_plain: its emit_function goes around this one)
+        print("fastvec: TBL / EXT%s and vector loads / DUP%s as single vector instructions (HL_FASTVEC)" % (
+            " off (A64_NO_VBYTES)" if os.environ.get("A64_NO_VBYTES") else "",
+            " off (A64_NO_VMOVES)" if os.environ.get("A64_NO_VMOVES") else ""))
+    locals_on = guest_locals.enabled() and a.standalone
+    if guest_locals.enabled() and not a.standalone:
+        print("locals: HL_GUEST_LOCALS is for the standalone lift: this one's polls hand the context to the emulator (nx2/guest_locals.py)")
+    if locals_on:
+        import oot_patches
+        guest_locals.install(oot_patches.touches)   # (the defaults; localize_regs and emit_function wrapped; the patches asked)
+        guest_locals.install_plain()   # (around those and fastvec's: the functions kept in the context keep the kit's context-flag text)
+        guest_locals.guard_patches()   # (the edits must leave every function with locals as it was written)
+        print("locals: %d registers%s a function (HL_GUEST_LOCALS)" % (
+            a64_lift.local_regs(), " and the flags" if a64_lift.local_flags() else ", flags in the context,"))
+        print("locals: %d functions with spliced code kept in the context" % guest_locals.keep_spliced(L))
+        print("locals: %d functions entered above their first block kept in the context" % guest_locals.keep_entered_below(L))
+        print("locals: %d functions that hold an address the patches name or host/hl_*.c hooks kept in the context" % (
+            guest_locals.keep_mentioned(L, guest_locals.patch_addresses())))
+        cold = guest_locals.keep_not_ran(L)   # (locals only where play runs the code: nx2/ran_funcs.txt, A64_LOCAL_FUNCS)
+        print("locals: every function may have them (A64_LOCAL_FUNCS=all, or no nx2/ran_funcs.txt)" if cold is None else
+              "locals: %d functions no play session ran kept in the context (nx2/ran_funcs.txt)" % cold)
     total = coverage(L, img, img_dir)
     jt = L.stats
     print("jump tables %d (bounded %d, bounded by function %d, ADR table %d), BR without a table %d, PLT stubs %d" % (
@@ -194,6 +219,9 @@ def main():
         import oot_patches
         main_build = next((m["build_id"] for m in meta["modules"] if m["name"] == "main"), "")
         chunks.edit_c(gen, L.stats, a.standalone and main_build == oot_patches.LIFE_BUILD_ID, whole=not a.max_func)
+        if locals_on:   # (nx2/guest_locals.py: the patched functions kept the context; guard_patches checked the edits)
+            print("locals: %d functions kept in the context for the patches; %s functions with locals unchanged by the edits" % (
+                L.stats["locals_kept_for_patches"], guest_locals.checked()))
         a64_rtgen.write(gen)
         if a.standalone:
             start, exit_ = standalone.write_image_c(gen, img, meta, a.exefs)
