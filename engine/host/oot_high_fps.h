@@ -139,3 +139,27 @@ static inline int oot_floor_carry_slow(uint32_t inv_dt_bits, uint32_t frame_step
     if (!timed || !(step > 0.0f)) return 1;   /* (the game's own test decides) */
     return inv_dt * step > 100.0f;
 }
+
+/* A song's playback after the ocarina (f_832b2af0, the song just played; f_832b2dc0, the ocarina's other melody playback, the
+   same code): each update while the melody plays it asks f_832b7b50 whether the note flag is set, a word of the melody's
+   player that the sound engine writes on each of its runs, in the sound job's phase 0: set on the run where the melody
+   reaches a note, else clear. When it is set the playback goes on to the next note. At 60 fps the playback reads it once a
+   run. Above 60 the job runs at 60 Hz (the sound gate), the flag stays set for two or three updates and each one went on a
+   note: the notes came two or three at a time, ahead of the music. Above 60 fps a set flag read again before the job has run
+   again is the same note: the playback reads 0. The job's runs are counted at the gate, at phase 0's head, before the engine
+   writes the flag in that phase, so the rule takes the game's order (its playback's update never reads the flag while phase 0
+   runs). At a cap of 60 the game's value.
+   (Longshot 10010630b by CraftyCorvid, GPL-3.0: "a song's notes show one at a time with its melody above a 60 fps cap") */
+typedef struct {
+    int set;          /* (the flag at the playback's last read) */
+    long long runs;   /* (the sound job's runs then) */
+} OotSongCue;
+
+/* The note flag a song's playback reads: set, the game's (1 set, 0 clear); runs, the sound job's runs so far. 1 when the
+   playback goes on a note */
+static inline int oot_song_cue(OotSongCue *s, int set, long long runs, int timed) {
+    const int again = timed && set && s->set && runs == s->runs;   /* (read before the job ran again: the same note) */
+    s->set = set;
+    s->runs = runs;
+    return set && !again;
+}

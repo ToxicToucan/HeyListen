@@ -4659,6 +4659,13 @@ void cut_cpu_words(const Pool& p, std::vector<VkBufferCopy>& runs) {
 // a parallel replay thread's pool cache still point at a live one.)
 std::deque<std::map<uint64_t, Pool>::node_type> retired_pools;
 size_t retired_pools_count() { return retired_pools.size(); }
+/// (PR 85, AMD on Windows: retired and idle imports given back as on NVIDIA) off by default since 2026-11-19: an RX 6750 XT
+/// (driver 26.11.2) lost the device on area changes and in cutscenes with it and played clean with RX_VK_KEEP_RETIRED=1.
+/// RX_VK_AMD_GIVE_BACK=1 turns PR 85's AMD rule back on (retired imports given back, idle ones past 70% down to 60%)
+[[maybe_unused]] static bool amd_give_back_on() {
+    static const bool on = getenv("RX_VK_AMD_GIVE_BACK") && atoi(getenv("RX_VK_AMD_GIVE_BACK")) != 0;
+    return on;
+}
 
 bool retiring_finalized = false;   // (RX_VK_POOL_FINALIZE: the retirement is finalize_retire's, for the log)
 void retire_pool(std::map<uint64_t, Pool>::iterator it) {
@@ -6021,7 +6028,7 @@ void retired_imports_give_back() {   // (pools_mu held)
     // Field's ground gone until a restart. Given back, the same trip from the Market to the field: no import refused, 157
     // retired imports (3.7 GB) back, no device lost. Intel keeps them, as before)
     static const bool keep = getenv("RX_VK_KEEP_RETIRED") ? getenv("RX_VK_KEEP_RETIRED")[0] != '0'
-                                                          : dev.props.vendorID != 0x10DE && dev.props.vendorID != 0x1002;
+                                                          : dev.props.vendorID != 0x10DE && !(dev.props.vendorID == 0x1002 && amd_give_back_on());
 #else
     static const bool keep = getenv("RX_VK_KEEP_RETIRED") && getenv("RX_VK_KEEP_RETIRED")[0] != '0';
 #endif
@@ -6284,7 +6291,7 @@ void imports_give_back() {   // (pools_mu held)
     // (after Hookshot c4ec14b263, 11-17: on AMD, past 70% down to 60% as Hookshot does on NVIDIA, with the retired imports
     // given back above: the pinned imports of a session had no bound there, and past ~7 GB the driver refused new ones, the
     // terrain left out. RX_VK_IMPORT_HIGH=0 and RX_VK_KEEP_RETIRED=1: as before)
-    static const bool amd = dev.props.vendorID == 0x1002;
+    static const bool amd = dev.props.vendorID == 0x1002 && amd_give_back_on();
     static const int high = env_high ? atoi(env_high) : amd ? 70 : 0;
     static const int low = getenv("RX_VK_IMPORT_LOW") ? std::clamp(atoi(getenv("RX_VK_IMPORT_LOW")), 10, 95) : amd ? 60 : 75;
 #else

@@ -46,15 +46,16 @@ def main():
     code = lambda s: "\n".join(l.split("//")[0] for l in s.splitlines())
     w = re.sub(r"\s+", " ", code(win))
     if 'getenv("RX_VK_KEEP_RETIRED") ? getenv("RX_VK_KEEP_RETIRED")[0] != \'0\' : dev.props.vendorID != 0x10DE && ' \
-       'dev.props.vendorID != 0x1002;' not in w:
-        raise SystemExit("FAIL: on Windows, retired imports are not given back by default on NVIDIA and AMD alone")
+       '!(dev.props.vendorID == 0x1002 && amd_give_back_on());' not in w:
+        raise SystemExit("FAIL: on Windows, retired imports are not given back by default on NVIDIA alone (AMD: "
+                         "RX_VK_AMD_GIVE_BACK=1, off by default since an RX 6750 XT lost the device with it)")
     if 'static const bool keep = getenv("RX_VK_KEEP_RETIRED") && getenv("RX_VK_KEEP_RETIRED")[0] != \'0\';' not in linux:
         raise SystemExit("FAIL: on Linux, retired imports are no longer given back by default")
 
     idle = block(text, "void imports_give_back() {")
     win, linux = split_win(idle)
     w, l = re.sub(r"\s+", " ", code(win)), re.sub(r"\s+", " ", code(linux))
-    for want in ("static const bool amd = dev.props.vendorID == 0x1002;",
+    for want in ("static const bool amd = dev.props.vendorID == 0x1002 && amd_give_back_on();",
                  "static const int high = env_high ? atoi(env_high) : amd ? 70 : 0;",
                  'std::clamp(atoi(getenv("RX_VK_IMPORT_LOW")), 10, 95) : amd ? 60 : 75;'):
         if want not in w:
