@@ -30,6 +30,9 @@ using Clock = std::chrono::steady_clock;
 
 struct Job {
     std::string path, log_path, ffmpeg, encoder;
+    bool ring = false;   // (the Last 10 s mode: pieces in ring_dir, saved by save_last)
+    std::string ring_dir, folder;
+    int buffer_seconds = 10;
     uint32_t w = 0, h = 0;
     int fps = 60, bitrate_mbps = 30;
     std::vector<std::vector<uint8_t>> pool;
@@ -77,13 +80,20 @@ void writer_main(std::shared_ptr<Job> job) {
         SetHandleInformation(pipe_wr, HANDLE_FLAG_INHERIT, 0);
         char args[2048];
         // (8 bit RGBA, converted to BT.709 limited range for the encoder; fragmented MP4: a clip cut short still plays)
+        char out[1024];
+        if (j.ring)   // (2-second pieces, each starting on a keyframe, in a ring of buffer_seconds / 2 + 3)
+            snprintf(out, sizeof out,
+                     "-force_key_frames expr:gte(t,n_forced*2) -forced-idr 1 -f segment -segment_time 2 -segment_wrap %d "
+                     "-segment_format mpegts \"%s\\ring-%%02d.ts\"", j.buffer_seconds / 2 + 3, j.ring_dir.c_str());
+        else
+            snprintf(out, sizeof out, "-movflags +frag_keyframe+empty_moov+default_base_moof \"%s\"", j.path.c_str());
         snprintf(args, sizeof args,
                  "\"%s\" -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgba -video_size %ux%u -framerate %d -i pipe:0 "
                  "-threads 2 -filter_threads 2 -vf scale=out_color_matrix=bt709:out_range=tv,format=nv12 -c:v %s -preset p5 "
                  "-tune hq -rc vbr -b:v %dM -maxrate %dM -bufsize %dM -g %d -profile:v high -color_range tv -colorspace bt709 "
-                 "-color_primaries bt709 -color_trc bt709 -movflags +frag_keyframe+empty_moov+default_base_moof \"%s\"",
+                 "-color_primaries bt709 -color_trc bt709 %s",
                  j.ffmpeg.c_str(), j.w, j.h, j.fps, j.encoder.c_str(), j.bitrate_mbps, j.bitrate_mbps * 3 / 2,
-                 j.bitrate_mbps * 3, j.fps, j.path.c_str());
+                 j.bitrate_mbps * 3, j.ring ? j.fps * 2 : j.fps, out);
         STARTUPINFOA si = {};
         si.cb = sizeof si;
         si.dwFlags = STARTF_USESTDHANDLES;
@@ -94,8 +104,8 @@ void writer_main(std::shared_ptr<Job> job) {
             proc = pi.hProcess;
             CloseHandle(pi.hThread);
             ok = true;
-            logf("clip: recording %ux%u at %d fps to %s (%s, %d Mbit/s, %s)", j.w, j.h, j.fps, j.path.c_str(),
-                 j.encoder.c_str(), j.bitrate_mbps, j.ffmpeg.c_str());
+            logf("clip: %s %ux%u at %d fps to %s (%s, %d Mbit/s, %s)", j.ring ? "buffering the last seconds" : "recording", j.w,
+                 j.h, j.fps, j.ring ? j.ring_dir.c_str() : j.path.c_str(), j.encoder.c_str(), j.bitrate_mbps, j.ffmpeg.c_str());
         } else {
             logf("clip: could not start %s (error %lu)", j.ffmpeg.c_str(), GetLastError());
             fail("could not start ffmpeg");
@@ -162,6 +172,18 @@ void writer_main(std::shared_ptr<Job> job) {
         logf("clip: failed: %s (ffmpeg's log %s)", j.why.c_str(), j.log_path.c_str());
         return;
     }
+    if (j.ring) {   // (the buffer stopped: its pieces go)
+        WIN32_FIND_DATAA fd;
+        HANDLE fh = FindFirstFileA((j.ring_dir + "\\ring-*.ts").c_str(), &fd);
+        if (fh != INVALID_HANDLE_VALUE) {
+            do DeleteFileA((j.ring_dir + "\\" + fd.cFileName).c_str());
+            while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        DeleteFileA(j.log_path.c_str());
+        logf("clip: the last-seconds buffer stopped (%lld frames)", (long long)written);
+        return;
+    }
     if (code) {
         logf("clip: ffmpeg exited with %lu, see %s", code, j.log_path.c_str());
         return;
@@ -196,6 +218,7 @@ Settings settings() {
             else if (k == "clip_height") s.height = std::clamp(atoi(val.c_str()), 144, 4320);
             else if (k == "clip_max_minutes") s.max_minutes = std::clamp(atoi(val.c_str()), 1, 120);
             else if (k == "clip_bitrate_mbps") s.bitrate_mbps = std::clamp(atoi(val.c_str()), 2, 200);
+            else if (k == "clip_buffer_seconds") s.buffer_seconds = std::clamp(atoi(val.c_str()), 4, 120);
         }
         fclose(f);
     }
@@ -211,7 +234,7 @@ Settings settings() {
     return s;
 }
 
-bool start(uint32_t w, uint32_t h, const Settings& s) {
+bool start(uint32_t w, uint32_t h, const Settings& s, bool ring) {
     if (s.ffmpeg.empty()) {
         logf("clip: no ffmpeg found (clip_ffmpeg= in hookshot_options.ini, the PATH, C:\\ffmpeg\\bin): clips need an ffmpeg "
              "with NVENC; nothing is recorded");
@@ -225,6 +248,19 @@ bool start(uint32_t w, uint32_t h, const Settings& s) {
     snprintf(name, sizeof name, "\\clip-%04u%02u%02u-%02u%02u%02u.mp4", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
     job->path = s.folder + name;
     job->log_path = job->path + ".ffmpeg.log";
+    job->folder = s.folder, job->ring = ring, job->buffer_seconds = s.buffer_seconds;
+    if (ring) {   // (a buffer of its own, emptied first: pieces from an earlier run are not this one's)
+        job->ring_dir = s.folder + "\\.clipbuffer";
+        make_folder(job->ring_dir);
+        WIN32_FIND_DATAA fd;
+        HANDLE fh = FindFirstFileA((job->ring_dir + "\\ring-*.ts").c_str(), &fd);
+        if (fh != INVALID_HANDLE_VALUE) {
+            do DeleteFileA((job->ring_dir + "\\" + fd.cFileName).c_str());
+            while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        job->log_path = job->ring_dir + "\\ffmpeg.log";
+    }
     job->ffmpeg = s.ffmpeg, job->encoder = s.encoder;
     job->w = w, job->h = h, job->fps = s.fps, job->bitrate_mbps = s.bitrate_mbps;
     const size_t bytes = (size_t)w * h * 4;
@@ -277,6 +313,75 @@ bool frame(int64_t index, int rb, const uint8_t* src) {
 
 std::atomic<bool>* busy() { return busy_; }
 
+bool save_last() {
+    std::shared_ptr<Job> job;
+    {
+        std::lock_guard<std::mutex> lk(current_mu);
+        job = current;
+    }
+    if (!job || !job->ring || job->failed.load()) return false;
+    std::thread([job] {
+        // (the newest pieces by time written, the one being written among them: MPEG-TS reads to where it got)
+        struct Piece { uint64_t t; std::string name; };
+        std::vector<Piece> pieces;
+        WIN32_FIND_DATAA fd;
+        HANDLE fh = FindFirstFileA((job->ring_dir + "\\ring-*.ts").c_str(), &fd);
+        if (fh != INVALID_HANDLE_VALUE) {
+            do pieces.push_back({((uint64_t)fd.ftLastWriteTime.dwHighDateTime << 32) | fd.ftLastWriteTime.dwLowDateTime, fd.cFileName});
+            while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        std::sort(pieces.begin(), pieces.end(), [](const Piece& a, const Piece& b) { return a.t > b.t; });
+        const size_t want = (size_t)job->buffer_seconds / 2 + 1;   // (the one being written is partly there)
+        if (pieces.size() > want) pieces.resize(want);
+        std::reverse(pieces.begin(), pieces.end());
+        if (pieces.empty()) { logf("clip: nothing buffered yet"); return; }
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        char stamp[64];
+        snprintf(stamp, sizeof stamp, "%04u%02u%02u-%02u%02u%02u-%03u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
+                 t.wMilliseconds);
+        const std::string snap = job->ring_dir + "\\save-" + stamp;   // (copies: the ring goes on writing over its pieces)
+        make_folder(snap);
+        std::string list;
+        for (size_t i = 0; i < pieces.size(); i++) {
+            char nm[32];
+            snprintf(nm, sizeof nm, "p%02zu.ts", i);
+            if (CopyFileA((job->ring_dir + "\\" + pieces[i].name).c_str(), (snap + "\\" + nm).c_str(), FALSE))
+                list += std::string("file '") + nm + "'\n";
+        }
+        if (FILE* f = fopen((snap + "\\list.txt").c_str(), "w")) fputs(list.c_str(), f), fclose(f);
+        const std::string out = job->folder + "\\clip-" + std::string(stamp).substr(0, 15) + ".mp4";
+        char args[2048];
+        snprintf(args, sizeof args, "\"%s\" -hide_banner -loglevel warning -y -f concat -safe 0 -i list.txt -c copy -movflags +faststart \"%s\"",
+                 job->ffmpeg.c_str(), out.c_str());
+        STARTUPINFOA si = {};
+        si.cb = sizeof si;
+        PROCESS_INFORMATION pi = {};
+        DWORD code = 1;
+        if (CreateProcessA(nullptr, args, nullptr, nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
+                           snap.c_str(), &si, &pi)) {
+            CloseHandle(pi.hThread);
+            if (WaitForSingleObject(pi.hProcess, 30000) != WAIT_OBJECT_0) TerminateProcess(pi.hProcess, 1);
+            GetExitCodeProcess(pi.hProcess, &code);
+            CloseHandle(pi.hProcess);
+        }
+        for (size_t i = 0; i < pieces.size(); i++) {
+            char nm[32];
+            snprintf(nm, sizeof nm, "\\p%02zu.ts", i);
+            DeleteFileA((snap + nm).c_str());
+        }
+        DeleteFileA((snap + "\\list.txt").c_str());
+        RemoveDirectoryA(snap.c_str());
+        WIN32_FILE_ATTRIBUTE_DATA fa{};
+        const double mb = GetFileAttributesExA(out.c_str(), GetFileExInfoStandard, &fa)
+                              ? (double)(((uint64_t)fa.nFileSizeHigh << 32) | fa.nFileSizeLow) / 1048576.0 : 0;
+        if (code || mb <= 0) logf("clip: the last seconds were not saved (ffmpeg exited with %lu)", code);
+        else logf("clip: saved the last seconds: %s (%zu pieces of 2 s, %.1f MB)", out.c_str(), pieces.size(), mb);
+    }).detach();
+    return true;
+}
+
 void finish(int64_t end_index) {
     std::shared_ptr<Job> job;
     {
@@ -311,7 +416,8 @@ bool failed() {
 namespace mkwvk::clip {
 static std::atomic<bool> busy_[kReadbacks];
 Settings settings() { return {}; }
-bool start(uint32_t, uint32_t, const Settings&) { logf("clip: clips are recorded on Windows only"); return false; }
+bool start(uint32_t, uint32_t, const Settings&, bool) { logf("clip: clips are recorded on Windows only"); return false; }
+bool save_last() { return false; }
 bool frame(int64_t, int rb, const uint8_t*) { busy_[rb].store(false); return false; }
 std::atomic<bool>* busy() { return busy_; }
 void finish(int64_t) {}

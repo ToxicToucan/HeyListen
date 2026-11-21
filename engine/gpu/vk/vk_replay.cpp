@@ -6220,6 +6220,7 @@ std::atomic<bool> clip_toggle{false};
 std::atomic<bool> clip_rec_on{false};   // (the REC marker's: vk_menu.cpp asks clip_recording())
 struct ClipGpu {
     int phase = 0;   // (0 idle, 1 recording, 2 finishing)
+    bool ring = false;   // (the Clip mode row's Last 10 s: recording the whole time, the key saves the last seconds)
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation image_alloc = nullptr;
     VkBuffer buf[clip::kReadbacks]{};
@@ -6244,8 +6245,12 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
     if (g.phase == 2) return;
     const auto now = std::chrono::steady_clock::now();
     const bool was_recording = g.phase == 1;   // (the press that starts a clip is not also the one that ends it)
+    const bool ring_mode = opts.clip_mode == 1;
+    static bool ring_failed;   // (a buffer that failed is not started again until the row goes to Toggle and back)
+    if (!ring_mode) ring_failed = false;
     if (g.phase == 0) {
-        if (!pressed || !src) return;
+        if (ring_mode ? ring_failed : !pressed) return;
+        if (!src) return;
         const clip::Settings s = clip::settings();
         uint32_t w = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[2] : sw;
         uint32_t h = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[3] : sh;
@@ -6261,16 +6266,28 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
         bool ok = create_image(ci, g.image, g.image_alloc);
         for (int i = 0; i < clip::kReadbacks && ok; i++)
             ok = create_buffer((uint64_t)w * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true, g.buf[i], g.buf_alloc[i], &g.map[i]);
-        if (!ok || !clip::start(w, h, s)) {
+        if (!ok || !clip::start(w, h, s, ring_mode)) {
             if (!ok) logf("clip: no %ux%u image or readback for it", w, h);
+            if (ring_mode) ring_failed = true;
             clip_gpu_free();
             return;
         }
         g.w = w, g.h = h, g.fps = s.fps, g.seconds = s.max_minutes * 60, g.t0 = now, g.next_index = 0, g.phase = 1;
-        clip_rec_on.store(true);
+        g.ring = ring_mode;
+        if (!ring_mode) clip_rec_on.store(true);
     }
     const double el = std::chrono::duration<double>(now - g.t0).count();
-    if ((pressed && was_recording) || el >= g.seconds || clip::failed()) {
+    if (g.ring) {   // (Last 10 s: a press saves; the row going back to Toggle, or a failure, stops the buffer)
+        if (pressed && !clip::save_last()) logf("clip: no last seconds to save");
+        else if (pressed) logf("clip: saving the last seconds");
+        if (!ring_mode || clip::failed()) {
+            if (clip::failed()) ring_failed = true;
+            g.phase = 2;
+            g.end_index = (int64_t)(el * g.fps);
+            logf("clip: the last-seconds buffer stops after %.0f s", el);
+            return;
+        }
+    } else if ((pressed && was_recording) || el >= g.seconds || clip::failed() || ring_mode) {
         g.phase = 2;
         clip_rec_on.store(false);
         g.end_index = std::min<int64_t>((int64_t)(el * g.fps), (int64_t)g.seconds * g.fps);
