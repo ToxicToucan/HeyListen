@@ -12,6 +12,7 @@
 #include "hos.h"
 #include "../gpu/vk/vk_opt_ids.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 int rx_option(int id, int otherwise);
@@ -30,7 +31,40 @@ static float fov_share(int in_play) {
     return share * share * (3.0f - 2.0f * share);
 }
 
+/* (fork, 2026-11-21) Vert+ on a picture narrower than 16:9 (host/hos_main.c: HOS_ASPECT, the ini's aspect= or the Ultrawide
+   row; the owner's phone stream is 2670x1878, about 1.42:1). nx2/oot_wide.py gives every 16:9 camera the picture's ratio at its
+   own vertical angle, so a narrower picture loses the sides of the game's view. Here each 16:9 camera's vertical angle is
+   widened as it is loaded, tan(v'/2) = tan(v/2) * (16/9) / ratio: the horizontal view stays the game's and the extra height
+   shows more above and below. Only the register is changed (the camera's own angle stays), so it never compounds. All 16:9
+   cameras (gameplay, events, menus' 3D), as the ratio hooks; HOS_WIDE_VERT=0 keeps the narrower view (Hor-).
+   The idea is our old engine's (6366644: its field-of-view hook at the same site, main+0x4c52fc); written here for this tree. */
+static void vert_plus(Ctx *c, uint64_t camera) {
+    extern volatile float hos_wide_ratio;
+    static int on = -1;
+    const float r = hos_wide_ratio;
+    if (!(r > 0.5f && r < 16.0f / 9.0f - 0.01f) || !camera) return;
+    if (on < 0) { const char *e = getenv("HOS_WIDE_VERT"); on = !(e && atoi(e) == 0); }
+    if (!on) return;
+    float aspect, angle;
+    const uint32_t a = recomp_load32(c, camera + 0x140);
+    memcpy(&aspect, &a, sizeof aspect);
+    if (!(fabsf(aspect - 16.0f / 9.0f) <= 0.01f)) return;
+    memcpy(&angle, c->vreg[0], sizeof angle);
+    if (!isfinite(angle) || angle <= 0.0f || angle >= 3.0f) return;
+    const float wide = 2.0f * atanf(tanf(angle * 0.5f) * (16.0f / 9.0f) / r);
+    static int logged;
+    if (!logged) {
+        logged = 1;
+        hos_log("wide: picture ratio %.4f: a 16:9 camera's vertical view %.1f -> %.1f degrees (Vert+; HOS_WIDE_VERT=0: off)",
+                (double)r, (double)angle * 57.29578, (double)wide * 57.29578);
+    }
+    uint32_t bits;
+    memcpy(&bits, &wide, sizeof bits);
+    a64_vset64(c->vreg[0], bits);
+}
+
 void hos_oot_fov(Ctx *c, uint64_t camera) {
+    vert_plus(c, camera);
     const int percent = rx_option(HL_OPT_FOV, 100);
     if (percent == 100 || percent < 50 || percent > 150 || !camera) return;
 
