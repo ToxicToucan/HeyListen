@@ -136,6 +136,7 @@ const char* tx_screenshot_key(int v) {   // (fork: vk_replay.cpp's keys[] in the
     static const char* const names[] = {"Off", "F12", "F11", "F10", "Print Screen"};
     return names[std::min(std::max(v, 0), 4)];
 }
+const char* tx_clip_buffer_quality(int v) { return v == 1 ? "1080p 60 fps" : "720p 30 fps"; }   // (fork: vk_replay.cpp)
 const char* tx_clip_mode(int v) { return v == 1 ? "Last 10 s" : "Toggle"; }   // (fork: vk_clip.h)
 const char* tx_clip_key(int v) {   // (fork: vk_replay.cpp's clip keys[] in the same order)
     static const char* const names[] = {"Off", "F9", "F8", "F7"};
@@ -1074,10 +1075,14 @@ Row rows[] = {
      "hookshot_options.ini; without it, \"clips\" beside the game. A clip left running ends at clip_max_minutes= (10).",
      nullptr, false, true},
     {TAB_CONTROLS, "Clip mode", &opts.clip_mode, 0, 1, 1, tx_clip_mode,   // (fork: vk_clip.h)
-     "Toggle: the Clip key starts a clip and stops it. Last 10 s: the game keeps the last seconds encoded the whole time, and "
+     "Toggle: the Clip key starts a clip and stops it (no cost until it records). Last 10 s: the game keeps the last seconds encoded the whole time, and "
      "the Clip key saves them as an MP4 (10 s; clip_buffer_seconds= changes it). Keeping them costs frame rate while this is "
-     "on, from copying each frame off the GPU: about 9% in Castle Town Market with the 1080p, 60 fps clips it makes; "
-     "with clip_height=720 and clip_fps=30 in hookshot_options.ini about 3%, for smaller, softer clips.",
+     "on, from copying each frame off the GPU: see Last 10 s quality.",
+     nullptr, false, true},
+    {TAB_CONTROLS, "Last 10 s quality", &opts.clip_buffer_quality, 0, 1, 1, tx_clip_buffer_quality,   // (fork: vk_replay.cpp)
+     "The size of Last 10 s clips. 720p 30 fps: about 3% of the frame rate while Last 10 s is on (measured in Castle Town "
+     "Market). 1080p 60 fps: sharper and smoother clips, about 9%, and more dips in busy places. Toggle clips are 1080p "
+     "60 fps either way.",
      nullptr, false, true},
     // Debug: the tools' switch, the tools themselves below it while they are on (cheat: menu_tick does what they do), then the
     // developer's rows
