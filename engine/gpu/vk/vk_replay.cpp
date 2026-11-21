@@ -6472,7 +6472,8 @@ void do_present(const nvn_tex* t, const int crop[4]) {
                 logf("vk: screenshot: no %ux%u image for it", w, h);
             }
         }
-        if (clip_gpu.phase || clip_toggle.load(std::memory_order_relaxed)) clip_present(r.cmd, src, sw, sh, crop, value);   // (fork)
+        if (clip_gpu.phase || opts.clip_mode == 1 || clip_toggle.load(std::memory_order_relaxed))   // (fork; Last 10 s: the buffer starts by itself)
+            clip_present(r.cmd, src, sw, sh, crop, value);
         if (src && (dev.offscreen || shots) && offscreen_init()) {
             if (dev.offscreen) {
                 image_barrier(r.cmd, off_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
