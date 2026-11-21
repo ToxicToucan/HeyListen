@@ -368,17 +368,21 @@ bool save_last() {
                  t.wMilliseconds);
         const std::string snap = job->ring_dir + "\\save-" + stamp;   // (copies: the ring goes on writing over its pieces)
         make_folder(snap);
-        std::string list;
-        for (size_t i = 0; i < pieces.size(); i++) {
-            char nm[32];
-            snprintf(nm, sizeof nm, "p%02zu.ts", i);
-            if (CopyFileA((job->ring_dir + "\\" + pieces[i].second).c_str(), (snap + "\\" + nm).c_str(), FALSE))
-                list += std::string("file '") + nm + "'\n";
+        // (the pieces' bytes one after another: MPEG-TS pieces cut from one stream join so, with the stream's own timestamps.
+        // The concat demuxer re-times each piece by its length, and pieces a frame short of 2 s (30 fps, 720p) gave two frames
+        // one time at each join: cut-fps30-1)
+        if (FILE* out = fopen((snap + "\\joined.ts").c_str(), "wb")) {
+            std::vector<char> buf(1 << 20);
+            for (const auto& piece : pieces)
+                if (FILE* in = fopen((job->ring_dir + "\\" + piece.second).c_str(), "rb")) {
+                    for (size_t n; (n = fread(buf.data(), 1, buf.size(), in)) > 0;) fwrite(buf.data(), 1, n, out);
+                    fclose(in);
+                }
+            fclose(out);
         }
-        if (FILE* f = fopen((snap + "\\list.txt").c_str(), "w")) fputs(list.c_str(), f), fclose(f);
         const std::string out = job->folder + "\\clip-" + std::string(stamp).substr(0, 15) + ".mp4";
         char args[2048];
-        snprintf(args, sizeof args, "\"%s\" -hide_banner -loglevel warning -y -f concat -safe 0 -i list.txt -c copy -movflags +faststart \"%s\"",
+        snprintf(args, sizeof args, "\"%s\" -hide_banner -loglevel warning -y -i joined.ts -c copy -movflags +faststart \"%s\"",
                  job->ffmpeg.c_str(), out.c_str());
         STARTUPINFOA si = {};
         si.cb = sizeof si;
@@ -391,12 +395,7 @@ bool save_last() {
             GetExitCodeProcess(pi.hProcess, &code);
             CloseHandle(pi.hProcess);
         }
-        for (size_t i = 0; i < pieces.size(); i++) {
-            char nm[32];
-            snprintf(nm, sizeof nm, "\\p%02zu.ts", i);
-            DeleteFileA((snap + nm).c_str());
-        }
-        DeleteFileA((snap + "\\list.txt").c_str());
+        DeleteFileA((snap + "\\joined.ts").c_str());
         RemoveDirectoryA(snap.c_str());
         WIN32_FILE_ATTRIBUTE_DATA fa{};
         const double mb = GetFileAttributesExA(out.c_str(), GetFileExInfoStandard, &fa)
