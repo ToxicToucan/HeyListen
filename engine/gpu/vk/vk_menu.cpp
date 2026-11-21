@@ -1076,7 +1076,7 @@ Row rows[] = {
     {TAB_CONTROLS, "Clip mode", &opts.clip_mode, 0, 1, 1, tx_clip_mode,   // (fork: vk_clip.h)
      "Toggle: the Clip key starts a clip and stops it. Last 10 s: the game keeps the last seconds encoded the whole time, and "
      "the Clip key saves them as an MP4 (10 s; clip_buffer_seconds= changes it). Keeping them costs frame rate while this is "
-     "on: about 8% in Castle Town Market on an RTX 4090 at 1080p clips (clip_fps= and clip_height= lower it).",
+     "on: about 8% in Castle Town Market with 1080p clips (clip_fps= and clip_height= lower it).",
      nullptr, false, true},
     // Debug: the tools' switch, the tools themselves below it while they are on (cheat: menu_tick does what they do), then the
     // developer's rows
