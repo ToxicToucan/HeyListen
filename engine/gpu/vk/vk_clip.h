@@ -23,7 +23,7 @@ namespace mkwvk::clip {
 constexpr int kReadbacks = 6;   // (the GPU side's readback buffers)
 
 struct Settings {
-    std::string folder, ffmpeg, encoder = "h264_nvenc";
+    std::string folder, ffmpeg, encoder = "h264_nvenc", preset = "p5";   // (clip_preset=p1..p7: NVENC's, p1 fastest)
     int fps = 60, height = 1080, max_minutes = 10, bitrate_mbps = 30, buffer_seconds = 10;
 };
 Settings settings();   // (hookshot_options.ini's clip_ lines, read now)
