@@ -2367,6 +2367,7 @@ static int game_main(int argc, char **argv) {
         float want = e ? (float)atof(e) : 0.0f;
         if (!e) {
             int on = 0;
+            float aspect_ini = 0.0f;
             char path[MAX_PATH];
             const DWORD len = hos_game_path_a(path, MAX_PATH);
             char *slash = len ? strrchr(path, SEP) : NULL;
@@ -2377,6 +2378,13 @@ static int game_main(int argc, char **argv) {
                     char line[80];
                     while (fgets(line, sizeof line, o)) {
                         if (!strncmp(line, "ultrawide=", 10)) on = atoi(line + 10) != 0;
+                        /* (fork, 2026-11-21) aspect=<w>x<h> or aspect=<ratio>: the picture's shape whatever the monitor's, for a
+                           stream to another screen (the owner's phone: aspect=2670x1878). Wins over Ultrawide; HOS_ASPECT over it */
+                        if (!strncmp(line, "aspect=", 7)) {
+                            unsigned aw = 0, ah = 0;
+                            if (sscanf(line + 7, "%ux%u", &aw, &ah) == 2 && aw && ah) aspect_ini = (float)aw / (float)ah;
+                            else if (atof(line + 7) > 0.0) aspect_ini = (float)atof(line + 7);
+                        }
                         /* (the game sizes its scene before the menu is up: Resolution 100% read here too) */
                         /* (resolution=1 no longer raises the scene: #849 makes a fixed Resolution reach the 3D; HOS_SCENE_NATIVE=1 below) */
                     }
@@ -2385,6 +2393,7 @@ static int game_main(int argc, char **argv) {
             }
             const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
             if (on && sh > 0) want = (float)sw / (float)sh;
+            if (aspect_ini > 0.0f) want = aspect_ini;
         }
         if (getenv("HOS_SCENE_NATIVE")) hos_native_scene = atoi(getenv("HOS_SCENE_NATIVE")) != 0;
         if (getenv("HOS_FIX_RES")) hos_fix_res = atoi(getenv("HOS_FIX_RES")) != 0;
