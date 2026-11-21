@@ -66,6 +66,25 @@ void make_folder(const std::string& folder) {
         if (i == folder.size() || folder[i] == '\\' || folder[i] == '/') CreateDirectoryA(folder.substr(0, i).c_str(), nullptr);
 }
 
+// The Last 10 s buffer's pieces, newest (highest number) first
+std::vector<std::pair<long, std::string>> ring_pieces(const std::string& dir) {
+    std::vector<std::pair<long, std::string>> v;
+    WIN32_FIND_DATAA fd;
+    HANDLE fh = FindFirstFileA((dir + "\\ring-*.ts").c_str(), &fd);
+    if (fh != INVALID_HANDLE_VALUE) {
+        do v.push_back({atol(fd.cFileName + 5), fd.cFileName});
+        while (FindNextFileA(fh, &fd));
+        FindClose(fh);
+    }
+    std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    return v;
+}
+// all but the newest keep pieces deleted (a piece being copied for a save is not: its copy holds no lock, the delete waits)
+void ring_prune(const std::string& dir, size_t keep) {
+    const auto v = ring_pieces(dir);
+    for (size_t i = keep; i < v.size(); i++) DeleteFileA((dir + "\\" + v[i].second).c_str());
+}
+
 void writer_main(std::shared_ptr<Job> job) {
     Job& j = *job;
     HANDLE proc = nullptr, pipe_wr = nullptr;
@@ -81,10 +100,11 @@ void writer_main(std::shared_ptr<Job> job) {
         char args[2048];
         // (8 bit RGBA, converted to BT.709 limited range for the encoder; fragmented MP4: a clip cut short still plays)
         char out[1024];
-        if (j.ring)   // (2-second pieces, each starting on a keyframe, in a ring of buffer_seconds / 2 + 3)
+        if (j.ring)   // (2-second pieces, each starting on a keyframe, numbered on: ring_prune keeps the newest; by number, as
+                      // file times on exFAT are in 2-second steps and cannot order them, clip10-mode1c)
             snprintf(out, sizeof out,
-                     "-force_key_frames expr:gte(t,n_forced*2) -forced-idr 1 -f segment -segment_time 2 -segment_wrap %d "
-                     "-segment_format mpegts \"%s\\ring-%%02d.ts\"", j.buffer_seconds / 2 + 3, j.ring_dir.c_str());
+                     "-force_key_frames expr:gte(t,n_forced*2) -forced-idr 1 -f segment -segment_time 2 "
+                     "-segment_format mpegts \"%s\\ring-%%06d.ts\"", j.ring_dir.c_str());
         else
             snprintf(out, sizeof out, "-movflags +frag_keyframe+empty_moov+default_base_moof \"%s\"", j.path.c_str());
         snprintf(args, sizeof args,
@@ -141,7 +161,10 @@ void writer_main(std::shared_ptr<Job> job) {
         std::lock_guard<std::mutex> lk(j.mu);
         j.free_bufs.push_back(buf);
     };
+    auto pruned = Clock::now();
     for (bool done = false; !done;) {
+        if (j.ring && Clock::now() - pruned > std::chrono::seconds(2))
+            ring_prune(j.ring_dir, (size_t)j.buffer_seconds / 2 + 3), pruned = Clock::now();
         Job::Msg m;
         {
             std::unique_lock<std::mutex> lk(j.wmu);
@@ -323,26 +346,13 @@ bool save_last() {
     std::thread([job] {
         // (the pieces by time written, newest first; the one being written at the press is waited for, up to 3 s, until
         // the next one starts, so it is whole: a piece copied while written ends in a cut frame (clip10-mode1b))
-        struct Piece { uint64_t t; std::string name; };
-        auto list_pieces = [&job] {
-            std::vector<Piece> v;
-            WIN32_FIND_DATAA fd;
-            HANDLE fh = FindFirstFileA((job->ring_dir + "\\ring-*.ts").c_str(), &fd);
-            if (fh != INVALID_HANDLE_VALUE) {
-                do v.push_back({((uint64_t)fd.ftLastWriteTime.dwHighDateTime << 32) | fd.ftLastWriteTime.dwLowDateTime, fd.cFileName});
-                while (FindNextFileA(fh, &fd));
-                FindClose(fh);
-            }
-            std::sort(v.begin(), v.end(), [](const Piece& a, const Piece& b) { return a.t > b.t; });
-            return v;
-        };
-        std::vector<Piece> pieces = list_pieces();
-        const std::string writing = pieces.empty() ? std::string() : pieces[0].name;
+        auto pieces = ring_pieces(job->ring_dir);
+        const long writing = pieces.empty() ? -1 : pieces[0].first;
         bool whole = false;
-        for (int i = 0; i < 30 && !writing.empty(); i++) {
+        for (int i = 0; i < 30 && writing >= 0; i++) {
             Sleep(100);
-            pieces = list_pieces();
-            if (!pieces.empty() && pieces[0].name != writing) { whole = true; break; }
+            pieces = ring_pieces(job->ring_dir);
+            if (!pieces.empty() && pieces[0].first != writing) { whole = true; break; }
         }
         if (whole) pieces.erase(pieces.begin());   // (the piece just begun: after the press)
         const size_t want = (size_t)job->buffer_seconds / 2;
@@ -360,7 +370,7 @@ bool save_last() {
         for (size_t i = 0; i < pieces.size(); i++) {
             char nm[32];
             snprintf(nm, sizeof nm, "p%02zu.ts", i);
-            if (CopyFileA((job->ring_dir + "\\" + pieces[i].name).c_str(), (snap + "\\" + nm).c_str(), FALSE))
+            if (CopyFileA((job->ring_dir + "\\" + pieces[i].second).c_str(), (snap + "\\" + nm).c_str(), FALSE))
                 list += std::string("file '") + nm + "'\n";
         }
         if (FILE* f = fopen((snap + "\\list.txt").c_str(), "w")) fputs(list.c_str(), f), fclose(f);
