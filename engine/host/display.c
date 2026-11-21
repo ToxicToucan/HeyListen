@@ -11,6 +11,7 @@
    it (nn_hid.c reads its motion). While the Insert menu is open the mouse is free (the cursor shown, for the menu's
    clicks: hos_mouse_pointer) and the game gets none of it; the capture it had comes back when the menu closes. */
 #include "hos.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -190,6 +191,22 @@ static LRESULT CALLBACK wndproc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
         menu_mouse(w, (int)wp);
         return 0;
     case WM_TIMER: {
+        {   /* (fork, 2026-11-21) the window now on a display of another shape than the picture's (Monitor's shape or aspect=,
+               host/hos_main.c, taken at the start): said once per display; the picture keeps its shape until the next start */
+            extern float hos_aspect_ratio;
+            static HMONITOR shown;
+            const HMONITOR mon = MonitorFromWindow(w, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO mi = {sizeof mi};
+            if (mon != shown && GetMonitorInfoA(mon, &mi) && mi.rcMonitor.bottom > mi.rcMonitor.top) {
+                const float r = (float)(mi.rcMonitor.right - mi.rcMonitor.left) / (float)(mi.rcMonitor.bottom - mi.rcMonitor.top);
+                const float pic = hos_aspect_ratio > 0.0f ? hos_aspect_ratio : 16.0f / 9.0f;
+                if (shown && fabsf(r - pic) > 0.01f)
+                    hos_log("display: the window is on a %ldx%ld display (%.4f); the picture keeps its %.4f shape until the next "
+                            "start (Monitor's shape)", (long)(mi.rcMonitor.right - mi.rcMonitor.left),
+                            (long)(mi.rcMonitor.bottom - mi.rcMonitor.top), (double)r, (double)pic);
+                shown = mon;
+            }
+        }
         /* (hookshot, #1532) a controller is not input to Windows: playing with one, the display went off at the power
            plan's timeout. While the game's window is in front and not minimized, the display's idle timer is reset every
            30 s (ES_DISPLAY_REQUIRED without ES_CONTINUOUS: nothing is held when the game is left or closed).
@@ -341,8 +358,23 @@ static DWORD WINAPI display_main(void *p) {
     RECT r = {0, 0, win_w, win_h};
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
     const int noactivate = getenv("HOS_WINDOW_NOACTIVATE") != NULL;
-    hwnd = CreateWindowA("Hookshot", HOS_GAME_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
-                         CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, NULL, NULL, wc.hInstance, NULL);
+    /* (fork, 2026-11-21) With a picture of its own shape (Monitor's shape or aspect=), the window opens in the middle of the
+       display under the pointer, the one host/hos_main.c took the shape from (a Sunshine stream's virtual display, or the
+       monitor), not where Windows puts a new window (the primary display) */
+    int win_x = CW_USEDEFAULT, win_y = CW_USEDEFAULT;
+    if (hos_aspect_ratio > 0.0f) {
+        POINT pt = {0, 0};
+        MONITORINFO mi = {sizeof mi};
+        GetCursorPos(&pt);
+        if (GetMonitorInfoA(MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY), &mi)) {
+            const LONG mw = mi.rcWork.right - mi.rcWork.left, mh = mi.rcWork.bottom - mi.rcWork.top;
+            const LONG ww = r.right - r.left, wh = r.bottom - r.top;
+            win_x = mi.rcWork.left + (ww < mw ? (mw - ww) / 2 : 0);
+            win_y = mi.rcWork.top + (wh < mh ? (mh - wh) / 2 : 0);
+        }
+    }
+    hwnd = CreateWindowA("Hookshot", HOS_GAME_TITLE, WS_OVERLAPPEDWINDOW, win_x,
+                         win_y, r.right - r.left, r.bottom - r.top, NULL, NULL, wc.hInstance, NULL);
     if (!hwnd) display_start_failed("CreateWindowA");
     if (window_dpi(hwnd) != 96) {
         const UINT dpi = window_dpi(hwnd);

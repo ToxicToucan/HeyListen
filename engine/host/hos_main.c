@@ -2391,7 +2391,25 @@ static int game_main(int argc, char **argv) {
                     fclose(o);
                 }
             }
-            const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+            /* (fork, 2026-11-21) Monitor's shape is the shape of the display the game opens on, not the primary display's: the
+               one under the mouse pointer at the start (a Sunshine stream keeps the pointer on its virtual display, 2670x1878
+               for the owner's phone; monitor play on the monitor), the primary when there is none. host/display.c opens the
+               window on that display (the pointer's too), so the picture and the window agree; a later move to a display of
+               another shape is logged there (a restart takes it). The aspect= line still wins. */
+            int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+#ifdef _WIN32
+            {
+                POINT pt = {0, 0};   /* (no pointer: (0, 0), the primary display) */
+                MONITORINFO mi = {sizeof mi};
+                GetCursorPos(&pt);
+                const HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+                if (mon && GetMonitorInfoA(mon, &mi) && mi.rcMonitor.right > mi.rcMonitor.left && mi.rcMonitor.bottom > mi.rcMonitor.top) {
+                    sw = mi.rcMonitor.right - mi.rcMonitor.left, sh = mi.rcMonitor.bottom - mi.rcMonitor.top;
+                    if (on) hos_log("boot: Monitor's shape from the display under the pointer: %dx%d at (%ld, %ld)", sw, sh,
+                                    (long)mi.rcMonitor.left, (long)mi.rcMonitor.top);
+                }
+            }
+#endif
             if (on && sh > 0) want = (float)sw / (float)sh;
             if (aspect_ini > 0.0f) want = aspect_ini;
         }
