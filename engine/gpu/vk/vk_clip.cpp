@@ -321,18 +321,31 @@ bool save_last() {
     }
     if (!job || !job->ring || job->failed.load()) return false;
     std::thread([job] {
-        // (the newest pieces by time written, the one being written among them: MPEG-TS reads to where it got)
+        // (the pieces by time written, newest first; the one being written at the press is waited for, up to 3 s, until
+        // the next one starts, so it is whole: a piece copied while written ends in a cut frame (clip10-mode1b))
         struct Piece { uint64_t t; std::string name; };
-        std::vector<Piece> pieces;
-        WIN32_FIND_DATAA fd;
-        HANDLE fh = FindFirstFileA((job->ring_dir + "\\ring-*.ts").c_str(), &fd);
-        if (fh != INVALID_HANDLE_VALUE) {
-            do pieces.push_back({((uint64_t)fd.ftLastWriteTime.dwHighDateTime << 32) | fd.ftLastWriteTime.dwLowDateTime, fd.cFileName});
-            while (FindNextFileA(fh, &fd));
-            FindClose(fh);
+        auto list_pieces = [&job] {
+            std::vector<Piece> v;
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((job->ring_dir + "\\ring-*.ts").c_str(), &fd);
+            if (fh != INVALID_HANDLE_VALUE) {
+                do v.push_back({((uint64_t)fd.ftLastWriteTime.dwHighDateTime << 32) | fd.ftLastWriteTime.dwLowDateTime, fd.cFileName});
+                while (FindNextFileA(fh, &fd));
+                FindClose(fh);
+            }
+            std::sort(v.begin(), v.end(), [](const Piece& a, const Piece& b) { return a.t > b.t; });
+            return v;
+        };
+        std::vector<Piece> pieces = list_pieces();
+        const std::string writing = pieces.empty() ? std::string() : pieces[0].name;
+        bool whole = false;
+        for (int i = 0; i < 30 && !writing.empty(); i++) {
+            Sleep(100);
+            pieces = list_pieces();
+            if (!pieces.empty() && pieces[0].name != writing) { whole = true; break; }
         }
-        std::sort(pieces.begin(), pieces.end(), [](const Piece& a, const Piece& b) { return a.t > b.t; });
-        const size_t want = (size_t)job->buffer_seconds / 2 + 1;   // (the one being written is partly there)
+        if (whole) pieces.erase(pieces.begin());   // (the piece just begun: after the press)
+        const size_t want = (size_t)job->buffer_seconds / 2;
         if (pieces.size() > want) pieces.resize(want);
         std::reverse(pieces.begin(), pieces.end());
         if (pieces.empty()) { logf("clip: nothing buffered yet"); return; }
