@@ -137,7 +137,7 @@ const char* tx_screenshot_key(int v) {   // (fork: vk_replay.cpp's keys[] in the
     return names[std::min(std::max(v, 0), 4)];
 }
 const char* tx_clip_buffer_quality(int v) { return v == 1 ? "1080p 60 fps" : "720p 30 fps"; }   // (fork: vk_replay.cpp)
-const char* tx_clip_mode(int v) { return v == 2 ? "Off" : v == 1 ? "Last 10 s" : "Toggle"; }   // (fork: vk_clip.h)
+const char* tx_clip_mode(int v) { return v == 1 ? "Last 10 s" : "Toggle"; }   // (fork: vk_clip.h)
 const char* tx_clip_key(int v) {   // (fork: vk_replay.cpp's clip keys[] in the same order)
     static const char* const names[] = {"Off", "F9", "F8", "F7"};
     return names[std::min(std::max(v, 0), 3)];
@@ -1074,8 +1074,8 @@ Row rows[] = {
      "while it records. Holding the controller's Capture button does the same. The folder is clip_folder= in "
      "hookshot_options.ini; without it, \"clips\" beside the game. A clip left running ends at clip_max_minutes= (10).",
      nullptr, false, true},
-    {TAB_CONTROLS, "Clip mode", &opts.clip_mode, 0, 2, 1, tx_clip_mode,   // (fork: vk_clip.h)
-     "Off: no clips (the Clip key and the Capture button's hold do nothing). Toggle: the Clip key starts a clip and stops it. Last 10 s: the game keeps the last seconds encoded the whole time, and "
+    {TAB_CONTROLS, "Clip mode", &opts.clip_mode, 0, 1, 1, tx_clip_mode,   // (fork: vk_clip.h)
+     "Toggle: the Clip key starts a clip and stops it (no cost until it records). Last 10 s: the game keeps the last seconds encoded the whole time, and "
      "the Clip key saves them as an MP4 (10 s; clip_buffer_seconds= changes it). Keeping them costs frame rate while this is "
      "on, from copying each frame off the GPU: see Last 10 s quality.",
      nullptr, false, true},

@@ -6242,7 +6242,7 @@ void clip_gpu_free() {
 // in the present's recording: a clip started, ended, or its frame copied out
 void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, const int crop[4], uint64_t value) {
     ClipGpu& g = clip_gpu;
-    const bool pressed = clip_toggle.exchange(false) && opts.clip_mode != 2;   // (the Clip mode row's Off: no clips)
+    const bool pressed = clip_toggle.exchange(false);
     if (g.phase == 2) return;
     const auto now = std::chrono::steady_clock::now();
     const bool was_recording = g.phase == 1;   // (the press that starts a clip is not also the one that ends it)
@@ -6292,7 +6292,7 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
             logf("clip: the last-seconds buffer stops after %.0f s", el);
             return;
         }
-    } else if ((pressed && was_recording) || el >= g.seconds || clip::failed() || ring_mode || opts.clip_mode == 2) {
+    } else if ((pressed && was_recording) || el >= g.seconds || clip::failed() || ring_mode) {
         g.phase = 2;
         clip_rec_on.store(false);
         g.end_index = std::min<int64_t>((int64_t)(el * g.fps), (int64_t)g.seconds * g.fps);
