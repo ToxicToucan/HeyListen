@@ -35,6 +35,7 @@ struct Job {
     int buffer_seconds = 10;
     uint32_t w = 0, h = 0;
     int fps = 60, bitrate_mbps = 30;
+    std::string preset = "p5";
     std::vector<std::vector<uint8_t>> pool;
     std::vector<int> free_bufs;
     struct Msg { bool finish; int64_t index; int buf; };
@@ -109,10 +110,10 @@ void writer_main(std::shared_ptr<Job> job) {
             snprintf(out, sizeof out, "-movflags +frag_keyframe+empty_moov+default_base_moof \"%s\"", j.path.c_str());
         snprintf(args, sizeof args,
                  "\"%s\" -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgba -video_size %ux%u -framerate %d -i pipe:0 "
-                 "-threads 2 -filter_threads 2 -vf scale=out_color_matrix=bt709:out_range=tv,format=nv12 -c:v %s -preset p5 "
+                 "-threads 2 -filter_threads 2 -vf scale=out_color_matrix=bt709:out_range=tv,format=nv12 -c:v %s -preset %s "
                  "-tune hq -rc vbr -b:v %dM -maxrate %dM -bufsize %dM -g %d -profile:v high -color_range tv -colorspace bt709 "
                  "-color_primaries bt709 -color_trc bt709 %s",
-                 j.ffmpeg.c_str(), j.w, j.h, j.fps, j.encoder.c_str(), j.bitrate_mbps, j.bitrate_mbps * 3 / 2,
+                 j.ffmpeg.c_str(), j.w, j.h, j.fps, j.encoder.c_str(), j.preset.c_str(), j.bitrate_mbps, j.bitrate_mbps * 3 / 2,
                  j.bitrate_mbps * 3, j.ring ? j.fps * 2 : j.fps, out);
         STARTUPINFOA si = {};
         si.cb = sizeof si;
@@ -241,6 +242,7 @@ Settings settings() {
             else if (k == "clip_height") s.height = std::clamp(atoi(val.c_str()), 144, 4320);
             else if (k == "clip_max_minutes") s.max_minutes = std::clamp(atoi(val.c_str()), 1, 120);
             else if (k == "clip_bitrate_mbps") s.bitrate_mbps = std::clamp(atoi(val.c_str()), 2, 200);
+            else if (k == "clip_preset" && val.size() == 2 && val[0] == 'p' && val[1] >= '1' && val[1] <= '7') s.preset = val;
             else if (k == "clip_buffer_seconds") s.buffer_seconds = std::clamp(atoi(val.c_str()), 4, 120);
         }
         fclose(f);
@@ -285,7 +287,7 @@ bool start(uint32_t w, uint32_t h, const Settings& s, bool ring) {
         job->log_path = job->ring_dir + "\\ffmpeg.log";
     }
     job->ffmpeg = s.ffmpeg, job->encoder = s.encoder;
-    job->w = w, job->h = h, job->fps = s.fps, job->bitrate_mbps = s.bitrate_mbps;
+    job->w = w, job->h = h, job->fps = s.fps, job->bitrate_mbps = s.bitrate_mbps, job->preset = s.preset;
     const size_t bytes = (size_t)w * h * 4;
     const size_t pool_n = std::clamp<size_t>((256ull << 20) / bytes, 4, 32);   // (about 256 MB at most, only while recording)
     job->pool.assign(pool_n, std::vector<uint8_t>(bytes));
