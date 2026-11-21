@@ -6221,6 +6221,7 @@ std::atomic<bool> clip_rec_on{false};   // (the REC marker's: vk_menu.cpp asks c
 struct ClipGpu {
     int phase = 0;   // (0 idle, 1 recording, 2 finishing)
     bool ring = false;   // (the Clip mode row's Last 10 s: recording the whole time, the key saves the last seconds)
+    int quality = 0;     // (the Last 10 s quality row the buffer started with: a change restarts it)
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation image_alloc = nullptr;
     VkBuffer buf[clip::kReadbacks]{};
@@ -6241,7 +6242,7 @@ void clip_gpu_free() {
 // in the present's recording: a clip started, ended, or its frame copied out
 void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, const int crop[4], uint64_t value) {
     ClipGpu& g = clip_gpu;
-    const bool pressed = clip_toggle.exchange(false);
+    const bool pressed = clip_toggle.exchange(false) && opts.clip_mode != 2;   // (the Clip mode row's Off: no clips)
     if (g.phase == 2) return;
     const auto now = std::chrono::steady_clock::now();
     const bool was_recording = g.phase == 1;   // (the press that starts a clip is not also the one that ends it)
@@ -6251,7 +6252,11 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
     if (g.phase == 0) {
         if (ring_mode ? ring_failed : !pressed) return;
         if (!src) return;
-        const clip::Settings s = clip::settings();
+        clip::Settings s = clip::settings();
+        if (ring_mode) {   // (the Last 10 s quality row: 720p 30 fps, about 3% of the frame rate, or 1080p 60 fps, about 9%)
+            const bool full = opts.clip_buffer_quality == 1;
+            s.height = full ? 1080 : 720, s.fps = full ? 60 : 30;
+        }
         uint32_t w = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[2] : sw;
         uint32_t h = crop && crop[2] > 0 && crop[3] > 0 ? (uint32_t)crop[3] : sh;
         if (h > (uint32_t)s.height) w = (uint32_t)llround((double)w * s.height / h), h = (uint32_t)s.height;
@@ -6273,21 +6278,21 @@ void clip_present(VkCommandBuffer cmd, VkImage src, uint32_t sw, uint32_t sh, co
             return;
         }
         g.w = w, g.h = h, g.fps = s.fps, g.seconds = s.max_minutes * 60, g.t0 = now, g.next_index = 0, g.phase = 1;
-        g.ring = ring_mode;
+        g.ring = ring_mode, g.quality = opts.clip_buffer_quality;
         if (!ring_mode) clip_rec_on.store(true);
     }
     const double el = std::chrono::duration<double>(now - g.t0).count();
     if (g.ring) {   // (Last 10 s: a press saves; the row going back to Toggle, or a failure, stops the buffer)
         if (pressed && !clip::save_last()) logf("clip: no last seconds to save");
         else if (pressed) logf("clip: saving the last seconds");
-        if (!ring_mode || clip::failed()) {
+        if (!ring_mode || clip::failed() || g.quality != opts.clip_buffer_quality) {   // (a new quality: started again next frame)
             if (clip::failed()) ring_failed = true;
             g.phase = 2;
             g.end_index = (int64_t)(el * g.fps);
             logf("clip: the last-seconds buffer stops after %.0f s", el);
             return;
         }
-    } else if ((pressed && was_recording) || el >= g.seconds || clip::failed() || ring_mode) {
+    } else if ((pressed && was_recording) || el >= g.seconds || clip::failed() || ring_mode || opts.clip_mode == 2) {
         g.phase = 2;
         clip_rec_on.store(false);
         g.end_index = std::min<int64_t>((int64_t)(el * g.fps), (int64_t)g.seconds * g.fps);

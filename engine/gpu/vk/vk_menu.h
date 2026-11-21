@@ -48,7 +48,9 @@ struct Options {
     int hud_layout = 0;   // on a screen that is not 16:9: 0 the HUD's corners at the screen's edges (the default), 1 in the middle 16:9 (HL_OPT_HUD_LAYOUT; host/hos_wide_ui.c)
     int show_fps = 0;
     int clip_key = 1;   // (fork) the clip key: 0 Off, 1 F9, 2 F8, 3 F7 (vk_replay.cpp, vk_clip.h)
-    int clip_mode = 0;   // (fork) what the clip key does: 0 Toggle (start, then stop), 1 Last 10 s (saves what just happened; vk_clip.h)
+    int clip_buffer_quality = 0;   // (fork) Last 10 s's clips: 0 720p 30 fps (about 3% fps), 1 1080p 60 fps (about 9%; vk_replay.cpp)
+    int clip_mode = 0;   // (fork) what the clip key does: 0 Toggle (start, then stop), 1 Last 10 s (saves what just happened; vk_clip.h),
+                         // 2 Off (no clips: the key and the Capture hold do nothing)
     int screenshot_key = 1;   // (fork) the player's screenshot key: 0 Off, 1 F12, 2 F11, 3 F10, 4 Print Screen (vk_replay.cpp)
     int menu_shortcut = 0;   // 0 Insert or F1, 1 Insert only, 2 F1 only
     int menu_size = 0;   // (hookshot) the overlays' size: 0 Auto, 1 Small, 2 Medium, 3 Large (gpu/vk/vk_ui.h unit)
