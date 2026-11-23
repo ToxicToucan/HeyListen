@@ -169,6 +169,8 @@ def main():
         oot_occlusion.install(L, img)
         import oot_shadow   # (longshot 9f8958a5c: the sun's shadow resolution, after the game sizes its cascades; host/oot_shadow.c)
         oot_shadow.install(L, img, next((m["build_id"] for m in meta["modules"] if m["name"] == "main"), ""))
+        import oot_shadow_fit   # (fork, from longshot 3df5c13ed: the sun's nearest cascade kept steady; host/oot_shadow_fit.c, off unless HL_LS_SHADOW_STABLE)
+        oot_shadow_fit.install(L, img, next((m["build_id"] for m in meta["modules"] if m["name"] == "main"), ""))
         import oot_fov   # (fork: the Field of view row, host/oot_fov.c; Hookshot's)
         oot_fov.install(L, img)
         import oot_near   # (fork: first person's near plane, host/hos_main.c hos_oot_near)

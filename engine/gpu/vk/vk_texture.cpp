@@ -53,6 +53,7 @@
 #include "video_core/textures/decoders.h"
 
 #include "host_shaders/astc_decoder_comp_spv.h"
+#include "host_shaders/astc_decoder_fast_comp_spv.h"   // (fork, 2026-11-23, from Longshot 658e5f2ba, Jer9, GPL-3.0)
 #include "host_shaders/bc_encoder_comp_spv.h"
 #include "shaders/astc_bc_encode_comp_spv.h"
 #include "bc_levels.h"
@@ -650,9 +651,14 @@ bool astc_ready() {
     pi.pushConstantRangeCount = 1;
     pi.pPushConstantRanges = &pr;
     if (vkCreatePipelineLayout(dev.device, &pi, nullptr, &astc_layout) != VK_SUCCESS) return false;
+    // (fork, 2026-11-23, from Longshot 658e5f2ba, Jer9, GPL-3.0) HL_LS_ASTC_FAST=1: Longshot's faster decoder (LDS
+    // scratch instead of spilled private arrays, block-invariant work hoisted out of the texel loop; same bindings,
+    // push constants and workgroup). Off by default: the decoder above.
+    const char* fast_env = getenv("HL_LS_ASTC_FAST");
+    const bool fast = fast_env && atoi(fast_env) != 0;
     VkShaderModuleCreateInfo mi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-    mi.codeSize = sizeof ASTC_DECODER_COMP_SPV;
-    mi.pCode = ASTC_DECODER_COMP_SPV;
+    mi.codeSize = fast ? sizeof ASTC_DECODER_FAST_COMP_SPV : sizeof ASTC_DECODER_COMP_SPV;
+    mi.pCode = fast ? ASTC_DECODER_FAST_COMP_SPV : ASTC_DECODER_COMP_SPV;
     VkShaderModule m = VK_NULL_HANDLE;
     IntelDriverGate gate;
     if (extern_guarded_shader_module(&mi, &m) != VK_SUCCESS) return false;
@@ -667,6 +673,7 @@ bool astc_ready() {
     if (r != VK_SUCCESS) return false;
     state = 1;
     logf("vk: ASTC is decoded on the GPU (Eden's decoder, Switch 2 tiling)");
+    if (fast) logf("vk: ASTC decoder: Longshot's fast decoder (HL_LS_ASTC_FAST=1, from Longshot 658e5f2ba)");
     return true;
 }
 
