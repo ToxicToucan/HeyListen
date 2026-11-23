@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Upscaler row's Off (opts.dlss == 6, gpu/vk/upscaler_rows.h OFF): no upscaling network runs, the gameplay networks' dispatch
 draws the plain upscale of the 3D input instead. Checked: the value is new (the saved 0 to 5 keep their meaning) and is saved and
 loaded under the row's own key; the row steps through it, on every GPU; the menu shows it and says what it is; Off is no engine

@@ -266,7 +266,11 @@ def harness():
         raise SystemExit("vk_shader.cpp: picks is no longer a FlatMap")
     if "r.c1_at.reset();" not in draw or "r.c1_at.clear();" in draw:
         raise SystemExit("vk_draw.cpp: c1_at is emptied at each recording's start with reset (its array kept), not clear")
-    body = "VkFormat last_view_format = VK_FORMAT_UNDEFINED;\n" + hits + view_of
+    body = ("VkFormat last_view_format = VK_FORMAT_UNDEFINED;\n"
+            # (hookshot: the view cache now asks the draw's build whether the lookup was held back, RX_VK_DEFER_SKIP;
+            # in this fixture nothing is ever held back, which is the cache's rule)
+            "inline bool defer_skip_on() { return false; }\n"
+            "inline bool texture_sample_deferred() { return false; }\n") + hits + view_of
     old = "namespace old_impl {\ntemplate <class K, class V> using FlatMap = std::unordered_map<K, V>;\n" + body + "}\n"
     new = "namespace new_impl {\n" + body + "}\n"
     return STUBS + old + new + MAIN

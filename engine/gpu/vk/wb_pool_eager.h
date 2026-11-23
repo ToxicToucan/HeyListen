@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, issue 50) When a game pool's write-backs stop being left out (vk_memory.cpp, the lazy write-back, TICK-015).
 //
 // A game pool whose GPU writes are not read back by the CPU (CPU_CACHED, no invalidate yet) has them left in the mirror. The

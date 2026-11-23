@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the sub-mesh submission of the game's draw path (hl/gfx/SubmeshDraw.h).
 //
 // Every value here is the game function's, bit for bit (the call-by-call check in the game compares each call's NVN calls

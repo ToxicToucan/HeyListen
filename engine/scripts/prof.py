@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Offline profile of a thread sampled with HOS_SAMPLE + HOS_SAMPLE_FILE (host/mkw_glue.c, mkw-recomp work/prof.py): each line is a stack of
 module+offset frames, leaf first. Frames in hookshot_vk.dll / hookshot.exe are named from the linker maps beside them.
 

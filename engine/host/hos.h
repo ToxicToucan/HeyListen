@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Horizon OS layer (HLE of the Nintendo SDK at the nn:: boundary) for a64-kit games.
 
    An import or SDK function the game calls is a C function `void imp_<mangled name>(Ctx *c)` (HLE(...) below):
@@ -77,6 +79,19 @@ void hl_mem_pool_made(uint64_t addr, uint64_t size);
 void hl_mem_imported(uint64_t lo, uint64_t hi);
 void hl_mem_unimported(uint64_t lo, uint64_t hi);
 void hl_mem_init(void);
+/* (STALL2, HL_FAULT_WATCH) hos_mem.c tells hl_mem.c of each discard of freed guest pages; hos_jobtrace.c names a thread by its OS id (the
+   job trace's table, filled while HL_STALL_WATCH or HOS_JOBTRACE runs); hos_hostsplit.c names the tagged range an address is in
+   (the tags are kept while HOS_HOST_SPLIT or RX_VK_LEDGER is on). Each returns 1 when it knows */
+void hl_fw_note_discard(uint64_t bytes, int64_t ns);
+/* (STALL2, HL_REGION_KEEP, hos_regionkeep.c) a freed address region kept resident for a while: hos_keep_try puts it on the list (1: the
+   caller does not discard it), hos_keep_reuse zeroes what a new region takes of the kept address space, hos_keep_discard is hos_mem.c's
+   discard of a range */
+int hos_keep_enabled(void);
+int hos_keep_try(uint64_t addr, uint64_t size);
+void hos_keep_reuse(uint64_t lo, uint64_t hi);
+void hos_keep_discard(uint64_t addr, uint64_t size);
+int hos_jt_name_of_tid(unsigned long tid, char *out, int n);
+int hos_mem_tag_name(uint64_t addr, char *out, int n);
 /* (hl_drop.c, HL_MEM_DROP) the drop module: started after the memory module; told of decodes, of guest memory handed to
    the kernel (hos_commit) and of the back end's imports */
 void hl_drop_init(void);
@@ -199,6 +214,7 @@ extern volatile int hos_jt_on;
 void hos_jt_rec(int type, uint64_t a, uint64_t b);
 uint64_t hos_jt_lr(void);
 void hos_jt_start(void);
+void hos_sw_present(void);   /* (HL_STALL_WATCH: the presenting thread's present, hos_jobtrace.c) */
 enum {
     JT_EV_WAIT_B = 1, JT_EV_WAIT_E, JT_EV_SIGNAL, JT_SPIN_E,   /* event (a key, b lr | b how: 0 ready 1 spun 2 slept, +4 timed out) */
     JT_CV_WAIT_B, JT_CV_WAIT_E, JT_CV_SIGNAL,                  /* condition variable (a cv; signal b: count, 0 all) */

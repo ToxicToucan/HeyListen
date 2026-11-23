@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the rules under which native x64 floating point gives the same bits as the translated Arm
 // code (docs/native-engine/physics-loops.md, section 4). Every kernel of hl::math is written with these and nothing else.
 //

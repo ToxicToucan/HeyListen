@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A crash or kill while a setting is written never leaves a torn file (host/hos_atomic_file.h and the writers of the settings).
 
 The settings were written with fopen "w", which empties the file before it writes it, and a settings file was put in place by a

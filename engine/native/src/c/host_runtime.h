@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the guest runtime as the OS layer hands it over (hl/c/hl_bridge.h's hl_guest_host), for every
 // module's C surface. One adapter, so that a change to the runtime's interface is made in one place.
 #pragma once

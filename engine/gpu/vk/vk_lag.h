@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, 2026-11-14) RX_VK_LAG_LOG=1: how late the replay and the GPU are behind the game's submits, how truthful the game's
 // waits are, and what the submit-time capture protects (vk_lag.cpp). A measurement: off by default; nothing changes but the
 // counting and one text file, lag_log.csv, written in the working directory.

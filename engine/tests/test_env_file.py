@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """HOS_ENV_FILE names the switches file a run reads instead of hookshot_env.txt beside the game.
 
 A scripted or A/B test run brings its own switches this way, and the player's hookshot_env.txt is neither read nor
@@ -30,6 +32,8 @@ def main():
     a = p.parse_args()
     main_c = (ROOT / "host" / "hos_main.c").read_text(encoding="utf-8")
     notes = main_c[main_c.index("static char env_notes["):main_c.index("static void load_hookshot_env(void) {")]
+    if "/* (QUICK1, HL_NV_CACHE_DIR" in notes:   # (QUICK1: the NVIDIA driver cache block sits between them; it uses the Windows API)
+        notes = notes[:notes.index("/* (QUICK1, HL_NV_CACHE_DIR")]
     fn = block(main_c, "static int env_line_allowed(") + "\n" + block(main_c, "static void load_hookshot_env(void) {")
 
     with tempfile.TemporaryDirectory() as tmp:

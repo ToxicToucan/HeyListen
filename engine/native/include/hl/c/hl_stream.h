@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: the stream module's C surface for the OS layer (engine/host/hl_stream.c). The path a resource
    decode takes, the module's counters and the provenance table of decoded ranges (hl/stream/Decode.h, Provenance.h); the
    OS layer reads the game's request, decodes (zstd lives on its side) and acts. */

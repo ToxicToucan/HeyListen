@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: which pages of static GPU data may leave the process's working set, and which must stay.
 //
 // The game keeps the CPU side of its GPU resources (textures, vertex and index data, shader code) in CPU-cached memory

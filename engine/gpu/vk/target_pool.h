@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The render target pool's bound by default (vk_texture.cpp pool_cap): a twelfth of what the driver allows the process, from 256 MB
 // to 768 MB. OoT makes its transient targets (a 384 x 384 depth target, 1280 x 720, 640 x 360 and 2560 x 1440 ones) at shifted
 // offsets of a scratch heap every frame; a dead one is reusable a frame or two after it is let go, once the GPU is done with it, so

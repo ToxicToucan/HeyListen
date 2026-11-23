@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Resolve and sum up a HOS_POOL_TRAP dump (engine/host/hos_memsplit.c).
 
 usage: python tools/bench/pooltrap.py <pooltrap.txt> <bin dir with HeyListen.exe, HeyListen.map, hookshot_vk.dll> [top]

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The overlays (the start-up screen, the menu, the performance overlay) over the window's image: menu_record draws them with
 Dear ImGui in one frame and one recording: the overlay's font first, the start-up screen under the menu, then the performance
 overlay (overlay_draw: the FPS box or the full panel, F10; HeyListen replaced upstream's draw_fps with vk_overlay.cpp's) and the

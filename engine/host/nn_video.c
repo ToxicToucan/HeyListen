@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* nn::codec's hardware video decoders (VP8/VP9 here) and their image pools, on FFmpeg's libavcodec (the static
    libraries in Eglantine's package cache: work/eg/.cache/cpm/ffmpeg). MKW's movie library (subsdk0, movie::) plays
    its WebM movies through them: the cup openings, the courses' billboards, the emblems.
@@ -668,10 +670,14 @@ static void dec_flush(Ctx *c, const char *what) {
     Dec *d = (Dec *)host_of(ARG(0), DEC_MAGIC);
     if (d && (d->ctx || d->mf)) {
         AcquireSRWLockExclusive(&d->lock);
-        if (video_log())
-            hos_log("video: %s after %lld submits and %lld acquires (%d queued, %s, lr %#llx)", what, (long long)d->submits,
-                    (long long)d->acquires, d->qn, d->eos ? "at the end" : d->phead ? "submissions left" : "none left",
-                    (unsigned long long)c->x[30]);
+        {   /* (HeyListen, #104) the first 48 flushes are in every log, not only HOS_VIDEO_LOG's: a movie that never ends for the game
+               (the end credits' freeze) shows by the line it lacks, "at the end" after the last picture and then nothing */
+            static volatile LONG n;
+            if (video_log() || InterlockedIncrement(&n) <= 48)
+                hos_log("video: %s after %lld submits and %lld acquires (%d queued, %s, lr %#llx)", what, (long long)d->submits,
+                        (long long)d->acquires, d->qn, d->eos ? "at the end" : d->phead ? "submissions left" : "none left",
+                        (unsigned long long)c->x[30]);
+        }
         d->log_submits = 8;
         if (d->worker) {   /* (what the thread is decoding is stale from now on; wait for it before the decoder is flushed) */
             d->flushing = 1, d->gen++;
@@ -907,7 +913,7 @@ static void dec_properties(Ctx *c) {
     if (ARG(5)) *(uint8_t *)GP(ARG(5)) = d && i < MAX_SLOTS ? (uint8_t)d->slot_last[i] : 0;
     {   /* (HOS_VIDEO_LOG) the first times the game is told a picture is the last */
         static volatile LONG n;
-        if (video_log() && d && i < MAX_SLOTS && d->slot_last[i] && InterlockedIncrement(&n) <= 8)
+        if (d && i < MAX_SLOTS && d->slot_last[i] && (video_log() ? InterlockedIncrement(&n) <= 8 : InterlockedIncrement(&n) <= 48))
             hos_log("video: properties of buffer %u: the last picture, pts %lld (lr %#llx)", i, (long long)d->slot_pts[i],
                     (unsigned long long)c->x[30]);
     }

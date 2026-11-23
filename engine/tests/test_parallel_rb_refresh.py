@@ -42,6 +42,18 @@ def cut(source, start, end):
     return source[a:source.index(end, a)]
 
 
+def refresh_cut(memory):
+    """memory_rb_refresh and its bookkeeping. READB2 put its readback classes (HL_RB_R2/R3, RX_VK_RB_WHO and their
+    checks) between the refresh's parts; the fixture stubs those (switches unset), so the cut leaves their sections out."""
+    start = "// ---- (from PR 430, YunaraDebugs) Readback pages"
+    classes = "// ---- (READB2) the readback classes"
+    if classes not in memory:
+        return cut(memory, start, "bool memory_pool_mirror_on() {")
+    return (cut(memory, start, classes)
+            + cut(memory, "void memory_note_gpu_write(uint64_t gpu, uint64_t size) {", "// ---- (READB2, HL_RB_R2_CHECK")
+            + cut(memory, "/// Records the refresh copies into the submission's upload command buffer", "bool memory_pool_mirror_on() {"))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cxx", default="g++")
@@ -66,7 +78,7 @@ def main():
         "rb_bufferref.inc": block(internal, "struct BufferRef {") + ";\n",
         "rb_pool.inc": block(memory, "struct Pool {") + ";\n",
         "rb_writeback.inc": block(memory, "struct WriteBack {") + ";\n",
-        "rb_refresh.inc": cut(memory, "// ---- (from PR 430, YunaraDebugs) Readback pages", "bool memory_pool_mirror_on() {"),
+        "rb_refresh.inc": refresh_cut(memory),
         "rb_bindtail.inc": cut(block(memory, "BufferRef gpu_buffer_bind("),
                                "if (p->synced_epoch != mirror_epoch || p->sync_seg > texture_segment()) mirror_sync(*p);",
                                "return remember({p->mirror"),

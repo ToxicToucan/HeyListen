@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen TICK-052) A counter every recording thread adds to, split into one cache line a thread: the shared counters the
 // draws bump (st_draws, st_desc_reused, the phase times prof_ns, ...) were plain int64_t that the replay workers and the
 // Presentation Thread wrote at every draw, so the line went from core to core at each one (and racy adds lost counts). Each thread

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The crash recorder's game side (hl_trace.h; tools/bench/hltrace.py reads its file).
 
    HL_TRACE=<mask> (0 or unset: off, the default; 1: everything; else the bits of hl_trace.h: 2 memory, 4 jobs, 8 the

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Run the actual Vulkan job construction and object keys over authored files, without a compiler or game.
 
 An alternate --build-script permits the same regression to exercise an older production build.py.

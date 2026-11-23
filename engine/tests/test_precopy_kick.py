@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-054) The capture pre-copy thread kicked once a frame (RX_VK_PRECOPY_KICK=1 with RX_VK_CAPTURE_PRECOPY=1, and
 HOS_PRECOPY_KICK=1 on the host): the thread waits on the kick event instead of its timer; the renderer exports
 mkwvk_precopy_kick; the host takes it as an optional export and calls it when the main thread leaves its end-of-frame wait

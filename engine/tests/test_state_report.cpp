@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // tests/test_state_report.py: gpu/vk/state_report.h, the pipeline state telemetry's rules: which records are new, the dedupe and what was
 // sent before, the cap, the gating, the payload. Without arguments it runs its own checks; "verdict <file of records>" prints record_ok
 // of each 528 bytes (the python test compares them with tools/release/check_states.py), "payload <player list> <shipped list> <sent

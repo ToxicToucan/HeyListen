@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of hl::math (engine/native, hl/c/hl_math.h;
    docs/native-engine/physics-loops.md section 8): small numeric kernels of the physics and actor loops answered natively,
    bit for bit, and the differential check that proves it.

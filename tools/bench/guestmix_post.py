@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-041) python -I tools/bench/guestmix_post.py <out>/guestmix_insns.txt (from guestmix.py --out): guestmix_insns.txt -> skid-corrected shares (a timer sample's IP is the instruction after the one that held
 retirement), lane loops (FPX per-lane loops: a back edge over a 4*idx store to the host stack) found per section."""
 import collections, re, sys

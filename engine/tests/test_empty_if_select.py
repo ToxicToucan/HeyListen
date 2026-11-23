@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A selection with an empty body becomes the selects of its phis (RX_VK_FOLD_EMPTY_IF, default off).
 
 The rewrite (gpu/vk/eden/shader_recompiler/backend/spirv/empty_if_select.h) is compiled and run on its own against hand-made

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The window right after a crash (host/hos_crash_dialog.c, host/hos_crash_dialog.h), with no game and no window.
 
 - The helper's command line (--crash-watch <pid> <run id> <game folder> <log>, --crash-show <record> <game folder> <log>):

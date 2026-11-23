@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Cutting a piece of C, C++ or GLSL source out by its text, for the checks that compile or read one function of a source file
 (the dev-loop proposal's D2, #2636). Standard library only.
 

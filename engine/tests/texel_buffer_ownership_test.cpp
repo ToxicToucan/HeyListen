@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include <algorithm>

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The native NVN layer: TOTK's graphics API implemented directly (HOS_NVN_NATIVE=1), with no Switch GPU in between.
    hos/nvn_native.c is the API: objects live in place in the memory the game gives NVN objects, state-only and GPU work
    is recorded as commands in host memory, and a submit hands the recordings to gpu/render/rx_nvn.cpp, which replays

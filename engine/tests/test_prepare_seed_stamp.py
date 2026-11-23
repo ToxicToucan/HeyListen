@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The shaders are prepared again when the seed changes, not only when the translator does.
 
 prepare_run (gpu/vk/vk_draw.cpp) prepared once per translator: hookshot_prepared.bin held program_cache_stamp() and nothing

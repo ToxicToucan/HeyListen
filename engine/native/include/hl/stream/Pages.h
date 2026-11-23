@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: which pages of the decoded resources still hold the decoder's bytes, by file kind.
 //
 // A page of a decoded range can be given back to the system and made again by decoding the file again only while its

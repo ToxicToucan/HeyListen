@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Sacrappy
 """How task and mesh programs run: the default by driver and OS, and the switch's precedence (gpu/vk/mesh_mode.h, vk_main.cpp).
 
 Issue 51 (an RX 6800 on Linux with RADV loses the GPU in native task/mesh draws, upstream Hookshot issue 2245): on Linux with
@@ -50,6 +51,16 @@ int main() {
         CHECK(run(nullptr, nullptr, true, nvidia, rdna35).mode == 0);
         CHECK(run("native", nullptr, true, amd, rdna35).mode == 1);
         CHECK(run("compute", nullptr, true, amd, rdna35).mode == 2);
+    }
+    // (the BC-250, AMD Cyan Skillfish, gfx1013: 0x13fe and 0x143f; RADV's native task + mesh path draws its foliage and glows white,
+    // issue 67, v0.4.4. Compute on Linux by default; Windows and other makers stay Automatic, and native overrides)
+    for (uint32_t bc250 : {0x13feu, 0x143fu}) {
+        CHECK(run(nullptr, nullptr, true, amd, bc250).mode == 2);
+        CHECK(strstr(run(nullptr, nullptr, true, amd, bc250).why, "BC-250") != nullptr);
+        CHECK(run(nullptr, nullptr, false, amd, bc250).mode == 0);
+        CHECK(run(nullptr, nullptr, true, nvidia, bc250).mode == 0);
+        CHECK(run("native", nullptr, true, amd, bc250).mode == 1);
+        CHECK(run("compute", nullptr, true, amd, bc250).mode == 2);
     }
     // (RDNA 3 and 4 on RADV run the native path: 0x744c Navi 31 (RX 7900 XT), 0x7480 Navi 33, 0x7550 and 0x7551 Navi 48 (RX 9070 XT),
     // 0x15bf Phoenix; RDNA 1: 0x731f, 0x7340)

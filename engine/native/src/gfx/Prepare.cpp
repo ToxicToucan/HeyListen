@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the shared draw preparation on its cached path (hl/gfx/Prepare.h).
 //
 // The order of the tests is the game function's: each is the first branch of it that leaves the cached path, so the

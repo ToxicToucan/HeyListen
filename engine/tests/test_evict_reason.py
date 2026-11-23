@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the eviction pass's rules (gpu/vk/evict_reason.h; no game/GPU), and check the pass still asks them."""
 import argparse
 import subprocess

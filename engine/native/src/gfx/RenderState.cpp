@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the render-state function of the game's draw path (hl/gfx/RenderState.h).
 //
 // Every value here is the game function's, bit for bit (the call-by-call check in the game compares each call and the

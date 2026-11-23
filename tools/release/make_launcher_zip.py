@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Windows release as RecompLauncher installs it: HeyListen-<tag>-Windows-x64.zip.
 
 The zip holds the whole HeyListen Builder, ready to run where it is unpacked: HeyListenBuilder.exe and its .NET files, tools\\

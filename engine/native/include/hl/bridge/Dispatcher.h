@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the game's job dispatcher, natively, in place on the game's own scheduler.
 //
 // Written from a reading of the guest's dispatcher (docs/native-engine/jobs-boundary.md, "The dispatcher's protocol"):

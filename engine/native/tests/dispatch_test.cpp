@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the native dispatcher (hl/bridge/Dispatcher.h) run with no game, on a model of the game's
 // scheduler in host memory: its rings, job records, dispatch contexts and lane status word laid out as the guest has
 // them, and the game's own functions the dispatcher calls (events, the mutex, forwarding, the address waiters, job

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the module system's job group (hl/bridge/JobGroup.h) run with no game, on a model of the
 // game's group scheduler in host memory: its heap, mutex, take count, job records, lists of dependents, dispatch contexts
 // and lane status word laid out as the guest has them, and the game's own functions the group calls (events, mutexes, the

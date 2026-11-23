@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #include "../gpu/vk/split_count.h"
 
 #include <cstdio>

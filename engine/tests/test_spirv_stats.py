@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """scripts/spirv_stats.py counts a module's global-memory helper, its constant bit-field chains and reads the GPU pass timing.
 
 A module is made by hand (no game data): a main function that calls a helper (an u64 address, a storage buffer access, an

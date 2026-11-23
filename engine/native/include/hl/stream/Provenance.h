@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: where the bytes of a decompressed resource came from.
 //
 // The game decompresses every resource file it loads into one destination range (docs/native-engine/stream-boundary.md).

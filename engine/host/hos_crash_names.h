@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* The names behind a crash's host and guest addresses, from the tables the build writes beside the game
    (nx2/symtab.py: HeyListen.sym, hookshot_vk.sym; the map the linker wrote, compacted).
 

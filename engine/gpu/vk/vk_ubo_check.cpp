@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen) HL_UBO_CHECK=1: whether a uniform block's bytes are final when it is bound, and what of the capture an
 // inline of the blocks that are would leave out (docs/native-engine/direct-emission.md section 9). A measurement: the
 // replay draws as without it.

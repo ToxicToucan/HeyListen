@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, HL_PROG_MEMO) The program pick's validated-handle memo. A recording thread's pick for one (program, vertex inputs, colour
 // outputs) key is a variant, and the variant stands while the textures bound to its answers' slots have the types it was translated
 // for. The pick used to keep one handle vector, the last one it validated: a draw whose textures were other ones of the same types

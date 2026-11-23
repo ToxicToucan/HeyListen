@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the call-by-call check (hl/gfx/StateCheck.h).
 #include "hl/gfx/StateCheck.h"
 

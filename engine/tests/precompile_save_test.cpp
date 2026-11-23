@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // gpu/vk/precompile_save.h: when the precompile writes the pipeline cache before the title, and what the log says a save did.
 // tests/test_precompile_save.py builds and runs it.
 #include "../gpu/vk/precompile_save.h"

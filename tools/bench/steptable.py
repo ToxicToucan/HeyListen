@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The before/after table of a native-engine step (docs/native-engine/README.md, "How a step is reported"): for each build
 and scene, the game's memory in RAM, the process's RAM, VRAM, the main thread's job wait and end-of-frame wait a frame
 (the critical chain as the main thread sees it) and fps.

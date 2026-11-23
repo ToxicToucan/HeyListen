@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the job system.
 //
 // Native x64 code, written for this engine: nothing here comes from the game. It schedules two kinds of work on one pool

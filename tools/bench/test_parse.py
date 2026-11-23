@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 import json
 import subprocess
 import sys

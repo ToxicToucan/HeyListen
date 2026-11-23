@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #include "../gpu/vk/pre_bloom.h"
 #include "../gpu/vk/upscaler_rows.h"
 

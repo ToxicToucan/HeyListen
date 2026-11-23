@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 # Launch an opencode worker on a ticket, in its own git worktree and branch.
 # Usage: powershell -File tools/run-worker.ps1 -Ticket TICK-001 -Slug bench-harness [-Model deepseek/deepseek-v4.1-flash]
 param(

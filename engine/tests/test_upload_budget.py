@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen) The upload budget (RX_VK_UPLOAD_BUDGET_MS, vk_texture.cpp's upload_defer): a new ASTC texture a draw samples is
 held back for a later present once the looking-up thread's own upload time this present reached the budget, not every
 thread's summed (the parallel replay's segment workers upload side by side: their sum reached 40 ms when the busiest had spent
@@ -123,8 +125,12 @@ class UploadBudget(unittest.TestCase):
 
     def test_a_held_texture_is_measured_until_it_comes_in_or_goes(self):
         touch = block(self.tex, "Texture* texture_touch(Texture* tex, bool for_sampling)")
-        self.assertLess(touch.index("if (upload_defer(*tex)) return nullptr;"),
-                        touch.index("if (tex->defer_frame) defer_note_done(*tex, true);"))
+        held = touch.index("if (upload_defer(*tex))")
+        self.assertLess(held, touch.index("if (tex->defer_frame) defer_note_done(*tex, true);"))
+        # (hookshot) a held-back sampled texture names the draw whose build looked it up (texture_sample_deferred), which
+        # leaves that draw out of the frame (vk_draw.cpp, RX_VK_DEFER_SKIP): the lookup still returns no view
+        self.assertLess(held, touch.index("tl_sample_deferred = true;"))
+        self.assertLess(touch.index("tl_sample_deferred = true;"), touch.index("return nullptr;", held))
         self.assertIn("if (tex.defer_frame) defer_note_done(tex, false);", block(self.tex, "void destroy_later(Texture& tex)"))
         frame = block(self.tex, "void texture_frame(uint64_t completed)")
         self.assertLess(frame.index("defer_frame_end("), frame.index("st_deferred_frame.exchange(0"))

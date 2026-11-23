@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // A parallel replay's new images in queue order: the production upload command buffer state, create()'s initialization,
 // bc_scratch_layout, the texture segment hooks, replay_handle's segment jobs and submits and the init pools' startup,
 // included from the init_*.inc files tests/test_parallel_init_order.py cuts from the source. Vulkan is a spy: commands
@@ -170,6 +172,19 @@ static const struct FixtureHost { void (*log_flush)(); } fixture_host{}, *host =
 // (stream R4's RX_VK_PROF_FINE counters the cut code adds to: off here, so the scope timer adds nothing)
 struct ReplayWallStub { int64_t whole_ns = 0, whole = 0, dry_ns = 0, seg_ns = 0, big = 0; } rwall;
 struct WallAdd { explicit WallAdd(int64_t&) {} };
+// (streams REPLAY2, ORDER1-3, off here: the feed log, the completion thread, the pool spin, the wall counters)
+namespace feed { enum { kJobs, kOwn, kJoin }; }
+namespace completion { struct Slot {}; }
+struct DrvWallStub { std::atomic<int64_t> qs_ns{0}, qs_n{0}, seg_n{0}, seg_cbs{0}; } drvwall;
+struct DrvTime { DrvTime(std::atomic<int64_t>&, std::atomic<int64_t>&) {} };
+bool wall_fine_on() { return false; }
+bool comp_on() { return false; }
+template <class R> void comp_submit(R&, R**, int) {}
+bool seg_merge_on() { return true; }   // (ORDER1: the segments already recorded go in one submit, in order)
+void feed_set(int) {}
+void feed_note_ready(int, int, int64_t = 0) {}
+void feed_note_sent(int) {}
+template <class F> void spin_before_sleep(F&&) {}
 #include "init_fatal.inc"
 void full_barrier(VkCommandBuffer cmd, const char* = "") {
     record(cmd, 'F');
@@ -218,6 +233,8 @@ std::atomic<bool> bc_have{false};
 constexpr uint32_t kBcLayers = 8;
 uint32_t bc_layers() { return kBcLayers; }   // (vk_texture.cpp: 1 under 8 GB; the scratch at its full size here)
 VkImage bc_scratch = VK_NULL_HANDLE, bc_scratch2 = VK_NULL_HANDLE;
+VkImage bc_small = VK_NULL_HANDLE;   // (vk_texture.cpp: the small scratch, none at RX_VK_BC_SMALL_LAYERS=1, the default)
+uint32_t bc_small_layers() { return 1; }
 bool bc_scratch_fresh = false, bc_scratch2_fresh = false;
 bool bc_scratch_make() {
     bc_scratch = kScratch, bc_scratch_fresh = true, bc_have = true;
@@ -243,6 +260,7 @@ struct Segment {
     // L: the initialization holds the segments' init lock (seg_init_mu) while it records; then latch y lets it go on
     std::string script;
     const uint8_t* end = nullptr;   // (kStop: to the command buffer's end, every segment's commands in order)
+    uint64_t serial_end = UINT64_MAX;   // (OCC1: the real Segment's field, set by the cut-out init jobs)
 };
 const uint8_t* const kStop = reinterpret_cast<const uint8_t*>("stop");
 const std::vector<Segment>* cur_segs;
@@ -296,6 +314,7 @@ struct RunJobs {
 struct {
     std::mutex mu;
     std::deque<std::function<void()>> jobs;
+    std::atomic<uint64_t> posted{0};   // (ORDER3)
     std::deque<std::function<void()>> own[8];   // (TICK-052, RX_VK_PARALLEL_AFFINITY: off by default, never filled here)
     int pending = 0;
     RunJobs cv;

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, HL_UBO_MEMO) The user-uniform slot memo: what a draw's descriptor build answered for one uniform slot (a stage and an
 // index) is kept per thread, and answered again while nothing that decided it moved. No Vulkan, no NvnState: the key and the entry
 // only, so tests/ubo_slot_memo_test.cpp can drive them with a made-up world.

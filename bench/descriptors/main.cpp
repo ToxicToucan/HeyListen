@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #include <vulkan/vulkan.h>
 
 #include <algorithm>

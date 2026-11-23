@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Instrument Vulkan, not the loader: the runner compiles the actual Stage/Program
 // declarations, serializer, Reader, make_module and program_cache_load functions.
 // Info is a minimal stand-in with the cache's separately serialized containers;

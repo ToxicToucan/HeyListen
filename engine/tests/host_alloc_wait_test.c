@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The host's allocations at the commit limit (host/mkw_glue.c, issue 333), around the real hos_out_of_memory and
    hos_alloc_failed cut out by tests/test_host_alloc_wait.py: a fake malloc that fails as Windows' does at the limit, a
    clock that Sleep moves, a notice that is counted, and a hos_fatal that returns here. No game, window or GPU.

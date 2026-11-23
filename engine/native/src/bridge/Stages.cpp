@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the stage protocol, natively (hl/bridge/Stages.h). Each step follows docs/native-engine/
 // jobs-boundary.md, "The stages' protocol"; the guest instruction addresses in the comments are where the reading of that
 // step is, in the registration 0x806b0260, the wait 0x806afc40 or the last stage 0x83acfb90.

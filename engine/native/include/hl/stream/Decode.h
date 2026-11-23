@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: which resource decodes the native path takes, and the counters of the stream module.
 //
 // The game's decode of a resource file (docs/native-engine/stream-boundary.md) is answered natively only on its main

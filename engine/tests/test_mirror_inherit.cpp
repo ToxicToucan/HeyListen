@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // mirror_inherit::runs (gpu/vk/mirror_inherit.h): a new pool's mirror takes from a retired pool's mirror only the pages not
 // written since that mirror's last sync. No game, no GPU.
 #include "../gpu/vk/mirror_inherit.h"

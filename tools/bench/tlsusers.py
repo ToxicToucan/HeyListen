@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Which lifted functions read the game's "current core + 1" TLS slot (the slot's variable at 0x84e9f7ac, or the GOT entry
 at 0x84ca78d0 that points at it), and what they do with the value next: usage tlsusers.py [addr hex ...] [-v]"""
 import os, re, sys

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Frame interpolation (RX_VK_FRAMEGEN=1; off by default): frames made between the game's, from its last two, shown in
 // between by a display thread, so a game at 60 fps is shown at 120 (RX_VK_FRAMEGEN_MULT=3: 180). The WebGPU
 // renderer's (gpu/render/rx_framegen.cpp, whose comments explain it), on Vulkan:
@@ -16,10 +18,12 @@
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <utility>   // (std::exchange: framegen_idle)
 
 #include <cmath>
 
 #include "vk_framegen.h"
+#include "framegen_idle.h"   // (longshot 382a3d675: when its images are let go, framegen_idle)
 #include "framegen_rows.h"   // (the multiplier each Frame generation by makes, the limit's share)
 #include "vk_dlss.h"   // (NVIDIA DLSS Frame Generation: vk_dlss.cpp)
 #include "vk_temporal.h"   // (temporal_wanted: DLSS FG's inputs)
@@ -73,6 +77,7 @@ struct Job {
     OutSet* set;
     int64_t at;
     uint64_t value;   // (the recording that makes its frames)
+    bool held;        // (the storm hold withheld this frame's present when it was recorded: shown by nobody)
 };
 struct Pipe {
     VkDescriptorSetLayout set = VK_NULL_HANDLE;
@@ -511,7 +516,10 @@ void display_main() {
             while (now_ns() < due) SwitchToThread();
             const int64_t t = now_ns();
             present_kind.store(timed ? (j.set->game[k] ? 0 : 1) : k < j.set->made ? 1 : 0);
-            present_image(j.set->frame[k].image, fg.w, fg.h, nullptr, j.set->frame[k].view, j.set->pq);
+            // (the storm hold withheld this frame's present when it was recorded: its picture is one of the arrival's
+            // churn and reached the display thread late; it is shown to no one, whatever the hold says by now
+            // (storm_hold.h). The set is released as every job's is, so the pacer's line goes on)
+            if (!j.held) present_image(j.set->frame[k].image, fg.w, fg.h, nullptr, j.set->frame[k].view, j.set->pq);
             menu_note_frame(!timed && k == j.set->made);
             if (shown_at) {
                 const int64_t d = t - shown_at;
@@ -549,6 +557,33 @@ bool framegen_wanted(int menu_value, int allow) {
 bool framegen_on() {
     static const int allow = !getenv("RX_VK_FRAMEGEN") || atoi(getenv("RX_VK_FRAMEGEN")) != 0;
     return framegen_wanted(opts.framegen, allow) && !dev.offscreen && !fg.failed;
+}
+
+// (longshot 70d22cf1f) This present gave FSR 3.1 a frame (fsr3fi_frames, right before fsr3fi::generate): its own images were in use, whatever
+// came of it and whichever made frames were shown. framegen_idle takes it, and clears it for the next present: both on the replay
+// thread, framegen_record before framegen_idle in every present
+static bool fsr_given = false;
+
+void framegen_idle(bool recorded) {
+    using namespace framegen_idle_rule;
+    static Counts counts;
+    const bool on = framegen_on();
+    // (FSR's own images by this present's own use of them, not by `recorded`: a set the built-in or DLSS-G made leaves them unused)
+    const bool fsr_used = std::exchange(fsr_given, false);
+    const Release due = step(counts, {on, on && fsr3fi::frames_wanted(), recorded, fsr_used, fg.w != 0});
+    if (due.fsr) fsr3fi::release();
+    if (!due.shared) return;
+    {   // (as ensure_size: the display thread done with the sets, then every queue idle)
+        std::unique_lock lk(fg.mu);
+        fg.cv.wait(lk, [] { return fg.jobs.empty() && !fg.sets[0].busy && !fg.sets[1].busy && !fg.sets[2].busy; });
+    }
+    {
+        std::lock_guard qk(dev.present_mu);
+        device_wait_idle_locked();
+    }
+    const uint64_t mb = ((uint64_t)fg.w * fg.h * 4 * (2 + 3 * (uint64_t)fg.mult)) >> 20;   // (the RGBA8 frames; lumas and flows are small)
+    logf("vk: frame interpolation off: its images (%ux%u, %dx) let go, about %llu MB", fg.w, fg.h, fg.mult, (unsigned long long)mb);
+    drop_size();
 }
 
 int framegen_engine(int* mult, bool* automatic) {
@@ -743,6 +778,7 @@ int fsr3fi_frame(VkCommandBuffer cmd, OutSet& set, int cur, uint32_t uw, uint32_
     in.frame_time_ms = f.frame_ms;
     in.reset = f.reset;
     in.sequence = sequence;
+    fsr_given = true;   // (its images in use this present from here, whatever generate makes of it: a reset, none made)
     if (!fsr3fi::generate(cmd, in) || !fsr3fi::made_image()) return 0;
     const VkImageCopy c{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
                         {uw, uh, 1}};
@@ -914,10 +950,10 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
     return true;
 }
 
-void framegen_queue(uint64_t value) {
+void framegen_queue(uint64_t value, bool held) {
     if (!fg.recorded) return;
     std::lock_guard lk(fg.mu);
-    fg.jobs.push_back({fg.recorded, fg.recorded_at, value});
+    fg.jobs.push_back({fg.recorded, fg.recorded_at, value, held});
     fg.recorded = nullptr;
     fg.cv.notify_all();
 }

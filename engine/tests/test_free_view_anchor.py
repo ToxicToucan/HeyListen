@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The free camera's hook goes at the head of the view's loop in f_804e48c0, whichever way the lift wrote that head.
 
 nx2/poll.py puts the interrupt poll before each backward goto, so the loop's head is a bare label; C lifted before that had

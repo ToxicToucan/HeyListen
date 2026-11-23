@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Which GPU the renderer runs on (gpu/vk/gpu_choice.h and its use in vk_main.cpp's pick_device): the Insert menu's GPU
 device row, and a software renderer (llvmpipe: Vulkan device type CPU) never taken beside a GPU, nor alone without
 RX_VK_ALLOW_CPU=1, where the game stops with a message instead. Stand-in device lists, no game or GPU required.

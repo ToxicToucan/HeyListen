@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: GPU data's system-memory copy given back for good, and made again on demand.
 //
 // The game keeps the CPU side of its resources (textures, models, shader archives decoded from its files) in its own

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The log line's format (host/hos_thread.c log_format): "[hos <thread>] <message>" as always, and with HOS_LOG_QPC=1 the
 same line ending in " @qpc <ticks>", the QueryPerformanceCounter value PresentMon's TimeInQPC column counts in, so that a
 line can be put on the frames of a capture. Also checks that hos_log takes the stamp before it formats the message (the

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-060) RX_VK_LATE_DEFER: the late pages' wait moved from the capture's take to the queue, read from the source.
 
 - vk_memory.cpp take_capture: on by default since the PC 3050 confirm (=0: off); a take does not wait only when the switch is on, LATE_MERGE is off, the late value is
@@ -81,7 +83,7 @@ def main():
     rd = body(mem, "bool memory_read_as_submitted(uint64_t gpu, void* dst, uint64_t n) {")
     need("late_fix_slot_pending(e.gen, e.slot, &lv)" in rd and "vk_timeline_wait_sent(lv);" in rd and
          "memory_late_fix_apply(vk_timeline_completed());" in rd and
-         "if (page0 == page1 && !late_read && from == 0) {" in rd, "memory_read_as_submitted: a pending late slot read after its value and fix")
+         "if (!segmented && page0 == page1 && !late_read && from == 0) {" in rd, "memory_read_as_submitted: a pending late slot read after its value and fix")
     need("const bool late_pending = late_fix_slot_pending(e.gen, e.slot, nullptr);" in mem and
          "if (!late_pending && d_ok && gb - ga == 4096 && b->second.map) {" in mem, "mirror sync: no hash of a pending late slot")
 
@@ -116,6 +118,10 @@ def main():
             before = src[src.rfind("\n}\n", 0, m.start()):m.start()]   # (from the enclosing function's start)
             if "void queue_flush_locked() {" in before:
                 need("late_fix_flush_locked();" in before, f"{name}: the batched flush applies the fixes")
+                continue
+            if "void link_probe() {" in before:   # (PORT2: the PCIe link timed once in memory_init, before any recording: no fix exists)
+                need(name == "vk_memory.cpp" and "vkWaitForFences(dev.device, 1, &fence" in src[m.start():m.start() + 400],
+                     f"{name}: the link probe waits for its own copies at once")
                 continue
             line = src.count("\n", 0, m.start()) + 1
             need("queue_flush_locked();" in before, f"{name}:{line}: a queue submit without a flush before it")

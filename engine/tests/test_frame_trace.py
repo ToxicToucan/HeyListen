@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-051) The per-frame trace (RX_VK_FRAME_TRACE=1, hookshot_frames.csv): its header names as many columns as each line
 prints, the TICK-051 columns are there, and the counters behind them keep running totals the trace takes differences of.
 

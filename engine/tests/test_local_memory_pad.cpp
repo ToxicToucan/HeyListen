@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The local memory array's declared size (backend/spirv/local_memory_pad.h): off by default, padded only inside its window.
 #include <cstdint>
 #include <cstdio>

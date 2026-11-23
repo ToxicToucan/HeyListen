@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Sacrappy
+
 # The Linux files of a HeyListen release, checked. They are not made here (and never on a developer's PC): the Linux
 # workflow (.github/workflows/linux.yml) builds the AppImage in an Ubuntu 22.04 container with scripts/linux/appimage.sh,
 # which also writes the update parts and heylisten-linux.txt; this script is the workflow's gate before anything is

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen, STUT1) NGX is started on a thread of its own at the first present with DLSS chosen (vk_temporal.cpp dlss_prewarm,
 called by temporal_idle every present), not at the gameplay upscale's first frame: there NGX's start was 1.8 s of the replay
 thread (an RTX 4090, "slow submit: 1870 ms: dispatch 1866"). It is dlss_probe's own call, under the engine's lock, so the

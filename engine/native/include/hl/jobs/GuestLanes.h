@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the lanes guest jobs run under.
 //
 // The gameplay code that still runs from the user's local translation was built for exactly six job threads, and it

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (hookshot) What the update offer and the setup's --play both need, in one place (host/hos_update.c, builder/setup/setup.c):
    which release tags may be shown and passed on, which of two versions is newer, and the options file's update_check line. */
 #ifndef HOS_UPDATE_VER_H

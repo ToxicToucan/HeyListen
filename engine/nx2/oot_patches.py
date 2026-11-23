@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Changes to the lifted C for Ocarina of Time, applied by lift.py after it writes the code (and by hand: python -I nx2/oot_patches.py).
 
 Each is a runtime switch where it can be, so the game's own path stays reachable.

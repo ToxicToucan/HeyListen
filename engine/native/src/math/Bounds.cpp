@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: bounding-box kernels (hl/math/Bounds.h). Each line is one guest operation, in the guest's
 // order; the comments name the guest function the sequence is read from (by address, nothing of its code).
 #include "hl/math/Bounds.h"

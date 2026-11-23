@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the native stage protocol (hl/bridge/Stages.h) run with no game, on a model of the game's
 // worker set, its workers (each a thread with a message queue that runs the dispatcher on message 1 and then signals its
 // done event, as the worker message 0x8004aae0 does), a stage's scheduler and the actor manager, laid out as the guest has

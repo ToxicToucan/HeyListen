@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The rewrite of an empty selection into selects (backend/spirv/empty_if_select.h): hand-made modules of the few instructions it reads.
 #include <algorithm>
 #include <cstdint>

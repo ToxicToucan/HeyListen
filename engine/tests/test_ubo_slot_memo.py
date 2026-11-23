@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The user-uniform slot memo (HL_UBO_MEMO, gpu/vk/ubo_memo.h): the header against a made-up world, and the wiring in vk_draw.cpp
 (what the memo keeps, when it stays off, that the check mode works the full lookup out). python -I -B tests/test_ubo_slot_memo.py [--cxx clang++]"""
 import argparse

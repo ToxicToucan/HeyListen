@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the game's stage protocol around the dispatcher, natively, in place on the game's own worker
 // sets: the registration of a stage's workers, the owner's wait for them, and the frame's last stage.
 //

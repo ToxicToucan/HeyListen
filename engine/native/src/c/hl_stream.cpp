@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the C surface (hl/c/hl_stream.h) over the stream module.
 #include "hl/c/hl_stream.h"
 

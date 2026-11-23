@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the C surface (hl/c/hl_mem.h) over the memory module's cold-page policies.
 #include "hl/c/hl_mem.h"
 

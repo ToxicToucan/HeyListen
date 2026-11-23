@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A character's shadow map reserves the storage of the next step of sides up, so the targets made after it keep their place.
 
 OoT sizes each near character's square depth map anew every frame (384 from far, up to 1920 near, a few pixels different each
@@ -49,6 +51,16 @@ int main(void) {
                                                               hos_shadow_slot_side(1, 0x34, 1, 1, 1500, 1500, 1024) == 1920);
     /* (a side never reserves less than its own) */
     for (unsigned w = 385; w <= 1920; w++) CHECK("the slot is at least the map", SIDE(w) >= w && SIDE(w) - w < 384);
+    /* (QUICK1, HOS_SHADOW_LADDER: rungs 128, 192, 256, 384, 512, 768, 1152, 1536, 1920, also under 384) */
+#define LAD(w) hos_shadow_slot_side_ladder(1, 0x34, 1, 1, (w), (w))
+    CHECK("ladder: 100 -> 128, 129 -> 192, 193 -> 256, 257 -> 384", LAD(100) == 128 && LAD(129) == 192 && LAD(193) == 256 && LAD(257) == 384);
+    CHECK("ladder: 384 -> 384, 397 -> 512, 479 -> 512, 513 -> 768, 769 -> 1152", LAD(384) == 384 && LAD(397) == 512 && LAD(479) == 512 &&
+                                                                               LAD(513) == 768 && LAD(769) == 1152);
+    CHECK("ladder: 1537 -> 1920, 1921 -> its own, 31 -> its own", LAD(1537) == 1920 && LAD(1921) == 0 && LAD(31) == 0);
+    CHECK("ladder: not square, another format, mips, 3D: its own", hos_shadow_slot_side_ladder(1, 0x34, 1, 1, 500, 400) == 0 &&
+          hos_shadow_slot_side_ladder(1, 0x32, 1, 1, 500, 500) == 0 && hos_shadow_slot_side_ladder(1, 0x34, 2, 1, 500, 500) == 0 &&
+          hos_shadow_slot_side_ladder(1, 0x34, 1, 4, 500, 500) == 0 && hos_shadow_slot_side_ladder(0, 0x34, 1, 1, 500, 500) == 0);
+    for (unsigned w = 32; w <= 1920; w++) CHECK("the rung is at least the map", LAD(w) >= w);
     if (!fails) puts("PASS: a ramped shadow map reserves the next multiple of 384; every other texture its own storage");
     return fails ? 1 : 0;
 }
@@ -78,6 +90,7 @@ def wiring():
     need('getenv("HOS_SHADOW_BUCKET")' in slot and "HOS_SHADOW_SLOT_STEP" in slot, "HOS_SHADOW_BUCKET sets the step, 384 without it")
     need("hos_shadow_slot_side(d->target == NVN_TEXTURE_TARGET_2D, d->format, d->levels, d->depth, d->width," in slot,
          "the slot's side comes from shadow_slot.h")
+    need('getenv("HOS_SHADOW_LADDER")' in slot and "hos_shadow_slot_side_ladder(" in slot, "HOS_SHADOW_LADDER picks the ladder")
     need("nvn_texdesc slot = *d;" in slot and "slot.width = slot.height = side;" in slot and "nvn_tex_layout(&slot, out);" in slot,
          "the slot's layout is a copy's: the texture's own description is not changed")
     size = block(src, "NV(nvnTextureBuilderGetStorageSize)")

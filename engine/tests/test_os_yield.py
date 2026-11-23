@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """nn::os::YieldThread gives up the virtual core only (host/hos_thread.c, os_yield; HOS_OS_YIELD=1: SwitchToThread too).
 
 Longshot #1663: OoT yields after every job and every actor callback, and each yield also asked the OS to switch threads,

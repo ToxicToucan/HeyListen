@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the rule for writing GPU-drawn textures back into guest memory (gpu/vk/drawn_writeback.h; no game/GPU)."""
 import argparse
 import subprocess

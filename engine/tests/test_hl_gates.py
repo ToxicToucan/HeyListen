@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free: the native engine's entry gates (nx2/hl_gates.py) on lifted code made up here: a gate is put at the head of
 the function a host source asks for when its text hashes as recorded, the hash is the same with and without the gate, a
 second run changes nothing and reads nothing, another hash leaves the function alone, and a gate nobody asks for any more

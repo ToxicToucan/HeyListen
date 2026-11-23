@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (longshot) A settings file written whole or not at all: the one helper every write of a setting goes through.
 
    The settings (language.txt, mouse_sens.txt, saves-moved.txt) were written with fopen "w", which empties the file

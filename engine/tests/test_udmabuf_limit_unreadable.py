@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The guest window is a memfd's whenever /dev/udmabuf opens, even when udmabuf's size_limit_mb can't be read (issue 1135).
 
 A Flatpak's or Steam's container shows /dev/udmabuf but not /sys/module, so the limit file can't be opened there. The

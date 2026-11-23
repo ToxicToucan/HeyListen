@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-058) RX_VK_FENCE_POLL_FAST: a fence poll (a wait of timeout 0) on a submission finished whole on its queue answers
 without sync_order_mu, with the locked path's answer.
 
@@ -86,7 +88,7 @@ def main():
     need("std::lock_guard mk(rec_map_mu);" in wr and "value_rec.find(f)" in wr, "wait_recorded does not look f up under rec_map_mu")
 
     sq = function(rp, "void submit_q(const uint64_t* handles, int n, uint64_t queue) {")
-    need("std::lock_guard order(sync_order_mu);" in sq, "submit_q no longer holds sync_order_mu")
+    need("std::unique_lock order(sync_order_mu, std::defer_lock);" in sq and "order.lock();" in sq, "submit_q no longer holds sync_order_mu")
     need("if (queue) {\n                q_last[queue] = value;\n                value_queue[value] = queue;" in sq,
          "value_queue is not assigned only for a queue")
     need("while (value_queue.size() > 8192)" in sq, "value_queue keeps another count")

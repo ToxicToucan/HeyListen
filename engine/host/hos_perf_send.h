@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* (heylisten) The performance summaries' sender, the parts that decide (host/hos_crash_dialog.c hos_perf_send_run does the
    file and curl work): plain C with no system calls, for tests/test_perf_send.py.
 

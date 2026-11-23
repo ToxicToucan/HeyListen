@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen) HOS_HOST_SPLIT=<seconds>[,<every>]: where the process's memory is outside the game's own. The game's memory (the
    guest window) has its census in hos_memsplit.c (HOS_MEM_SPLIT); this is the rest: that long after the start, and then every
    <every> seconds (default: once), and at a normal exit, the whole address space is walked (VirtualQuery) and every committed
@@ -65,6 +67,15 @@ __declspec(dllexport) void hos_mem_untag(const void *ptr) {
     for (int i = 0; i < ntags; i++)
         if (tags[i].lo == (uint64_t)(uintptr_t)ptr) { tags[i] = tags[--ntags]; break; }
     ReleaseSRWLockExclusive(&tags_lock);
+}
+
+int hos_mem_tag_name(uint64_t addr, char *out, int n) {
+    int found = 0;
+    AcquireSRWLockExclusive(&tags_lock);
+    for (int i = 0; i < ntags; i++)
+        if (addr >= tags[i].lo && addr - tags[i].lo < tags[i].size) { snprintf(out, (size_t)n, "%s", tags[i].name); found = 1; break; }
+    ReleaseSRWLockExclusive(&tags_lock);
+    return found;
 }
 
 typedef struct { void *va; ULONG_PTR attr; } WsInfo;

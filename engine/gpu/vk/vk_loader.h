@@ -62,6 +62,7 @@
     X(vkDestroyFence)                                                                                                 \
     X(vkWaitForFences)                                                                                                \
     X(vkResetFences)                                                                                                  \
+    X(vkGetFenceStatus)                                                                                               \
     X(vkCreateSemaphore)                                                                                              \
     X(vkDestroySemaphore)                                                                                             \
     X(vkWaitSemaphores)                                                                                               \

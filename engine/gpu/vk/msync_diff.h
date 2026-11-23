@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, TICK-048) The mirror syncs' diff: a 64-bit hash of each 256-byte chunk of a page, to find the chunks of a dirty
 // page whose bytes are the ones its mirror already holds (the last sync of the page copied them, and nothing wrote the mirror
 // there since) and leave them out of the upload. The accumulation is XXH3's (a stripe of 32 bytes: each 64-bit word added to

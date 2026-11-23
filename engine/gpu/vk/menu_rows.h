@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The Insert menu's dependent rows (vk_menu.cpp row_shown / row_fixed), as plain functions: which rows show only while the setting
    they depend on is on (the others are greyed, with a help line that says why). No Vulkan, no menu: tests/test_menu_rows.cpp checks
    them. */

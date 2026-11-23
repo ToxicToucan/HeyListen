@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* nvdrv: NVIDIA's kernel-driver interface, below the real NVN driver.
 
    The NVN driver and NVIDIA's resource manager (NvRm*) are lifted SDK code and run unchanged. They reach the GPU only
@@ -138,7 +140,7 @@ int hos_gpu_pools(uint64_t (*out)[2], int max) {
     UNLOCK();
     return n;
 }
-uint32_t hos_gpu_maps_generation(void) { return (uint32_t)maps_generation; }
+uint32_t hos_gpu_maps_generation(void) { return (uint32_t)__atomic_load_n(&maps_generation, __ATOMIC_ACQUIRE); }
 
 /* The native NVN layer's memory pools (GPU address = guest address): mapped here only for the renderer's change
    tracking (hos_gpu_ptr resolves native addresses itself) */
@@ -200,7 +202,14 @@ __declspec(dllexport) int hos_gpu_write_live(uint64_t guest, const void *src, ui
     int r = 0;
     if (live) {
 #if defined(A64_WRITE_TRACK) && !defined(__EMSCRIPTEN__)
-        if (__atomic_load_n(&a64_dirty[(uint32_t)guest >> 12], __ATOMIC_ACQUIRE)) r = 2;
+        /* (the page as the marks index it: rtgen.py's A64_DIRTY_AT on the 64-bit window, not the low 32 bits, which read the
+           mark of the page 4 GB lower for a pool above 4 GB; issue 115, ToxicToucan) */
+#ifdef A64_DIRTY_PAGES
+        const uint64_t page = ((uint64_t)guest >> 12) & (A64_DIRTY_PAGES - 1);
+#else
+        const uint64_t page = (uint32_t)guest >> 12;
+#endif
+        if (__atomic_load_n(&a64_dirty[page], __ATOMIC_ACQUIRE)) r = 2;
 #endif
         if (!r) memcpy(GP(guest), src, (size_t)n), r = 1;
     }
@@ -291,7 +300,7 @@ uint8_t *hos_gpu_ptr(uint64_t va, uint64_t *avail) {
     /* direct-mapped by 64 KB page (a draw touches more mappings than a short list holds: constant buffers in several
        pools, the header pools, vertex data; a miss is a locked search over ~4000 mappings) */
     static _Thread_local struct { uint64_t lo, hi, guest; LONG generation; } recent[1024];
-    const LONG generation = maps_generation;
+    const LONG generation = (LONG)hos_gpu_maps_generation();
     const unsigned k = (unsigned)(va >> 16) & 1023;
     if (recent[k].generation == generation && va >= recent[k].lo && va < recent[k].hi) {   /* (most calls) */
         *avail = recent[k].hi - va;

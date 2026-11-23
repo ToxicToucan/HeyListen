@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the cold-page policy (hl/mem/ColdPages.h).
 #include "hl/mem/ColdPages.h"
 

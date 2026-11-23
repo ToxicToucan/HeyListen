@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Check a pipeline state list before it is shipped (profile/pipeline_states.bin; engine/nx2/pipeline_states.py makes it, the back end
 reads it as hookshot_pipeline_states_shipped.bin beside the game, gpu/vk/vk_draw.cpp StateRec). The list may hold only hashes of the
 game's shaders, formats and small draw-state values: no title id, no name of the game or of the console's maker, no local path or

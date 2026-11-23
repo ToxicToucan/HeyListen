@@ -1,9 +1,13 @@
+// Copyright (C) 2026 Sacrappy
+
 // The Vulkan back end's shared state (gpu/vk).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <array>
+#include <functional>
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -33,6 +37,8 @@ extern const MkwVkHost* host;
 void logf(const char* fmt, ...);
 void queue_flush_locked();   // (vk_replay.cpp, RX_VK_BATCH: held submits out; dev.present_mu held)
 void queue_flush();          // (the same, taking dev.present_mu)
+bool replay_flush_upload(VkCommandBuffer cur);   // (longshot d12ddf69b, vk_replay.cpp: submits, waits on and re-begins the recording's upload command buffer)
+bool upload_chunk_flush(VkCommandBuffer cmd);    // (vk_texture.cpp: replay_flush_upload, and this thread's barrier state for the buffer re-begun in place)
 // (hookshot) held submits out, then vkDeviceWaitIdle with the present queue's lock taken too (dev.present_mu held): the device's
 // every queue is synchronized by the host around it
 void device_wait_idle_locked();
@@ -86,8 +92,9 @@ struct Device {
     // (hookshot, issue 996, d1d6caa7) the GPU has mesh shaders but the draws that have a task stage run through the compute fallback
     // (AMD's Windows driver times out on them on RDNA 2, Navi 21 to 23; RX_VK_TASK_MESH_FALLBACK): mesh_mode.h. Mesh-only draws stay native
     bool task_mesh_fallback = false;
+    bool mesh_only_fallback = false;   // (longshot 3228cb5f: the Windows RDNA 2 workaround includes mesh-only programs)
     bool uses_mesh_fallback(bool has_task) const {
-        return mesh_fallback || (task_mesh_fallback && has_task);
+        return mesh_fallback || (task_mesh_fallback && (has_task || mesh_only_fallback));
     }
     // (hookshot) the float controls the device reports, a bit a width (1: 16 bits, 2: 32, 4: 64): a program declaring a denorm mode the
     // device lacks is invalid (vkCreateShaderModule's validation error), and an older driver need not ignore it (strip_float_controls)
@@ -100,6 +107,10 @@ struct Device {
     // them at 32 lanes, so those GPUs translate exactly as they did: vk_main.cpp, vk_shader.cpp make_profile)
     VkShaderStageFlags warp_wide_stages = 0;
     uint32_t warp_lanes = 32;
+    uint32_t max_workgroup_subgroups = 0;   // (maxComputeWorkgroupSubgroups: a workgroup held to 32 lanes has at most 32 times this)
+    // (a GPU whose pinned compute stage cannot hold the largest guest workgroup (32 * max_workgroup_subgroups < 1024) while its default
+    // subgroup is wider than 32: a compute program too big to be pinned is translated for warp_lanes, as an unpinned stage: pins_32)
+    bool compute_unpinned_wide = false;
     uint32_t max_push_descriptors = 0;
     uint32_t max_vertex_divisor = 0;   // (maxVertexAttribDivisor, with dev.vertex_divisor)
     // no window (HOS_HEADLESS): presents go to an image of their own, which RX_VK_SHOTS can write out
@@ -137,6 +148,17 @@ extern Device dev;
 /// Mesa ANV's) 4 bytes an aligned access could start at any word of the binding and the view read the vector before it: OoT's
 /// light colours shifted (green lighting, cyan sky). Found for Lichii (zortos293/Lichii#295, Fritchii 57ed438cd, from Matt
 /// Artist and sharkiix); NVIDIA's own alignment is 16 already. RX_VK_SSBO_DEVICE_ALIGN=1: the device's own, as before
+/// (longshot c4e8e2ea) Whether a stage of this many invocations runs at 32 lanes (pin_subgroup, translated profile): one the GPU
+/// pins, and for a stage with a workgroup (compute, task, mesh) 32-lane subgroups that cover it, at most requiredSubgroupSize *
+/// maxComputeWorkgroupSubgroups invocations (VUID-VkPipelineShaderStageCreateInfo-pNext-02756), a limit the spec sets no minimum
+/// for. The default, 64: a task or mesh workgroup has 63 threads at most (a 6-bit count), and the mesh fallback runs the same
+/// workgroups as compute shaders
+inline bool pins_32(VkShaderStageFlags stage, uint64_t invocations = 64) {
+    if (!(dev.sg32_stages & stage)) return false;
+    const VkShaderStageFlags workgroup = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT;
+    return !(stage & workgroup) || invocations <= 32ull * dev.max_workgroup_subgroups;
+}
+
 inline uint64_t storage_binding_align() {
     static const bool device_own = [] {
         const char* e = getenv("RX_VK_SSBO_DEVICE_ALIGN");
@@ -330,6 +352,10 @@ void memory_capture_submit();
 bool memory_take_capture(uint64_t value, uint64_t completed);
 void memory_trace_counts(int64_t* late_ns, int64_t* late_n, int64_t* scatter_bytes);   // (TICK-051, RX_VK_FRAME_TRACE)
 bool memory_capture_now(uint64_t value, uint64_t completed);   // (hookshot: made and taken at once)
+/// (stream R3, RX_VK_FRAMES_IN_FLIGHT) the CPU's event signals in the capture sequence, with the submits' captures, in the CPU's order
+bool memory_capture_signal(uint64_t gpu, uint32_t value, bool with_capture);
+bool memory_signals_pending();
+void memory_take_signals(uint64_t value, uint64_t completed, std::vector<std::pair<uint64_t, uint32_t>>& out);
 /// The submission the replay records next (bindings note it: a pool's mirror is in use until it is done)
 void memory_recording_value(uint64_t value, uint64_t completed);
 /// RX_VK_TEX_CAPTURE (on with the capture; =0 off): the storage of a texture uploaded from guest memory joins the
@@ -390,6 +416,29 @@ void memory_note_readback(uint64_t guest, uint64_t size);   // (PR 430) a CPU re
 bool memory_rb_refresh(VkCommandBuffer up);
 void memory_rb_recording_begun();   // (hookshot) at a recording's start, on its thread: the submission it joins (memory_rb_refresh)
 void memory_rb_segments_begin(uint64_t base, uint64_t n);   // (and a parallel replay's segments: their order, base on)
+/// (READB2, RX_VK_RB_WHO=1, logging only) which program wrote the ranges the CPU reads back: the program being bound on this
+/// thread (0: none, a copy or a clear), the GPU-written bindings with it, and the CPU's reads (invalidate) matched against them
+extern thread_local uint64_t rbwho_prog;
+bool rbwho_on();
+void rbwho_write(uint64_t guest, uint64_t size);
+void rbwho_read(uint64_t guest, uint64_t size);
+void rbwho_content(uint64_t gpu, uint64_t size);   // (after the waits: what the CPU is about to see, sampled)
+struct RbWhoProg {
+    uint64_t was;
+    explicit RbWhoProg(uint64_t key) : was(rbwho_prog) { rbwho_prog = key; }
+    ~RbWhoProg() { rbwho_prog = was; }
+};
+/// (READB2, HL_RB_R2 / HL_RB_R3, docs/native-engine/readbacks-r2-r3.md) the two readback classes of the engine refactor's step 1:
+/// R2 the 0x40 ring (a per-object read-and-reset result word, 65 reads a frame), R3 the 0x2000 pair (per-object results, read
+/// next frame). rbclass_of gives the class of a read by its size (0: none); rbclass_mode its switch: bit 0 the class's pages
+/// leave the readback refresh (memory_rb_refresh), bit 1 its reads do not wait for the GPU (the value guest memory holds, one
+/// frame late). HL_RB_Rn_CHECK=1 changes nothing in what the game sees and counts what the two bits would have changed
+int rbclass_of(uint64_t size);
+int rbclass_mode(int cls);
+bool rbclass_check(int cls);
+/// (CHECK, late read) a read of class cls: words of it that differ between the value at its entry and the value after its waits
+void memory_rb_check_poll(uint64_t done);   // (CHECK, refresh: the comparisons of the submissions done)
+void rbclass_check_late(int cls, uint64_t words, uint64_t diff, uint64_t zero_to_value, uint64_t value_to_zero);
 /// (hookshot) a range a program may write in the mirror that is not bound as written (not copied back): memory_rb_refresh
 void memory_note_gpu_write(uint64_t gpu, uint64_t size);
 /// (ported from hookshot 53eb0441, pixl27: its RX_VK_METER_ZERO / RX_VK_METER_HOLD parts only) OoT's exposure meter: two compute
@@ -408,6 +457,33 @@ inline bool meter_hold_on() {
 /// the block's start, noted where the meter's programs bind it (vk_draw.cpp), and whether guest is one (vk_replay.cpp invalidate)
 void memory_meter_range(uint64_t guest, uint64_t size);
 bool memory_is_meter(uint64_t guest);
+/// (EXPO1, vk_expo.cpp, HL_EXPO_GPU) the exposure meter's sums from an engine-owned ring: the mode (0 off, 1 on, 2 check), the producer
+/// after a meter dispatch, and the consumer in invalidate()
+int expo_mode();
+void expo_record(VkCommandBuffer cmd, VkBuffer src, VkDeviceSize offset, uint64_t guest);
+bool expo_serves(uint64_t guest);
+void expo_answer(uint64_t gpu);
+void expo_check(uint64_t gpu);
+/// (STEP1, vk_rbring.cpp, HL_RB_LAG, docs/native-engine/readback-ring.md) one deterministic mechanism for the readback classes R1 (the meter),
+/// R2 (0x40) and R3 (0x2000): the ranges the CPU reads (note_read) are staged at the end of the submission that wrote them (stage_bind, flush)
+/// into an engine-owned ring, and a read is answered (apply) with the newest unapplied entry that is `lag` frames old, never waiting;
+/// HL_RB_LAG_CHECK=1 (check) compares it with what the old path read
+bool rbring_on();
+bool rbring_check_on();
+void rbring_note_read(uint64_t guest, uint64_t size);
+void rbring_note_written(uint64_t guest, uint64_t size);
+bool rbring_stage_bind(uint64_t guest, uint64_t size, VkBuffer buffer, VkDeviceSize offset);
+void rbring_flush(VkCommandBuffer cmd, uint64_t value);
+bool rbring_serves(uint64_t guest, uint64_t size);
+bool rbring_quiet(uint64_t guest, uint64_t size);
+void rbring_quiet_result(uint64_t size, bool changed);
+void rbring_apply(uint64_t gpu, uint64_t size);
+void rbring_check(uint64_t gpu, uint64_t size);
+/// (FIF1, vk_replay.cpp) the ring's frame count: presents_now, or with RX_VK_FRAMES_IN_FLIGHT the game's own count of presents; an entry's
+/// tag (the count at its submission's submit); and the wait (bounded) for the replay to have staged the frames a read at frame c may get
+int64_t rb_frame_now();
+int64_t rb_tag_for(uint64_t value);
+void rb_wait_staged(int64_t c, unsigned lag);
 /// (vk_replay.cpp) The GPU's progress on the recordings' timeline, and a wait for it to reach v
 uint64_t vk_timeline_completed();
 /// (longshot #442) The timeline's value without the write-backs it applies: a plain read, safe under the replay's lock
@@ -483,6 +559,13 @@ void res_pipeline_counts(size_t* graphics, size_t* used, int64_t* modules_droppe
 bool vma_init(PFN_vkGetInstanceProcAddr gipa);
 bool create_image(const VkImageCreateInfo& ci, VkImage& image, VmaAllocation& allocation, bool dedicated = false, bool target = false);
 void destroy_image(VkImage image, VmaAllocation allocation);
+/// (RX_VK_REAP, vk_vma.cpp) fn on the reaper's thread, in the order given, or here with RX_VK_REAP=0: a texture's views, a buffer, memory
+/// of its own that the GPU is done with. destroy_image and destroy_buffer go there themselves
+void reap(std::function<void()> fn);
+/// Waits (5 s at most) for what the reaper holds; true when something was queued: a creation the driver refused tries again after it
+bool reap_drain();
+int64_t reap_queued();
+void reap_report(char* out, size_t n);
 /// What an allocation really takes (VkMemoryRequirements.size: padding, alignment, the driver's metadata), 0 for none
 uint64_t allocation_size(VmaAllocation allocation);
 /// (TICK-023/030) the size from which an image gets memory of its own (RX_VK_BIG_IMAGE_MB, 16 MB; 0: none)
@@ -522,6 +605,7 @@ double prepare_progress_by_cost();
 bool prepare_is_update();
 bool prepare_is_lazy_update();                 // (the update prepare_is_update found is lazy: nothing is made before the game)
 void prepare_background();
+void predict_play_test();                      // (test only, RX_VK_TEST_PREDICT_PLAY=<s>: the prediction in play, started <s> seconds in)
 void state_list_run();                        // (an update: the state list's pipelines noted before precompile_run)
 /// (HL_SHIPPED_STATES, on unless 0) the shipped pipeline state list changed since state_list_prepare last went through it: the
 /// start calls state_list_run when the shaders needed no preparing, so that precompile_run builds its pipelines
@@ -540,6 +624,13 @@ namespace mkwvk {
 enum ProfPhase { PROF_SUBMIT, PROF_PRESENT, PROF_DRAW, PROF_DESC, PROF_TEXGET, PROF_UPLOAD, PROF_PIPE, PROF_PROGRAM,
                  PROF_CMDS, PROF_DISPATCH, PROF_MEMSYNC, PROF_QSUBMIT, PROF_SLOTWAIT, PROF_COUNT };
 extern SplitCount prof_ns[PROF_COUNT];   // (TICK-052: a cache line a thread, split_count.h)
+/// (HeyListen, v0.4.4) What PROF_DESC is made of, for the performance summary's descriptors cause: PROF_DESC also holds the exact scopes
+/// timed inside the build (a texture's upload, its slow path's image and views), which made a zone's texture work read as
+/// "descriptors" hitches (a Radeon 780M's Kakariko: 23 of them, 3.8 s). PD_SELF the build's own time (sampled as PROF_DESC is),
+/// PD_TEX the texture work inside it that has no phase of its own (PROF_EXACT: texture_get's slow path), PD_POOL the descriptor
+/// pools: sets allocated, written and pools made, reset or destroyed (exact, here and where a recording begins)
+enum DescPart { PD_SELF, PD_TEX, PD_POOL, PD_COUNT };
+extern SplitCount prof_desc[PD_COUNT];
 /// Nanoseconds from a performance-counter reading. An integer number of nanoseconds per tick is a multiply, so a
 /// reading past 2^53 does not lose its low bits the way the double divide does.
 inline int64_t perf_ticks_to_ns(int64_t ticks, int64_t freq) {
@@ -586,16 +677,18 @@ struct ProfThread {
     uint32_t rng;    // (xorshift32, seeded at the thread's first pick)
     int open, k;     // (the PROF_HOT scopes open, and the outermost one's weight: 0 not timed)
     int64_t exact;   // (the nanoseconds PROF / PROF_EXACT timed on this thread so far)
+    int64_t anon;    // (and of those, the PROF_EXACT ones not inside a phase's PROF: prof_desc's PD_TEX)
 };
 inline thread_local ProfThread prof_t;
 struct ProfScope {
     int phase;   // (-1: PROF_EXACT, no phase of its own)
-    int64_t t0, x0;
-    explicit ProfScope(int p) : phase(p), t0(prof_now()), x0(prof_t.exact) {}
+    int64_t t0, x0, a0;
+    explicit ProfScope(int p) : phase(p), t0(prof_now()), x0(prof_t.exact), a0(prof_t.anon) {}
     ~ProfScope() {
         const int64_t dt = prof_now() - t0;
         if (phase >= 0) prof_ns[phase] += dt;
         prof_t.exact = x0 + dt;   // (what was exact inside is part of dt: not counted twice)
+        prof_t.anon = phase < 0 ? a0 + dt : a0;   // (a phase's own scope holds what is inside it: not anonymous work any more)
     }
 };
 /// A thread's first state: splitmix64 of a counter, so the threads' sequences are unrelated; never 0, xorshift's fixed point
@@ -612,19 +705,34 @@ inline int prof_pick(ProfThread& t) {   // (the weight: 8 one time in eight, els
     t.rng ^= t.rng << 13, t.rng ^= t.rng >> 17, t.rng ^= t.rng << 5;
     return t.rng >> 29 ? 0 : 8;   // (the top bits: xorshift's low ones are its weakest)
 }
+/// (HeyListen, v0.4.4) A sampled scope that took over this long (ns) is counted once as it was, not eight times: a draw's descriptors
+/// take microseconds, so a millisecond in one is the thread being switched out or the driver stalling, and eight times it made a frame's
+/// "descriptors" cause out of one such interruption (v0.4.3 telemetry: 3,628 descriptors hitches of 216 ms on average, a frame
+/// 8x its own stall). RX_VK_PROF_CAP=<us> sets it (default 1000), 0: no cap, as before. The sampled phases' totals in the logs are
+/// the same but for those scopes
+inline const int64_t prof_cap_ns = [] {
+    const char* e = getenv("RX_VK_PROF_CAP");
+    return e && *e ? (int64_t)std::max(0, atoi(e)) * 1000 : (int64_t)1000000;
+}();
 struct ProfScopeHot {
     int phase, k;
-    int64_t t0, x0;
+    int64_t t0, x0, a0;
     explicit ProfScopeHot(int p) : phase(p) {
         ProfThread& t = prof_t;
         if (!t.open++) t.k = prof_pick(t);
-        k = t.k, x0 = t.exact, t0 = k ? prof_now() : 0;
+        k = t.k, x0 = t.exact, a0 = t.anon, t0 = k ? prof_now() : 0;
     }
     ~ProfScopeHot() {
         ProfThread& t = prof_t;
         const int64_t x = t.exact - x0;   // (timed exactly inside: once, as it is)
-        if (k) prof_ns[phase] += (prof_now() - t0 - x) * k + x;
+        const int64_t raw = k ? prof_now() - t0 - x : 0;
+        const int64_t own = k > 1 && prof_cap_ns > 0 && raw > prof_cap_ns ? raw : raw * k;
+        if (k) prof_ns[phase] += own + x;
         else if (x) prof_ns[phase] += x;
+        if (phase == PROF_DESC) {   // (v0.4.4: the build's own time and the texture work inside it, apart: DescPart)
+            if (k) prof_desc[PD_SELF] += own;
+            if (const int64_t a = t.anon - a0) prof_desc[PD_TEX] += a;
+        }
         t.open--;
     }
 };

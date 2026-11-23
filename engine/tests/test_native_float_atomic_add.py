@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A float add to a storage buffer is one OpAtomicFAddEXT where the GPU has it and it is wanted (by default with Intel's
 Windows driver on the Arc B-series, Battlemage; on any GPU with RX_VK_NATIVE_FADD=1), and the compare-exchange loop elsewhere.
 

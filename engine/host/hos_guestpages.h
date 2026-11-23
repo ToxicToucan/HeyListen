@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen) The guest window's substrate for pages given back and restored atomically (hos_guestpages.c;
    docs/native-engine/memory-boundary.md section 13).
 

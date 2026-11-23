@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: the drop module's C surface for the OS layer (engine/host/hl_drop.c). The policy that gives
    a decoded resource's granules back to the system for good and restores them on touch (hl/mem/Drop.h); the OS layer
    gives it the substrate (hos_guestpages.h), the source's bytes (zstd lives on its side), memory and the working set. */

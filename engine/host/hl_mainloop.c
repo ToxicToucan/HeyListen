@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of the native main loop (engine/native hl/bridge/FrameLoop.h;
    docs/native-engine/main-loop.md).
 

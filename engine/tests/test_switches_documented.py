@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The switch reference is complete and current: every environment name the source reads is in docs/SWITCHES.md and
 engine/docs/switches.json, and both files are what the generator gives today.
 

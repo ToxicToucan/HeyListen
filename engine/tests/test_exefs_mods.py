@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free: the builder's code (exeFS) mods (nx2/exefs_mods.py) on modules and patches authored here: the IPS and IPS32 readers (offsets,
 runs, the end marker), the pchtxt reader (the offset shift, @enabled / @disabled / @stop, text values, comments), the mods folder
 rules (off by name, order, depth), the offset base (file offset minus 0x100), plain and LZ4 modules, what is refused (another build id,

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The dead transient render targets are looked for at every present, not only at the eviction's pass every tenth.
 
 RX_VK_DEAD_EVERY has defaulted to 1 ("every present") since the target pool's bound grew, but the code that read it sat behind

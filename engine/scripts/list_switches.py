@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Sacrappy
+
 """List every environment switch HeyListen reads, and regenerate the reference documentation.
 
     python -I engine/scripts/list_switches.py            # rewrite engine/docs/switches.json and docs/SWITCHES.md
@@ -74,6 +76,8 @@ def comment_blocks(text):
         body = re.sub(r"(?m)^\s*//+ ?", "", body)
         body = re.sub(r"(?m)^\s*\*+ ?", "", body)
         body = re.sub(r"\s+", " ", body).strip()
+        if re.fullmatch(r"Copyright \(C\) \d{4}(-\d{4})? [^.]+", body):
+            continue  # a file's copyright line says nothing about a switch, and must not start one's sentence
         raw.append((first, last, body))
     blocks = []
     for first, last, body in raw:
@@ -705,8 +709,18 @@ PLAYER_USE = [
     ("RX_VK_METER_HOLD", "White flashes or the exposure stepping in dark scenes: `=0` stops giving the game the light "
                          "meter's last result again when it reads zeros (on by default)."),
     ("RX_VK_WAIT_OWN", "HUD icons flashing mid-screen or a minimap drawn with another texture on a Radeon handheld or "
-                       "iGPU: `=1` makes each present wait for its frame's GPU work (on by default on AMD integrated "
-                       "GPUs, `=0` turns it off)."),
+                       "iGPU: `=1` makes each present wait for its own frame's GPU work (v0.4.3's rule, lower fps), `=2` "
+                       "for the frame before's, `=3` for the frame before's and the frame's own after a texture upload (the default "
+                       "on AMD integrated GPUs), `=0` turns the wait off."),
+    ("RX_VK_STRICT_BOUND", "White flashes in dark scenes on an AMD card, or long stalls (hundreds of ms) in the readback "
+                           "hitch rows: `=0` makes the light meter's strict wait last as long as the GPU needs again, as in "
+                           "v0.4.3 (`=2` bounds the 0xc0 ranges too; RX_VK_STRICT_BOUND_MS sets the bound, 4)."),
+    ("RX_VK_DESC_POOL_KEEP", "Descriptor pool trouble after a long play (memory use up, or stutters in busy scenes): `=0` "
+                             "destroys the extra descriptor pools at each recording and makes them again, as in v0.4.3."),
+    ("HOS_RELEASE_KEEP_CORE", "Freezes while a zone loads: `=1` keeps the thread's virtual core through a texture or program "
+                              "release even when the renderer would make it wait (v0.4.3's behaviour)."),
+    ("HOS_TEXELS_KEEP_CORE", "Freezes at area changes: `=1` keeps the thread's virtual core while a CPU read or write of "
+                             "texels waits for the GPU (the behaviour before Longshot #1827)."),
     ("RX_VK_NO_PROGRAM_CACHE", "Shaders are translated wrongly after a driver or card change (a bad cache): reads "
                                "and writes no program cache for one run."),
     ("RX_VK_NO_DRAWN_PAGE_MAP", "HUD labels go blank after a zone change, or black surfaces flicker in Zora's Domain: "

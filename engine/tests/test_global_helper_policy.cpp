@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The policy of the mesh stages' global-memory helpers (gpu/vk/eden/shader_recompiler/backend/spirv/global_helper_policy.h).
 #include <cstdio>
 #include <cstdint>

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The shaders' preparation, faster and honest about how long it takes (gpu/vk/prepare_work.h, vk_draw.cpp prepare_run, the builders).
 
 A player's builder said "Prepare the shaders" for 112 minutes at 97%, under "Usually about 45 minutes". The step was half the CPUs

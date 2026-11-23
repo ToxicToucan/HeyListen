@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 cmake_minimum_required(VERSION 3.20)
 
 project(heylisten_descriptor_bench LANGUAGES CXX)

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Check that a submission cut into parts (RX_VK_CHUNK, vk_replay.cpp maybe_split) can end a part only right before a plain
 draw (no game/GPU required): maybe_split asks for the end (part_end_wanted) and replay() makes it (split_part) before a
 NOP_DRAW, NOP_DRAW_IDX or NOP_DRAW_INDIRECT that will be recorded, so no cut leaves a part beginning with a mesh draw or a dispatch. On an

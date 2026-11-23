@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (TICK-048) gpu/vk/msync_diff.h: the chunk hash's two forms agree, a change anywhere in a chunk changes its hash, the masks
 // widen to their groups and the runs cover exactly the set chunks. Built with and without -mavx2 by test_msync_diff.py.
 #include "../gpu/vk/msync_diff.h"

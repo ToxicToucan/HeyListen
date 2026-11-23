@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the C surface (hl/c/hl_drop.h) over the drop policy (hl/mem/Drop.h).
 #include "hl/c/hl_drop.h"
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free checks of recomplauncher.json (repository root), the file RecompLauncher (recomplauncher.com) reads: it has what the
 launcher requires, the build it checks for is the one make_game.py supports, every setting writes a key the in-game menu reads, the
 prepare step's arguments are ones make_game.py takes, and the Windows zip and the AppImage carry it.

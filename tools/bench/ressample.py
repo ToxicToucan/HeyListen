@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """TICK-038 resource sampler, run beside tools/bench/run_bench.py (never launches or kills the game):
     python tools/bench/ressample.py <out dir>   (started just before run_bench.py; waits 30 s for HeyListen.exe)
 Once a second until the game exits (130 s at most): <out>/res.csv (private bytes, working set, threads, CPU seconds, the

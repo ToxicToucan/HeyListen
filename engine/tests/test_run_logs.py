@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """host/hos_run_logs.h: logs/hookshot.log (this run's log, a hard link to hookshot_log.txt) and hookshot.1.log to .4.log (the runs
 before), the folder recomplauncher.json declares as "logs" so RecompLauncher attaches the newest .log to a player's crash report;
 and the manifest declares it. Made on Windows and Linux alike (on Linux host/posix/windows.h gives the same file calls, and the game

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the game's main loop driven by the native main loop (hl::app::MainLoop).
 //
 // Written from a reading of the guest's framework (docs/native-engine/main-loop.md): nothing here is game code. The

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen TICK-041) tests/test_vfpx_elem.py's driver: each guest word's vectorized lift (and its hot form) against the
    per-lane loop it replaced, on random registers and FP states; the whole Ctx must match.
      vfpx_elem_test <cases> <seed>      exit 0: no mismatch; 1: a mismatch; 3: this CPU lacks the -march it was built for */

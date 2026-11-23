@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the check of the graphics front end's recording pass (docs/native-engine/gfx-record-job.md,
 // "The check").
 //

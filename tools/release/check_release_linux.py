@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Check the Linux files of a HeyListen release before they are published (tools/release/make_release_linux.sh runs it in CI).
 
     python3 -I tools/release/check_release_linux.py <tag> <dir>
@@ -72,7 +74,7 @@ def main():
     def bad(message):
         problems.append(message)
 
-    if not re.fullmatch(r"v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]+)?", tag):
+    if not re.fullmatch(r"v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.-]+)?", tag):
         sys.exit("%s is not a release tag (v0.3.2)" % tag)
     image = os.path.join(dist, "HeyListen-%s-Linux-x64.AppImage" % tag)
     parts_dir = os.path.join(dist, "parts")

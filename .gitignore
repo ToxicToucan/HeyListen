@@ -57,3 +57,6 @@ image/
 *.sha1
 *.so
 !profile/pipeline_states.bin
+
+# lease ticket ids written to a file by mistake (two slipped into main with the copyright merge)
+/20[0-9][0-9][01][0-9][0-3][0-9]-*

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the dispatch loop the actors' dispatcher (hl/bridge/Dispatcher.h, a scheduler's rings) and the
 // module system's job group (hl/bridge/JobGroup.h, a heap under a mutex) share, over a queue policy. Private to
 // src/bridge. docs/native-engine/jobs-boundary.md reads both protocols step by step: they differ only in how a job is

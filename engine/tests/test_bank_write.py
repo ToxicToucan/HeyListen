@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """bank_write.h (the native driver-bank writer, HL_UBO_WRITER) against the word-by-word fill: every bank size, random state."""
 import argparse
 import subprocess

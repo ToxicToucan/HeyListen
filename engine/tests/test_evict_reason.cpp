@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // evict_reason (gpu/vk/evict_reason.h): when the eviction pass leaves a texture's write-back out.
 // tests/test_evict_reason.py
 #include "../gpu/vk/evict_reason.h"

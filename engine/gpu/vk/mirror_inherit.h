@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Which part of a retired pool's mirror a new pool's mirror takes over (vk_memory.cpp, mirror_make).
 //
 // A pool remade larger gets a new mirror: guest memory whole, then the retired pools' mirrors over their part, for what

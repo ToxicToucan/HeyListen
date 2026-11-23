@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the stream module's path choice and counters (hl/stream/Decode.h).
 #include "hl/stream/Decode.h"
 

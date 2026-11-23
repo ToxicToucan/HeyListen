@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The program pick's validated-handle memo (HL_PROG_MEMO, gpu/vk/prog_memo.h): the header against a made-up world, and the wiring in
 vk_shader.cpp (what the memo answers from, when it stays off, that the check mode works the reference pick out and uses it).
 python -I -B tests/test_prog_memo.py [--cxx clang++]"""

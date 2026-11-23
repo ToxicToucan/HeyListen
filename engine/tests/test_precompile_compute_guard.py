@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Sacrappy
 """Game-free Windows SEH check of the actual precompile compute arm.
 
 Extracts production code; fake Vulkan never loads a GPU driver. The thread and
@@ -58,7 +59,7 @@ void cs_module_release(Program&){++released;}
 bool precompile_compute_quick(VkComputePipelineCreateInfo&){return quick_mode;}   // (Intel serial builds: its own check, test_intel_quick_compute)
 #define CHECK(c) do {if(!(c)){std::fprintf(stderr,"CHECK failed line %d: %s\n",__LINE__,#c);std::exit(7);}}while(0)
 const VkComputePipelineCreateInfo* expected_ci=nullptr; VkPipeline* expected_out=nullptr;
-void pin_subgroup(decltype(VkComputePipelineCreateInfo::stage)&stage,unsigned x){CHECK(x==32);CHECK(stage.stage==12);}
+void pin_subgroup(decltype(VkComputePipelineCreateInfo::stage)&stage,unsigned x,unsigned long long inv){CHECK(inv==32);CHECK(x==32);CHECK(stage.stage==12);}
 VkResult vkCreateComputePipelines(uintptr_t device,VkPipelineCache cache,unsigned count,const VkComputePipelineCreateInfo*ci,const void*allocator,VkPipeline*out){
  CHECK(device==dev.device&&cache==pcache&&count==1&&allocator==nullptr&&out);
  CHECK(ci&&ci->sType==10&&ci->stage.sType==11&&ci->stage.stage==12&&ci->stage.module==0x2468&&ci->layout==0x1357);

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (heylisten) The detailed performance profile's runtime: see profile_run.h and profile_report.h.
 #include "profile_run.h"
 
@@ -85,12 +87,14 @@ bool make_pool() {
     VkQueryPoolCreateInfo qi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
     qi.queryType = VK_QUERY_TYPE_TIMESTAMP;
     qi.queryCount = kSlots * kQ;
-    if (vkCreateQueryPool(dev.device, &qi, nullptr, &pool) != VK_SUCCESS) {
-        pool = VK_NULL_HANDLE;
-        return false;
-    }
-    vkResetQueryPool(dev.device, pool, 0, kSlots * kQ);
-    slots = new TSlot[kSlots];
+    // (the slots before the pool: tprof_collect runs on the renderer's threads once the pool is set, and one that came between
+    // the two read a null slots, a v0.4.3 crash at tprof_collect+0x5d, read 0x1e1e8)
+    if (!slots) slots = new TSlot[kSlots];
+    VkQueryPool p = VK_NULL_HANDLE;
+    if (vkCreateQueryPool(dev.device, &qi, nullptr, &p) != VK_SUCCESS) return false;
+    vkResetQueryPool(dev.device, p, 0, kSlots * kQ);
+    std::atomic_thread_fence(std::memory_order_release);
+    pool = p;
     return true;
 }
 
@@ -116,7 +120,15 @@ std::atomic<DWORD> registered_tid[16];
 std::atomic<uint8_t> registered_role[16];
 std::atomic<int> registered_n{0};
 
-std::thread sampler;
+// (a file-scope std::thread that is still joinable when the process ends calls std::terminate from its destructor: ExitProcess
+// runs this DLL's static destructors with the sampler still looping, and the player saw "libc++abi: terminating" after
+// "display: window closed, exiting". perf_report_final stops the sampler first; this holder is the net below that)
+struct SamplerThread {
+    std::thread t;
+    ~SamplerThread() { if (t.joinable()) t.detach(); }
+};
+SamplerThread sampler_holder;
+std::thread& sampler = sampler_holder.t;
 std::atomic<bool> stop_sampler{false};
 std::atomic<int64_t> n_samples{0}, n_ticks{0}, n_busy_ns{0}, n_unknown{0}, n_dropped{0};
 std::vector<pf::Range> ranges;   // (sampler thread only)
@@ -473,7 +485,7 @@ void tprof_end_label(VkCommandBuffer cmd, const std::string& label) {
 }
 
 void tprof_collect(int slot) {
-    if (!pool || slot < 0 || slot >= kSlots) return;
+    if (!pool || !slots || slot < 0 || slot >= kSlots) return;
     TSlot& s = slots[slot];
     if (!s.nq) return;
     const uint32_t nq = s.nq, ns = s.ns;

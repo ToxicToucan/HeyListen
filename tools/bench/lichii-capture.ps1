@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 # Records Lichii's frame times with PresentMon while you play.
 # Run in an ADMINISTRATOR PowerShell, with lichii.exe already running and Link in the scene:
 #   powershell -ExecutionPolicy Bypass -File E:\OOT\HeyListen\tools\bench\lichii-capture.ps1 -Scene kokiri

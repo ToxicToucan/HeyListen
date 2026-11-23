@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (hookshot) Allocations of the game's "OptimizeChangeBank" thread tried again when their heap has no room, instead of the
    game going on with a null pointer and crashing a few frames later.
 

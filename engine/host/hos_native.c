@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (hookshot, TICK-026) Native replacements of hot guest code: the host side of nx2/native_replace.py.
 
    The lifter's patch step puts a gate at the head of each replaced guest block (or function):

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Insert menu's dependent rows (gpu/vk/menu_rows.h, vk_menu.cpp row_shown / row_fixed): the rows that only matter with another
 setting on (the HDR rows with HDR on where the display has it, PsychoV35's with it, Frame generation by and Frame pacing with
 frame generation on, V-Sync mode with V-Sync On, the DLSS model with DLSS or DLAA, DLAA before the bloom with DLSS) are hidden

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (longshot) The GPU's clock on the Steam Deck (vk_gpu_clock.h; why and when: gpu_clock.h).
 //
 // The device's render node (VK_EXT_physical_device_drm: /dev/dri/renderD<minor>) is opened once more, beside the driver's own

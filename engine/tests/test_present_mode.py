@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Insert menu's V-Sync and VRR rows (gpu/vk/present_mode.h, their use in vk_main.cpp's create_swapchain and vrr_resolved,
 vk_replay.cpp's present_image), frame generation under FIFO, and the flip-eligible fullscreen window (host/display.c), no game or GPU needed.
 

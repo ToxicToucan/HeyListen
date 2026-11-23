@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The game's window (Windows): the renderer's surface (gpu/render/, WebGPU). The native NVN layer (nvn_native.c)
    presents the game's window textures into it (rx_nvn_present). The title bar carries live numbers.
    TOTKPort's hos/display.c, without its emulated-GPU fallback (the window buffer read from guest memory): MKW has

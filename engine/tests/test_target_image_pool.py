@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A render target's image whose texture is gone waits in a pool by its create info, and a new texture of that create info
 takes it, instead of each of OoT's shifting transient targets being a new image made and destroyed.
 
@@ -51,7 +53,7 @@ class TargetImagePoolTests(unittest.TestCase):
         self.assertIn("uint64_t pool_key = 0;", self.hdr)
 
     def test_a_texture_made_for_a_target_is_one_and_its_image_comes_from_the_targets_blocks(self):
-        get = block(self.tex, "Texture* texture_get(const nvn_tex* t, bool for_sampling)")
+        get = block(self.tex, "Texture* texture_get(const nvn_tex* t, bool for_sampling, bool need_attach)")
         self.assertIn("create(k, t, fi.format, fi.astc, bw, bh, bpb, !for_sampling)", get)
         make = block(self.tex, "Texture* create(const Key& key")
         self.assertIn("create_image(ci, x.image, x.allocation, big, as_target && !is_bc(x.format) && !is_astc(x.format))", make)
@@ -92,7 +94,7 @@ class TargetImagePoolTests(unittest.TestCase):
 
     def test_the_dead_list_pools_before_it_destroys_and_the_pool_is_trimmed_each_present(self):
         frame = block(self.tex, "void texture_frame(uint64_t completed)")
-        loop = frame[frame.index("for (auto it = dead.begin(); it != dead.end();) {"):]
+        loop = frame[frame.index("for (auto it = dead.begin(); it != dead.end() && destroyed < per_frame;) {"):]   # (RX_VK_DESTROY_PER_FRAME: at most that many a present)
         self.assertLess(loop.index("if (it->pool_key) {"), loop.index("destroy_image(it->image, it->allocation);"))
         self.assertIn("pool_put(*it);", loop[:loop.index("destroy_image(")])
         trim = frame.index("pool_trim();")

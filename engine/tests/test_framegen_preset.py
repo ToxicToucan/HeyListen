@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Quality presets preserve the player's frame-generation choice, and the Frame generation row's arrows and the Frame
 generation by row's switch keep the multiplier within what the mode that makes the frames supports.
 

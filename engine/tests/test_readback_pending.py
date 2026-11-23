@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The read-back command pool is not kept half made.
 
 When vkAllocateCommandBuffers or vkCreateFence failed, rb_pool stayed set with rb_cmd or rb_fence null: the next call

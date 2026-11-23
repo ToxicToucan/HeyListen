@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Who spends the time: for the samples of a profile (scripts/prof.py's input) whose leaf is in a given module (default nvoglv64.dll, the
 NVIDIA driver), the nearest frame of hookshot_vk.dll above it, so the cost of the driver is charged to the back end's function that
 called it; and the same for all samples (the nearest named function) as 'self including callees in other modules'.

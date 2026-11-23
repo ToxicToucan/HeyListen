@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // What the shaders' preparation is made of (gpu/vk/prepare_work.h): tests/test_prepare_speed.py compiles and runs this.
 #include "../gpu/vk/prepare_work.h"
 #include <cstdio>

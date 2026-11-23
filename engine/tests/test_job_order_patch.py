@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """nx2/oot_patches.py, TICK-047's job order hooks: patch_job_order puts one timing pair around each of the dispatcher's two
 indirect job calls and one x0 statement before each level's push, once, at the places TICK-047 chose (never after the
 level-0 / level-2 retry labels), and leaves the text alone when its anchors are not each found once. The lifted text is a

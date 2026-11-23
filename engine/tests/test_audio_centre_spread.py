@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A 5.1 mix also puts the centre in the front pair, so voices survive a device that drops the centre (host/nn_audio.c,
 issue 82).
 

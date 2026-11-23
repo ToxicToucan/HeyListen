@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the recording job's key-0xa0 draw function (guest 0x8008d640), where it meets its native
 // parts (docs/native-engine/gfx-record-job.md, section 13).
 //

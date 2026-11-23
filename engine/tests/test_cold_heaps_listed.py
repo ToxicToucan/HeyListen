@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The cold-page heap pass over the OS layer's own books (host/hl_mem.c heaps_listed, heaps_pass_listed; HL_MEM_COLD_LISTED).
 
 The pass that found the heaps' committed pages with VirtualQuery held the address space lock through queries of 100+ ms

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // tests/test_staging_burst.py puts vk_texture.cpp's staging() and texture_frame's give-back loop where ACTUAL is and
 // runs the cases below: frames that stage, then present, on a clock the fixture moves.
 #include <vulkan/vulkan.h>

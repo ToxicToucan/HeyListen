@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen TICK-063) tests/test_fpx_block.py's driver: each guest sequence lifted with the default lowering (fn_old) and with
    A64_FPX_BLOCK=1 (fn_new), on random registers (all 32 vector registers), guest memory and FP states: the whole Ctx and the
    guest memory must match. Also counts how often the block path was taken (fn_new's gate and lane tests all passed) when

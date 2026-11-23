@@ -1,4 +1,6 @@
 #version 450
+// Copyright (C) 2026 Sacrappy
+
 #extension GL_EXT_nonuniform_qualifier : require
 
 layout(location = 0) in vec2 vUV;

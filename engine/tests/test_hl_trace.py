@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The crash recorder's core (host/hl_trace_core.c): rings under eight writers, the live and freed blocks' tables, the
 file and the crash report's lines (tests/hl_trace_test.c). Windows only (its test threads): skipped elsewhere."""
 import argparse

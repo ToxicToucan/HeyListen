@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 r"""(TICK-042, diagnostic) A job-marked lift for tools/bench/jobgraph.py: wraps the game's job calls in hos_jt_job() marks
 (host/hos_jobtrace.c), which a HOS_JOBTRACE run records as JT_JOB_B / JT_JOB_E. Patches the lifted C in place and copies
 each file it changes into <backup dir> first; copy them back (and build again) to return to the shipped lift. The marks

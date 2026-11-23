@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the main loop (hl/app/MainLoop.h).
 #include "hl/app/MainLoop.h"
 

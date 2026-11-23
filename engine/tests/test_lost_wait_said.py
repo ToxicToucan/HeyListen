@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A capture's timeline wait that comes back VK_ERROR_DEVICE_LOST is said as a lost device, not as a wait that timed out
 (gpu/vk/vk_replay.cpp vk_timeline_wait, wait_lost). Ported in spirit from Longshot d61aa82b (#670): HeyListen's replay has the one wait,
 so the check reads its source. No GPU or game."""

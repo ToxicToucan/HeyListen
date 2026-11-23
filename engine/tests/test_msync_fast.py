@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-056) RX_VK_MSYNC_FAST: the mirror sync's faster page walk finds the same pages and leaves the same write-back sets.
 
 Two helpers of gpu/vk/vk_memory.cpp are cut out of the source and compiled with stubs:

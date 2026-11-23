@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The frame rows: Frame generation by and its multiplier right under it, the multiplier never past what the mode supports, and the
 Frame rate limit as the rate PRESENTED, with Unlimited (gpu/vk/framegen_rows.h, vk_menu.cpp, vk_framegen.cpp, host/nn_vi.c).
 

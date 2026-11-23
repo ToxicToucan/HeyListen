@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """What the shader caches are good for: the shader translator's sources, and the stamp made of them.
 
 nx2/build.py compiles the stamp into the renderer (HOOKSHOT_SHADER_STAMP), where translator_stamp (gpu/vk/vk_shader.cpp) folds

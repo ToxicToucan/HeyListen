@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """RX_VK_FOLD_PSEUDO=1 folds the constant extracts and logic ops that carry zero/sign flags, and the flags get the right value (default off).
 
 Builds the real IR (frontend/ir/*.cpp) and runs ConstantPropagationPass over R2P-shaped chains: with the switch on the extract, its

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the per-body bounding-box update of Havok's last solver substep (guest 0x817d9d80,
 // docs/native-engine/physics-loops.md section 6.3), operation for operation (hl/math/Exact.h). It works on copies: the
 // caller gives the values the function reads and gets back the body as the function leaves it and the records it

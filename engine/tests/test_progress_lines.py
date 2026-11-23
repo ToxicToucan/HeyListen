@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """make_game.py --progress-lines / --prepare / --game: the build without a window, for RecompLauncher's setup step
 (recomplauncher.json "prepare"). Lines `progress <0 to 1> <text>`, the builder window's @@ lines left out, exit 0 when it worked and a
 clear last line with a nonzero exit when not. No game and no build: the stages are said as a build says them.

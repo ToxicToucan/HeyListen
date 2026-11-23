@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the NVN procedures the graphics front end calls, and the sink that calls them
 // (docs/native-engine/gfx-record-job.md, section 8).
 //

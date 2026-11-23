@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A compute program's pipeline is read and published atomically in vk_draw.cpp.
 
 The dispatch's build worker, the dispatch itself and the precompile's threads write Program::compute_pipeline while other

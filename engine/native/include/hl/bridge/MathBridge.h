@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the guest structures the hl::math kernels read in place (docs/native-engine/physics-loops.md
 // sections 3 and 6, critical-jobs.md). Only the fields the kernels use are named; every offset is checked here. The
 // guest addresses of the functions answered and of the globals read are the OS layer's (engine/host/hl_math.c).

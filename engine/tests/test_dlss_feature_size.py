@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """DLSS's feature is created at each mode's recommended input size (NGX_DLSS_GET_OPTIMAL_SETTINGS' w, h), not at the largest
 size of the mode's dynamic range: the input images and the feature's range (feature_rw/rh, min_rw/rh) still cover the whole
 range, so a render size inside it needs no new feature. DLAA's creation size is the output's.

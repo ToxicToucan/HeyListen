@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (hookshot) An AV1 decoder on Media Foundation, for nn::codec's AV1 decoder (host/nn_video.c).
 
    OoT's movies (romfs/Movie: the intro, ...) are AV1, and the static FFmpeg the build links has no AV1 decoder (its

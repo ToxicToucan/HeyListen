@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: one motion's step of the last substep (hl/math/MotionStep.h). Each line is one guest operation
 // of 0x8182dc20 in the guest's order (physics-loops.md 9.3); lanes the function computes but never uses (the fourth lane
 // of the V vectors, the second of pairs whose first alone is tested) are left out: they reach nothing the game reads.

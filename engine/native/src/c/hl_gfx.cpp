@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the C surface (hl/c/hl_gfx.h) over the graphics front end and its bridge.
 #include "hl/c/hl_gfx.h"
 

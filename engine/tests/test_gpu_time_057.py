@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-057) GPU time a frame on PC 3050: what the switches of this ticket do, read from the source.
 
 - vk_work.h: every draw, pass edge, barrier and command buffer begin counts by its command buffer (all_work_slot), NGX's commands

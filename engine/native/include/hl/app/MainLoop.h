@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the main loop.
 //
 // One frame is a fixed list of phases run in order on the thread that owns the loop (input, the gameplay step, render

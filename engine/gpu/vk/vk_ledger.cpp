@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, 2026-11-14) RX_VK_LEDGER=<seconds>: the memory ledger (see vk_ledger.h). The console holds a texture's bytes once;
 // here they may be in the game's pool storage (guest memory: RAM and commit), a VRAM mirror of that pool, the Vulkan image made
 // from it, the BC cache, staging, a capture. Nobody had the one table that says, class by class, how many times: this is it.

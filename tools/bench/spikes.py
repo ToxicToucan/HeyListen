@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-051) The spikes of a run's frame trace, by cause.
 
     python -I spikes.py <hookshot_frames.csv | run folder> [...] [--cut 66] [--factor 2] [--list N]

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: where the render-state function's commands go (hl_gfx_rec.cpp; hl/c/hl_gfx_rec.h).
 #pragma once
 

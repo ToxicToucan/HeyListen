@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the game's main loop driven by the native main loop (hl/bridge/FrameLoop.h). Each phase is one
 // step of the framework's frame function 0x8348c680 (docs/native-engine/main-loop.md, "One iteration"); the guest
 // instruction addresses in the comments are where that step is.

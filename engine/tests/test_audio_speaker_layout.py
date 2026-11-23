@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Auto's speakers follow the default output's speaker positions, not its channel count (host/nn_audio.c, issue 2182).
 
 The real au_layout_channels from host/nn_audio.c is compiled with a small driver and asked about mix formats Windows

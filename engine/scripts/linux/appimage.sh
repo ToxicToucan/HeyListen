@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Sacrappy
+
 # The Linux AppImage: HeyListen Builder with everything it needs to build the game on the player's PC. No game data and
 # nothing made from it is in it: the game is built from the player's own copy, as on Windows.
 #

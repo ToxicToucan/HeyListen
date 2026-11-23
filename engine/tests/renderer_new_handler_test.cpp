@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // tests/test_renderer_new_handler.py's fixture: the real new_refused of gpu/vk/vk_main.cpp (included from new_handler.inc),
 // with a fake host, a fake commit and its own log. Each case in its own process.
 #include <atomic>

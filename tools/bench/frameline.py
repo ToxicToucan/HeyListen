@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-054) A frame-by-frame timeline of the game's threads, the replay and the GPU from a HOS_JOBTRACE file.
 
     python -I tools/bench/frameline.py <jobtrace.txt> [--frames 4] [--from <ms into the window>] [--row 0.25] [--summary]

@@ -27,6 +27,8 @@ namespace mkwvk {
 enum ProfPhase { PROF_SUBMIT, PROF_PRESENT, PROF_DRAW, PROF_DESC, PROF_TEXGET, PROF_UPLOAD, PROF_PIPE, PROF_PROGRAM,
                  PROF_CMDS, PROF_DISPATCH, PROF_MEMSYNC, PROF_QSUBMIT, PROF_SLOTWAIT, PROF_COUNT };
 int64_t prof_ns[PROF_COUNT];
+enum DescPart { PD_SELF, PD_TEX, PD_POOL, PD_COUNT };   // (v0.4.4: PROF_DESC's parts, vk_internal.h)
+int64_t prof_desc[PD_COUNT];
 inline int64_t prof_now() { return clock_reads++, now_ns; }
 @SCOPES@
 }

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* mkw-recomp's pieces of the standalone runtime that TOTKPort's hos/ keeps elsewhere: the 64-bit guest window's
    commit (TOTK commits its whole 4 GB window up front; MKW's 512 GB window is only reserved), and stand-ins for the
    hooks of files not taken into host/ (the renderer and display, the profiler, mods, TOTK's own patches). */
@@ -11,10 +13,46 @@
 #include <string.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#ifdef _WIN32
+#include "ws_floor.h"   /* (HL_PREFAULT asks for the soft working-set minimum VirtualLock needs) */
+#endif
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <execinfo.h>
 #include <sys/sysinfo.h>
+#endif
+
+/* (STALL1, HL_PREFAULT=1, off by default) A megabyte committed on first touch is also populated at once, in one kernel call
+   (VirtualLock then VirtualUnlock: the pages are made resident in a batch), instead of 256 page faults taken one at a time by
+   whichever loader thread writes it. The zone loads first-touch 300,000 pages in a second (host/hos_jobtrace.c's stall dumps:
+   ARes_Loading_* and the renderer's order thread running while every other thread waits for them); a fault costs the trap and
+   the zeroing, the batch only the zeroing. Costs the megabyte's memory even where the game would have left part of it alone, so
+   it stays off until measured. VirtualLock needs a working-set minimum above the locked size: the soft minimum of ws_floor.h
+   (512 MB) is asked for once; if either call is refused the batch turns itself off. */
+#ifdef _WIN32
+static void prefault_mb(void *p) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("HL_PREFAULT");
+        on = e && e[0] == '1';
+        if (on) {
+            uint64_t mb, ram;
+            unsigned long err;
+            if (ws_floor_apply("512", &mb, &ram, &err) < 0) {
+                hos_log("mem: HL_PREFAULT: the working-set minimum was refused (error %lu): off", err);
+                on = 0;
+            } else hos_log("mem: HL_PREFAULT=1: each megabyte committed on first touch is made resident in one call");
+        }
+    }
+    if (on <= 0) return;
+    if (VirtualLock(p, 0x100000)) VirtualUnlock(p, 0x100000);
+    else {
+        hos_log("mem: HL_PREFAULT: VirtualLock refused (error %lu): off", GetLastError());
+        on = 0;
+    }
+}
+#else
+static void prefault_mb(void *p) { (void)p; }
 #endif
 
 /* ---- the guest window ---------------------------------------------------------------------------------------
@@ -312,7 +350,7 @@ static LONG CALLBACK commit_on_touch(EXCEPTION_POINTERS *info) {
             hos_log("mem: %lld MB of the game's memory committed on first touch", (long long)(total >> 20));
         /* (HOS_GUEST_PAGES: not while a drop splits the reservation, which fails commits in it meanwhile) */
         hos_gp_hold(1);
-        if (commit_try(GP(guest & ~0xFFFFFULL), 0x100000)) return hos_gp_hold(0), EXCEPTION_CONTINUE_EXECUTION;
+        if (commit_try(GP(guest & ~0xFFFFFULL), 0x100000)) return hos_gp_hold(0), prefault_mb(GP(guest & ~0xFFFFFULL)), EXCEPTION_CONTINUE_EXECUTION;
         if (GetLastError() == ERROR_COMMITMENT_LIMIT) {   /* (the commit limit: wait, then stop with the notice, rather than fault the game's store) */
             hos_log("mem: the megabyte at %#llx was refused at the commit limit (error %lu): trying again for up to 5 s",
                     (unsigned long long)(guest & ~0xFFFFFULL), (unsigned long)ERROR_COMMITMENT_LIMIT);

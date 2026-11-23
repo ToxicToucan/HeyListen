@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // gpu/vk/present_mode.h: which present mode the swapchain gets from the V-Sync and V-Sync mode rows, VRR, the switches and
 // the surface; and the images each choice asks for, with the surface's clamp
 #include <cstdio>

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the job system's boundary with the gameplay code (hl/bridge/JobBridge.h).
 #include "hl/bridge/JobBridge.h"
 

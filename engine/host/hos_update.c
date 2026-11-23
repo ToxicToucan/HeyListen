@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (hookshot) The update offer: at start, the latest release on GitHub is asked for (a few seconds at most, nothing when offline), and
    when it is not the release this game folder was built with, the player is asked whether to update. Yes starts the Hookshot Builder
    that made the folder (hookshot_version.txt, written by nx2/make_game.py) with --update: it downloads the new release and builds the

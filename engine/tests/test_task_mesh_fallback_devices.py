@@ -66,14 +66,21 @@ int main(int argc, char** argv) {
 def check_source():
     main_cpp = (ROOT / "gpu/vk/vk_main.cpp").read_text(encoding="utf-8")
     at = main_cpp.index("bool task_mesh_fallback = mesh_rule::task_mesh_fallback_wanted(")
-    block = main_cpp[at:main_cpp.index("if (dev.task_mesh_fallback) logf(", at)]
+    block = main_cpp[at:main_cpp.index("dev.mesh_only_fallback = ", at)]
     for need in ("!linux_os", "dev.props.vendorID", "dev.props.deviceID", "mesh_choice.mode", 'getenv("RX_VK_TASK_MESH_FALLBACK")',
                  "dev.task_mesh_fallback = task_mesh_fallback && dev.mesh_shader && f12.bufferDeviceAddress"):
         assert need in block, "vk_main.cpp: %s is missing from the task + mesh fallback's wiring" % need
     shader = (ROOT / "gpu/vk/vk_shader.cpp").read_text(encoding="utf-8")
     assert "dev.uses_mesh_fallback(task != nullptr)" in shader, "mesh_program_locked does not ask per program"
     assert "(dev.task_mesh_fallback ? 4u : 0u)" in shader, "the program cache's stamp does not hold the task + mesh mode"
-    assert "bool uses_mesh_fallback(bool has_task) const" in (ROOT / "gpu/vk/vk_internal.h").read_text(encoding="utf-8")
+    assert "(dev.mesh_only_fallback ? 8u : 0u)" in shader, "the program cache's stamp does not hold the mesh-only mode"
+    internal = (ROOT / "gpu/vk/vk_internal.h").read_text(encoding="utf-8")
+    assert "bool uses_mesh_fallback(bool has_task) const" in internal
+    # (longshot 3228cb5f, #1650: Windows Navi 21 to 23 also run mesh-only draws as compute, by the same default rule and switch)
+    assert "task_mesh_fallback && (has_task || mesh_only_fallback)" in internal, "a mesh-only program does not follow the RDNA 2 rule"
+    assert ("dev.mesh_only_fallback = dev.task_mesh_fallback && !linux_os && "
+            "mesh_rule::task_mesh_fallback_default(dev.props.vendorID, dev.props.deviceID);") in main_cpp, "mesh_only_fallback is not the Windows RDNA 2 default"
+    assert "(uint64_t)dev.mesh_only_fallback << 8" in (ROOT / "gpu/vk/vk_draw.cpp").read_text(encoding="utf-8"), "the pipeline key does not hold it"
 
 
 def run(exe, args):

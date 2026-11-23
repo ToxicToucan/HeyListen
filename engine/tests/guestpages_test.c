@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Game-free test of host/hos_guestpages.c (tests/test_guestpages.py builds it with that file; Windows only): a small window
    reserved the way the guest window is, granules dropped and restored while threads touch them. Exits non-zero on a
    failure. */

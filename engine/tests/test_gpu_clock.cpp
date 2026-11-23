@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // gpu_clock (gpu/vk/gpu_clock.h): when the renderer holds amdgpu's stable power state. tests/test_gpu_clock.py
 #include "../gpu/vk/gpu_clock.h"
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Hot-function map of the frame's critical chain from an all-thread sample (HOS_SAMPLE_ALL, the input of scripts/crit.py).
 
     RX_MAPS=<build folder with hookshot.map> python -I scripts/hotmap.py <all-thread file> [top] [wait function]

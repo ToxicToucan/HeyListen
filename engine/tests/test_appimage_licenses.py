@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The AppImage carries the licences of the third-party parts compiled into hookshot_vk.so: Dear ImGui (MIT), zstd (BSD), the
 Libertinus fonts (OFL) and AMD's FSR API headers (MIT, the back end is built with AMD FSR 4), each with its PROVENANCE.md or README.md. Runs the real copy block of scripts/linux/appimage.sh into a temporary
 folder; nothing is built.

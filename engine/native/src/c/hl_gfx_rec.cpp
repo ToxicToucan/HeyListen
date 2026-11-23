@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the render state written as the back end's records (hl/c/hl_gfx_rec.h; direct-emission.md,
 // bricks A and B).
 //

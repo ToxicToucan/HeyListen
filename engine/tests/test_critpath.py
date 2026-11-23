@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-058) tools/bench/wakelat.py and critpath.py on a synthetic HOS_JOBTRACE: the hand-off latency of a slept wait (signal
 to wait end, its virtual-core wait apart), and the critical path walked back between the main thread's end-of-frame waits
 (work by thread, hand-offs, a vcore wait with its holder, a poll ended by a job thread stopping in its last step).

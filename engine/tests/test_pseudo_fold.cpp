@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The constant propagation pass's fold of an instruction of immediates that has flag pseudo-operations (RX_VK_FOLD_PSEUDO).
 // Builds real IR (shader_recompiler/frontend/ir) and runs ConstantPropagationPass over it: argv[1] is "on" or "off".
 #include <cstdio>

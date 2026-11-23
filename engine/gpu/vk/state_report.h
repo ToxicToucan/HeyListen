@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (heylisten) The pipeline state telemetry's rules (perf_report.cpp gathers the batch and writes it to pipelines_pending/, the host's
 // sender, host/hos_crash_dialog.c, posts it to <the build's address>/telemetry/pipelines): what a player's game recorded in
 // hookshot_pipeline_states.bin that the shipped list (hookshot_pipeline_states_shipped.bin, profile/pipeline_states.bin) does not

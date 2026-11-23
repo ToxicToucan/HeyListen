@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the decoded pages that still hold the decoder's bytes (hl/stream/Pages.h).
 #include "hl/stream/Pages.h"
 

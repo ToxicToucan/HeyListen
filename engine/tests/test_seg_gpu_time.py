@@ -55,22 +55,23 @@ def main():
 
     e = function(rp, "const uint8_t* replay_handle_early(")
     need("getenv" not in e, "replay_handle_early reads a switch: the segments' GPU time must not depend on one")
-    loop = e[e.index("for (int k = 0; k < nplan; k++) {"):e.index("std::vector<VkCommandBuffer> inits;")]
+    loop = e[e.index("for (int k = 0; k < nplan + (int)P; k++) {"):e.index("std::vector<VkCommandBuffer> inits;")]
     need("gpu_time_begin(*j->r);" in loop and loop.index("vkBeginCommandBuffer(j->r->upload, &bi);") < loop.index("gpu_time_begin(*j->r);"),
          "early path: a segment's timestamps are not begun after its upload command buffer")
     need(e.index("gpu_time_begin(*j->r);") < e.index("hook.on_point = [&](const ParPoint& q) {") < e.index("jt_mark(13, 0);"),
          "early path: timestamps begun after a segment can be handed out")
-    rj = e[e.index("const auto record_job = [&seg_cv, &seg_mu, &now_ns"):e.index("// the dry pass, handing segments out")]
+    rj = function(rp, "void early_record_job(EarlyGroup& G, EarlyJob* j)")
     need("gpu_time_end(*j->r, j->uploads);" in rj, "early path: a segment's end timestamps are not written")
     if "gpu_time_end(*j->r, j->uploads);" in rj:
         at = rj.index("gpu_time_end(*j->r, j->uploads);")
         need(rj.index("j->uploads = texture_uploads_recorded();") < at < rj.index("vkEndCommandBuffer(j->r->upload);")
              and at < rj.index("vkEndCommandBuffer(j->r->cmd);"), "early path: the end timestamps are not after the uploads and before the ends")
     sub = e.index("submit_recording(r, false);")
-    need("ts_recseq[jobs[k]->r->slot] = rec_seq;" in e and sub < e.index("ts_recseq[jobs[k]->r->slot] = rec_seq;") < e.index("record_job(last);"),
+    need("ts_recseq[jobs[k]->r->slot] = rec_seq;" in e and sub < e.index("ts_recseq[jobs[k]->r->slot] = rec_seq;") < e.index("early_record_job(G, last);"),
          "early path: the segments' recording number is not set after rec_cur's submit, before they are recorded")
-    sq = e.index("gpu_time_segment_submitted(*j->r);") if "gpu_time_segment_submitted(*j->r);" in e else -1
-    need(sq > 0 and e.index("queue_flush_locked();") < sq < e.index("vkQueueSubmit2(dev.queue, 1, &si, j->r->fence)"),
+    es = function(rp, "void early_submit_job(EarlyGroup& G, EarlyJob* j)")
+    sq = es.index("gpu_time_segment_submitted(*j->r);") if "gpu_time_segment_submitted(*j->r);" in es else -1
+    need(sq > 0 and es.index("queue_flush_locked();") < sq < es.index("vkQueueSubmit2(dev.queue, 1, &si, j->r->fence)"),
          "early path: a segment's submit is not counted under the present lock before it goes")
 
     rh = function(rp, "const uint8_t* replay_handle(VkCommandBuffer& cmd, const uint8_t* h, bool may_stop)")
@@ -81,8 +82,9 @@ def main():
     need(rh.index("submit_recording(r, false);\n    jt_mark(20, 0);") < rh.index("ts_recseq[j->r->slot] = rec_seq;"),
          "replay_handle: the recording number is taken before rec_cur's submit")
     need("gpu_time_begin(r);" in function(rp, "void segment_begin_here(Recording& r) {"), "RX_VK_SEG_SETUP_PAR: a segment's timestamps not begun")
-    sq = rh.index("gpu_time_segment_submitted(*j->r);") if "gpu_time_segment_submitted(*j->r);" in rh else -1
-    need(sq > 0 and rh.index("queue_flush_locked();", rh.index("record_job")) < sq < rh.index("vkQueueSubmit2(dev.queue, 1, &si, j->r->fence)"),
+    seg_count = "gpu_time_segment_submitted(*j->r);" if "gpu_time_segment_submitted(*j->r);" in rh else "gpu_time_segment_submitted(*member[q]->r);"   # (ORDER1: merged submits count each member)
+    sq = rh.index(seg_count) if seg_count in rh else -1
+    need(sq > 0 and rh.index("queue_flush_locked();", rh.index("record_job")) < sq < rh.index("vkQueueSubmit2(dev.queue, 1, &si, " + ("owner.fence)" if "vkQueueSubmit2(dev.queue, 1, &si, owner.fence)" in rh else "j->r->fence)")),
          "replay_handle: a segment's submit is not counted under the present lock before it goes")
 
     if fails:

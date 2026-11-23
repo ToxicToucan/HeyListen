@@ -1,4 +1,4 @@
-// astc_bc_encode.comp sha256 6d7fa9aad704f15bcc15a62568801913b1044f3b139b02a8abb4fe874b122b20 (tests/test_astc_bc_encode.py --write: glslangValidator -V --target-env vulkan1.1 --vn ASTC_BC_ENCODE_COMP_SPV)
+// astc_bc_encode.comp sha256 ca5605b852482524be91c15e279d0b51d43100d88a0bd593fdfa3d2b59241686 (tests/test_astc_bc_encode.py --write: glslangValidator -V --target-env vulkan1.1 --vn ASTC_BC_ENCODE_COMP_SPV)
 	// 1116.6.0
 	 #pragma once
 const uint32_t ASTC_BC_ENCODE_COMP_SPV[] = {

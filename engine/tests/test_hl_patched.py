@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The native engine and exeFS (code) mods, game-free: host/hl_patched.c on a made-up patch list and made-up answers (tests/hl_patched_test.c);
 and the builder's side, on a made-up image: which functions a patch touches (nx2/exefs_mods.py patched_functions), the list's text,
 and that nx2/hl_gates.py leaves an entry gate and the step hooks out of a patched function (and puts them in again when the mod goes).

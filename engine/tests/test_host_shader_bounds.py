@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The texture host shaders never store past the edge of their image (gpu/vk/host_shaders/*_comp_spv.h).
 
 A block of the ASTC decoder at the right or bottom edge of an image whose size is not a multiple of the block size reaches past

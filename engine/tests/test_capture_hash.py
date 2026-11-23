@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-060) RX_VK_CAPTURE_HASH: the capture's copy makes the mirror syncs' chunk hashes, read from the source.
 (msync_diff::copy_hash_page itself is checked against memcpy + page_hash by tests/test_msync_diff.cpp, with and without AVX2.)
 

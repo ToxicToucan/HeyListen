@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the split counter (gpu/vk/split_count.h, TICK-052; no game/GPU required)."""
 import argparse
 import subprocess

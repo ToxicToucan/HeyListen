@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-058) The frame's critical path through the game's hand-offs, from a HOS_JOBTRACE file, walked backwards.
 
     python -I tools/bench/critpath.py <jobtrace.txt> [--top 25]

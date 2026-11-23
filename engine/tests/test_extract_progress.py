@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The .nup extraction's progress lines (nx2/nup.py extract(progress=True)): `@@progress <0..1>` by bytes, rising, at most
 one per 1%, ending at 1.000; none without progress. make_game.py forwards them to the launcher's bar (--prepare)."""
 import contextlib

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* TICK-062 B1: the early return of SignalConditionVariable with no registered waiter (host/nn_os_sync.c, HOS_CV_SIGNAL_FAST) loses
    no wake-up. A model of the protocol with the same steps and memory orders: a waiter reads gen and registers (cv_waiting++,
    seq_cst) under cv->lk, then releases the guest mutex, then sleeps while gen is unchanged; a signal either returns at once on

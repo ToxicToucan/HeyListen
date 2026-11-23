@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen: the setup is released as HeyListenBuilder.exe, its list is heylisten-setup.txt, its new parts
 HeyListenBuilder-<part>-<sha>.zip; parts first made upstream keep their names and are served from this repository too.)
 

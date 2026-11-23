@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free source check of the Builder window's AMD FSR 4 tick: ticking it shows AMD's license (and the tick stays only when it
 is accepted, as NVIDIA DLSS's does), the build gets the same arguments as recomplauncher.json's fsr4 option, make_game.py takes
 them, and the fetch folder reaches the build (HOOKSHOT_FFX_SDK). AMD's files are never in the repository.

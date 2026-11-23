@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Sacrappy
+
 """Markdown table of bench directories (Hookshot present traces, Lichii PresentMon CSVs) (TICK-009, TICK-013).
 
     python tools/bench/summarize.py [--warmup-s N] [--origin launch|first_present] <dir> [<dir> ...]

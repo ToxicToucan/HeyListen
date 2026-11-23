@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The renderer's C++ allocations at Windows' commit limit (issues 55 and 62; Longshot 1280). hookshot_vk.dll's `operator new`
 that malloc refused threw a std::bad_alloc that nothing caught: "exception 0x20474343 at KERNELBASE.dll", the game gone at once
 with no wait and no out-of-memory notice, on PCs with 32 GB. gpu/vk/vk_main.cpp's new_refused (the C++ new_handler,

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The native NVN layer's API (HOS_NVN_NATIVE=1): TOTK's NVN calls are answered here instead of by the lifted NVN
    driver over an emulated Switch GPU (hos/gpu.c). See gpu/render/rx_nvn.h for the design; the replay of what is
    recorded here is gpu/render/rx_nvn.cpp.
@@ -19,6 +21,7 @@
    own procs (program builders, native images, sparse tile layouts, recording modes). The SDK's exports reach the
    same functions as the proc table (nvn2_dispatch, from gen/nvn2_exports.c). */
 #include "hos.h"
+#include "hos_waitnote.h"
 #include "shadow_slot.h"   /* (the storage a character's shadow map reserves) */
 #include "../gpu/render/rx_nvn.h"
 #include "hl/c/hl_gfx_rec.h"   /* (HeyListen: the records native producers write, checked against rx_nvn.h below) */
@@ -667,8 +670,16 @@ static int shadow_slot_layout(const nvn_texdesc *d, nvn_texlayout *out) {
         step = e ? atoi(e) : HOS_SHADOW_SLOT_STEP;
         if (step < 0) step = 0;
     }
-    const uint32_t side = hos_shadow_slot_side(d->target == NVN_TEXTURE_TARGET_2D, d->format, d->levels, d->depth, d->width,
-                                               d->height, (uint32_t)step);
+    /* (QUICK1) HOS_SHADOW_LADDER=1: the rungs of shadow_slot.h's ladder, also under 384, instead of the step */
+    static int ladder = -1;
+    if (ladder < 0) {
+        const char *e = getenv("HOS_SHADOW_LADDER");
+        ladder = e && atoi(e) != 0;
+    }
+    const uint32_t side = ladder ? hos_shadow_slot_side_ladder(d->target == NVN_TEXTURE_TARGET_2D, d->format, d->levels, d->depth,
+                                                               d->width, d->height)
+                                 : hos_shadow_slot_side(d->target == NVN_TEXTURE_TARGET_2D, d->format, d->levels, d->depth, d->width,
+                                                        d->height, (uint32_t)step);
     if (!side || side == d->width) return 0;
     nvn_texdesc slot = *d;
     slot.width = slot.height = side;
@@ -1360,7 +1371,8 @@ NV(nvnEventGetValue) {
            event signalled at once: the replay reads memory as submitted, so the game may go on to the next frame
            while this one is replayed, as far as the window's textures and the replay's queue let it */
         static int nowait = -1;
-        if (nowait < 0) nowait = getenv("HOS_PRESENT_NOWAIT") && atoi(getenv("HOS_PRESENT_NOWAIT")) != 0;
+        if (nowait < 0) nowait = getenv("HOS_PRESENT_NOWAIT") ? atoi(getenv("HOS_PRESENT_NOWAIT")) != 0
+                                 : getenv("RX_VK_FRAMES_IN_FLIGHT") && atoi(getenv("RX_VK_FRAMES_IN_FLIGHT")) > 1;   /* (stream R3: the renderer hands the present over) */
         if (nowait && (c->x[30] == 0x805904a0 || c->x[30] == 0x80590530)) { RET(1); return; }
     }
     LAG_COUNT(LC_EVENT);
@@ -1755,10 +1767,23 @@ static void release_copies(uint64_t lo, uint64_t hi) {
    or calling a recording waited behind it */
 #define SWEEP_EVERY 1024u
 #define SWEEP_SLICE 2688u   /* (65536 / 2688 * 1024: every bucket once in ~25,000 recordings) */
-static void sweep_overwritten_copies(void) {   /* (copy_lock held) */
+/* (longshot 7daafa7a, #1553, ff5809e8) The recording diagnostics' lines are written after copy_lock is let go, and with
+   the thread's virtual core given up: stderr can block for hundreds of milliseconds, and every other recorder (and the
+   guest threads pinned to this thread's core, an audio thread waited 321 ms for it) waited behind the line. The sweep
+   returns what it let go, for EndRecording to say. HOS_REC_LOG_AWAY=0: written under the lock, holding the core, as before */
+static int rec_log_away(void) {
+    static int v = -1;
+    int on = __atomic_load_n(&v, __ATOMIC_RELAXED);
+    if (on < 0) {
+        const char *e = getenv("HOS_REC_LOG_AWAY");
+        __atomic_store_n(&v, on = !(e && e[0] == '0' && !e[1]), __ATOMIC_RELAXED);
+    }
+    return on;
+}
+static size_t sweep_overwritten_copies(void) {   /* (copy_lock held) */
     static int off = -1;
     if (off < 0) off = getenv("HOS_NVN_NO_SWEEP") != NULL;
-    if (off || !rec_buckets) return;
+    if (off || !rec_buckets) return 0;
     free_dead_copies();
     const uint64_t after = rx_nvn_pushed() + held_count();
     size_t swept = 0;
@@ -1795,7 +1820,13 @@ static void sweep_overwritten_copies(void) {   /* (copy_lock held) */
         }
     }
     static int logged;
-    if (swept && logged++ < 12) hos_log("nvn: %zu copies of recordings whose control memory was reused let go (%zu live)", swept, ncopies);
+    if (!rec_log_away()) {
+        if (swept && logged++ < 12) hos_log("nvn: %zu copies of recordings whose control memory was reused let go (%zu live)", swept, ncopies);
+        return 0;
+    }
+    if (!swept || logged == 12) return 0;
+    logged++;
+    return swept;
 }
 NV(nvnCommandBufferAddControlMemory) {
     nvn_cmd *o = CB(P(0));
@@ -1928,12 +1959,27 @@ NV(nvnCommandBufferEndRecording) {
     ncopies++;
     live_handle_add((uint64_t)(uintptr_t)copy);
     static uint64_t made;
-    if (++made % SWEEP_EVERY == 0) sweep_overwritten_copies();
-    if (made % 50000 == 0)
+    const uint64_t recording = ++made;
+    const size_t swept = recording % SWEEP_EVERY == 0 ? sweep_overwritten_copies() : 0;
+    const int report = recording % 50000 == 0;
+    const size_t live_copies = (report || swept) ? ncopies : 0;
+    if (report && !rec_log_away())
         hos_log("nvn: %llu recordings made, %zu live copies (%.1f MB), %zu texture copies; %lld command buffers' segments "
-                "(%.1f MB)", (unsigned long long)made, ncopies, copy_bytes / 1048576.0, npins, (long long)seg_count,
+                "(%.1f MB)", (unsigned long long)recording, ncopies, copy_bytes / 1048576.0, npins, (long long)seg_count,
                 seg_bytes / 1048576.0);
     ReleaseSRWLockExclusive(&copy_lock);
+    if ((report || swept) && rec_log_away()) {
+        const int away = hos_vcore_away();
+        if (swept)
+            hos_log("nvn: %zu copies of recordings whose control memory was reused let go (%zu live)", swept, live_copies);
+        if (report)
+            hos_log("nvn: %llu recordings made, %zu live copies (%.1f MB), %zu texture copies; %lld command buffers' segments "
+                    "(%.1f MB)", (unsigned long long)recording, live_copies,
+                    (double)__atomic_load_n(&copy_bytes, __ATOMIC_RELAXED) / 1048576.0, __atomic_load_n(&npins, __ATOMIC_RELAXED),
+                    (long long)__atomic_load_n(&seg_count, __ATOMIC_RELAXED),
+                    (double)__atomic_load_n(&seg_bytes, __ATOMIC_RELAXED) / 1048576.0);
+        if (away) hos_vcore_back();
+    }
     if (watch_draw_cmd && watch_draw_cmd == (void *)o && nwatch_handles < 16) {
         watch_handles[nwatch_handles++] = (uint64_t)(uintptr_t)copy;
         watch_draw_cmd = NULL;
@@ -2946,6 +2992,7 @@ NV(nvnQueuePresentTexture) {
     if (i < 0 || i >= o->ntex) die("present of window texture %d", i);
     held_init();
     present_thread = hos_self();   /* (TICK-054, HOS_NVN_HOLD=2: the presenting thread, whose submits are not held) */
+    hos_sw_present();   /* (HL_STALL_WATCH, hos_jobtrace.c: the gap between presents) */
     held_flush_why(HF_PRESENT);   /* (a present flushes the queue) */
     {   /* (heylisten) this frame's pacing sleep (nn_vi.c), for the performance summary's pace part: pushed before the present
            so the frame the renderer counts inside it carries it (gpu/vk/perf_parts.h's HOS_OPT_PERF_PACE, as the Cheats page's
@@ -2953,6 +3000,20 @@ NV(nvnQueuePresentTexture) {
         void rx_option_set(int id, int value);
         extern int64_t hos_vi_pace_us(void);
         rx_option_set(90 /* HOS_OPT_PERF_PACE, gpu/vk/perf_parts.h */, (int)hos_vi_pace_us());
+        /* (what this thread waited on since its last present, by kind, us: the summary's os_wait hitches' sub-cause,
+           hos_waitnote.h; ids 94 to 97 are perf_parts.h's kOptWaitLock ... kOptWaitFile. HL_TEL_WAITS=0: not pushed) */
+        static int waits_on = -1;
+        static _Thread_local int64_t waits_last[HOS_WN_KINDS];
+        if (waits_on < 0) {
+            const char *e = getenv("HL_TEL_WAITS");
+            waits_on = !(e && e[0] == '0' && !e[1]);
+        }
+        if (waits_on)
+            for (int k = 0; k < HOS_WN_KINDS; k++) {
+                const int64_t now_ns = hos_wn_ns[k];
+                rx_option_set(94 + k, (int)((now_ns - waits_last[k]) / 1000));
+                waits_last[k] = now_ns;
+            }
     }
     {
         const int away = hos_vcore_away();

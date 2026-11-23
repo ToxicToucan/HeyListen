@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The release of a mirror holding left-out write-backs writes a left-out page back into guest memory only while its pool is
 live and nothing wrote the page since the mirror's last sync (gpu/vk/vk_memory.cpp: lazy_release_verdict, in_live_pool).
 

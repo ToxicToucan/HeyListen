@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """AcquireXDecoderOutputBuffer decodes without the virtual core and takes it again only after the decoder's lock is let go
 (host/nn_video.c dec_acquire; hookshot's issue 1929, ported from its d522ec0e).
 

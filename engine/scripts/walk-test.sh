@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Sacrappy
+
 # Walks Link in Kokiri for a fixed time at a frame rate limit and saves the game's own screenshots every 2.5 s, to check that the
 # game's speed does not follow the frame rate. Usage: scripts/walk-test.sh <limit Hz> <out dir> [game folder]
 # The game starts from its title (a scripted A reaches the save and loads it); the walk is 5 s of the left stick up, at 75 s.

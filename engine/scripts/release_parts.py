@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """What the release workflows need from earlier releases, and the Hookshot Builder package folder made in CI
 (.github/workflows/windows-builder.yml, linux-appimage.yml). No game data is involved: the parts hold the builder, its tools
 and the play profile (addresses and counts made on the development PC).

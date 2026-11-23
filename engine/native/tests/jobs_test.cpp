@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the job system, the lanes and the main loop, run with no game (tests/test_native_engine.py).
 #include <atomic>
 #include <chrono>

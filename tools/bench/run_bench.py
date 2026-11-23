@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Sacrappy
+
 """Frametime benchmark harness for Hookshot and Lichii builds (TICK-001).
 
 Starts one build for a fixed wall-clock time, collects per-frame present
@@ -55,6 +57,9 @@ HOOKSHOT_SCENES = {
     "castle-move": LOAD_SAVE + ",72:B,73:B,74:B,75:B," + ",".join(
         f"{76 + 6 * i}:LUP+RLEFT/700,{77 + 6 * i}:RLEFT/1900,{79 + 6 * i}:LDOWN+RRIGHT/700,{80 + 6 * i}:RRIGHT/1900"
         for i in range(5)),
+    # (2026-11-21, the owner) The camera turns in place without a stop (right stick held left) for the whole run, Link still: every
+    # side of the Market (the owner's save in its middle, build/s5/savelib/market-mid) comes on screen, the hardest load.
+    "market-spin": LOAD_SAVE + ",72:B,73:B,74:B,75:B," + ",".join(f"{76 + 4 * i}:RLEFT/4000" for i in range(45)),
 }
 
 # The same scenes started with HL_SKIP_TITLE=1 (the game presses A through the title and the file list by itself, from the
@@ -71,6 +76,7 @@ SKIP_SCENES = {
     "castle-move": ",".join(
         f"{10 + 6 * i}:LUP+RLEFT/700,{11 + 6 * i}:RLEFT/1900,{13 + 6 * i}:LDOWN+RRIGHT/700,{14 + 6 * i}:RRIGHT/1900"
         for i in range(5)),
+    "market-spin": ",".join(f"{2 + 4 * i}:RLEFT/4000" for i in range(45)),
 }
 # The game stops waiting for a title that will not go (no save, or the presses did not get through): the run is over then.
 GIVE_UP_LINES = ("skip title: no saved game yet", "skip title: gave up")
@@ -591,7 +597,9 @@ def run(args: argparse.Namespace) -> dict:
         if script is None:
             raise SystemExit(f"unknown scene {args.scene!r}; known: {sorted(scenes)} (or pass --input-script)")
         env.update({"HOS_PRESENT_TRACE": str(trace), "HOS_FPS_LIMIT": str(args.fps_limit),
-                    "HOS_AUDIO": "0", "HOS_WINDOW_NOACTIVATE": "1", "HOS_INPUT_SCRIPT": script})
+                    # (sound off for measured runs; BENCH_AUDIO=1 keeps it, for a window someone plays by hand)
+                    "HOS_AUDIO": "1" if os.environ.get("BENCH_AUDIO") == "1" else "0",
+                    "HOS_WINDOW_NOACTIVATE": "1", "HOS_INPUT_SCRIPT": script})
         if mode == "skip":
             env.update({"HL_SKIP_TITLE": "1", "HOS_INPUT_FROM_PLAY": "1"})
     else:

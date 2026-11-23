@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, HL_UBO_WRITER) bank_write.h against the word-by-word fill it replaces (a copy of driver_bank_fill's graphics-stage
 // branches, made of puts), on random bound state, for every bank size from 0 to 0xA00 and each stage's table.
 #include <cstdint>

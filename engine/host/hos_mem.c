@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Guest memory map: the system region (our own objects), the heap, address regions.
    The whole 4 GB window is committed up front (hos_main.c), so "mapping" here is only bookkeeping and zeroing. */
 #include "hos.h"
@@ -128,6 +130,7 @@ uint64_t hos_region_alloc(uint64_t size, uint64_t align) {
     UNLOCK();
     /* (HeyListen) a region above the heap is address space: the game maps what it uses of it (AllocateMemoryPages
        commits), and a touch of the rest commits it there. The holes below the heap are committed as before */
+    if (found && found >= HOS_HEAP_BASE) hos_keep_reuse(found, found + size);   /* (HL_REGION_KEEP: what it kept of this address space reads as zero) */
     if (found && !(found >= HOS_HEAP_BASE && hos_lazy_commit())) hos_commit(found, size);
     if (!found) hos_fatal(NULL, "address space exhausted (%#llx bytes asked, heap %#llx)", (unsigned long long)size,
                           (unsigned long long)hos_heap_size);
@@ -156,6 +159,7 @@ static void discard_pages(uint64_t addr, uint64_t size) {
         looked = 1;
         discard = (DiscardFn)(void *)GetProcAddress(GetModuleHandleA("kernel32.dll"), "DiscardVirtualMemory");
     }
+    const int64_t fw_t0 = hos_now_ns();
     /* (HOS_GUEST_PAGES: over dropped or restored granules, piece by piece; dropped ones wholly inside are forgotten) */
     if (hos_gp_ready() && hos_gp_touches(GP(lo), (size_t)(hi - lo))) hos_gp_reset(GP(lo), (size_t)(hi - lo));
     else {
@@ -164,6 +168,7 @@ static void discard_pages(uint64_t addr, uint64_t size) {
             VirtualAlloc(GP(lo), (SIZE_T)(hi - lo), MEM_RESET, PAGE_READWRITE);
         hos_gp_hold(0);
     }
+    hl_fw_note_discard(hi - lo, hos_now_ns() - fw_t0);
 #elif !defined(__EMSCRIPTEN__)
     extern int hos_posix_guest_discard(void *p, size_t n);   /* (hos_main.c: MADV_REMOVE on the memfd window) */
     extern int rx_guest_imported(uint64_t lo, uint64_t hi);
@@ -173,6 +178,9 @@ static void discard_pages(uint64_t addr, uint64_t size) {
     else hos_posix_guest_discard(GP(lo), (size_t)(hi - lo));
 #endif
 }
+
+/* (hos_regionkeep.c, HL_REGION_KEEP: a kept region that has aged is discarded here) */
+void hos_keep_discard(uint64_t addr, uint64_t size) { discard_pages(addr, size); }
 
 void hos_region_free(uint64_t addr) {
     uint64_t freed = 0, freed_size = 0;
@@ -188,6 +196,7 @@ void hos_region_free(uint64_t addr) {
         }
     }
     UNLOCK();
+    if (freed_size && freed >= HOS_HEAP_BASE && hos_keep_try(freed, freed_size)) return;   /* (HL_REGION_KEEP: kept, discarded later) */
     if (freed_size) {
         /* (hookshot) The discard is a kernel call that touches no guest state, and for the regions a change of area frees it
            runs for milliseconds at a time: the thread's virtual core is given up for it, as for a file read (nn_fs.c read_at).

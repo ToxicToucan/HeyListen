@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The machine numbers of the full FPS overlay (F10, vk_menu.cpp): CPU, memory and GPU load, sampled twice a second on a
 // thread of their own, and the frame times of the last two seconds for the graph. A value the machine does not give is negative.
 // Adapted from the oot-pc port's runtime/perfmon.c (MIT, Copyright (c) 2026 Jeff Aigner and the totk-pc-recomp contributors, after

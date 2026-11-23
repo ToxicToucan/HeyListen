@@ -6,6 +6,7 @@
    hos_romfs_dir and hos_user_dir are set by hos_main.c. Reads are positional (ReadFile with an offset), so any number
    of guest threads can read one file at once. Results: switchbrew "Error codes" (module 2 = fs). */
 #include "hos.h"
+#include "hos_waitnote.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -376,8 +377,10 @@ HLE(_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci) {
             }
         }
     }
+    const int64_t fs0 = hos_now_ns();
     HANDLE h = CreateFileA(path, GENERIC_READ | (want_write ? GENERIC_WRITE : 0), FILE_SHARE_READ | FILE_SHARE_WRITE,
                            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    hos_wn_add(HOS_WN_FILE, hos_now_ns() - fs0);
     if (away) hos_vcore_back();
     if (h == INVALID_HANDLE_VALUE) {
         if (hos_trace || fs_trace()) hos_log("fs: OpenFile(%s): not found", g);
@@ -410,6 +413,7 @@ static uint64_t read_at(Ctx *c, uint64_t id, int64_t off, uint64_t buf, uint64_t
     /* (the kernel writes it: with HOS_LAZY_COMMIT, pages the game has not touched yet may be only reserved) */
     if (hos_lazy_commit()) hos_commit(buf, size);
     const int away = hos_vcore_away();   /* (as OpenFile: no core held through the read) */
+    const int64_t fs0 = hos_now_ns();
     while (done < size) {
         OVERLAPPED ov = {0};
         int64_t o = off + (int64_t)done;
@@ -419,6 +423,7 @@ static uint64_t read_at(Ctx *c, uint64_t id, int64_t off, uint64_t buf, uint64_t
         if (!ReadFile(fh->h, GP(buf + done), chunk, &got, &ov) || !got) break;
         done += got;
     }
+    hos_wn_add(HOS_WN_FILE, hos_now_ns() - fs0);
     if (away) hos_vcore_back();
     HOS_WRITTEN(GP(buf), (size_t)done);   /* (into guest memory: the GPU may read it) */
     {   /* HOS_FS_WATCH=<lo hex>:<hi hex> (debugging): reads into that guest range, with the file */
@@ -462,7 +467,9 @@ HLE(_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE) {
     DWORD put = 0;
     if (hos_lazy_commit()) hos_commit(ARG(2), ARG(3));   /* (the kernel reads it: HOS_LAZY_COMMIT may have left it reserved) */
     const int away = hos_vcore_away();   /* (as the reads: a write can wait for the disk, the dirty pages' writeback) */
+    const int64_t fs0 = hos_now_ns();
     WriteFile(fh->h, GP(ARG(2)), (DWORD)ARG(3), &put, &ov);
+    hos_wn_add(HOS_WN_FILE, hos_now_ns() - fs0);
     if (away) hos_vcore_back();
     RET(put == ARG(3) ? 0 : 0x2EE202);
 }
@@ -479,7 +486,9 @@ HLE(_ZN2nn2fs11SetFileSizeENS0_10FileHandleEl) {
 HLE(_ZN2nn2fs9FlushFileENS0_10FileHandleE) {
     Handle *fh = get_handle(c, ARG(0));
     const int away = hos_vcore_away();
+    const int64_t fs0 = hos_now_ns();
     FlushFileBuffers(fh->h);
+    hos_wn_add(HOS_WN_FILE, hos_now_ns() - fs0);
     if (away) hos_vcore_back();
     RET(0);
 }

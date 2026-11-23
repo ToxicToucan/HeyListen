@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Insert menu's scaling rows: the Upscaler (opts.dlss: the game's own, NVIDIA DLSS, AMD FSR 3.1, AMD FSR 4, Off) and the
 Render resolution's steps for it, DLAA and FSR 4's Native AA being the native choice of DLSS's and FSR 4's (gpu/vk/upscaler_rows.h),
 their order on the Graphics tab (together, just above the frame generation rows), options files from before still loading (a

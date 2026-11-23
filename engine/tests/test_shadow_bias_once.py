@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """RX_VK_SHADOW_BIAS is read once, safely across the threads that record draws.
 
 dynamic_state() kept the shadow bias in two function statics, initialised by hand: `units < 0` meant "not read yet",

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """a64-kit's guest model (rt/a64.h, rt/a64_rt.c) with a 64-bit guest window, written next to the lifted code.
 
 a64-kit maps all guest memory below 4 GB (`A64_MEM + (uint32_t)addr`): its own loader picks every address. MKW

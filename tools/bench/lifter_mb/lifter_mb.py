@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-055) Micro-benchmarks of the lifter's lowering on x86-64, game-free: synthetic AArch64 kernels (hand-encoded words)
 lifted by the lifter's own pipeline (a64emit.translate -> a64_lift.op_text -> hot_text), once with the lift switches off
 and once with them on, compiled with the hot pieces' flags against the build's guest model (nx2/rtgen.py) and timed.

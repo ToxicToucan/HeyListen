@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of the native job system's bridge (engine/native, hl/c/hl_bridge.h;
    docs/native-engine/jobs-boundary.md).
 

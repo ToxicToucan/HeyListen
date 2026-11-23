@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the narrow-phase leaves of hl/math/Support.h. Each line is one guest operation, in the guest's
 // order; the comments name the guest function the sequence is read from (by address, nothing of its code).
 #include "hl/math/Support.h"

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Authored allocation/address failures, no Vulkan device or driver. The struct and
 // initialization/BDA functions are included verbatim from current vk_draw.cpp.
 #include <array>

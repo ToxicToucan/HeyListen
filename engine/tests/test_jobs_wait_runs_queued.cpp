@@ -1,5 +1,8 @@
+// Copyright (C) 2026 Sacrappy
+
 // jobs_wait (gpu/vk/vk_jobs.cpp): a waited-for job still in the queue runs on the waiting thread at once, instead of after
-// every job queued before it. Built against stand-ins for the renderer's headers (tests/test_jobs_wait_runs_queued.py).
+// every job queued before it, and the queue tells how long it has gone unpushed (the storm hold's quiet clock).
+// Built against stand-ins for the renderer's headers (tests/test_jobs_wait_runs_queued.py).
 #include "vk_jobs.h"
 
 #include <atomic>
@@ -64,6 +67,19 @@ int main() {
     jobs_wait(unflagged);   // (taken by a worker once released)
     expect(unflagged.load(), "a job pushed without its flag still runs on a worker");
     for (unsigned i = 0; i < workers; i++) jobs_wait(holds_done[i]);
+
+    // (hookshot) the storm hold's quiet clock, in presents: it releases on a queue nothing has been pushed into for a
+    // while of them (vk_draw.cpp), so the age must grow while nothing is pushed and reset on a push
+    jobs_frame_note(1000);
+    std::atomic<bool> noted{false};
+    jobs_push([&] { noted.store(true, std::memory_order_release); jobs_notify(); }, false, &noted);
+    jobs_wait(noted);
+    jobs_frame_note(1000 + 120);
+    expect(jobs_last_push_age_frames() >= 100, "an unpushed queue reports its quiet age growing");
+    std::atomic<bool> fresh{false};
+    jobs_push([&] { fresh.store(true, std::memory_order_release); jobs_notify(); }, false, &fresh);
+    expect(jobs_last_push_age_frames() < 100, "a push resets the quiet clock");
+    jobs_wait(fresh);
 
     if (failures) return EXIT_FAILURE;
     std::printf("PASS: a waited-for job still queued runs on the waiting thread at once\n");

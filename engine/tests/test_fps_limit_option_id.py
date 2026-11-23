@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Frame rate limit row's runtime option id is one named constant, off the ids upstream uses.
 
 Hookshot's runtime option 10 is Text size and Longshot reserves 60 for its item wheel, so the row asks and is answered

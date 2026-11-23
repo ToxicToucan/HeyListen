@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A texture the GPU writes in a virtual pool keeps its texels when the game finalizes it (gpu/vk/vk_texture.cpp).
 
 A texture in a virtual pool (a GPU address at or above 1 TB) is checked page by page through its mapping: texture_dirty
@@ -112,6 +114,7 @@ enum LedgerUse { kUseRendered };   // (RX_VK_LEDGER, vk_ledger.h)
 void ledger_mark(uint64_t, uint64_t, LedgerUse) {}
 void watch_tex(const Texture*, const char*) {}
 void drawn_writeback_note(Texture*) {}
+void note_drawn_storage(Texture*) {}   // (the GPU write history's note of a draw: gpu/vk/gpu_write_history.h)
 bool env_on(const char* name) {   // (vk_texture.cpp's, in its anonymous namespace)
     const char* e = getenv(name);
     return e && atoi(e) != 0;

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 using System.Diagnostics;
 using System.IO;
 using Path = System.Windows.Shapes.Path;

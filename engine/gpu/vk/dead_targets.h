@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // When the dead transient render targets are looked for between the eviction's passes (vk_texture.cpp texture_frame and
 // dead_targets_sweep). tests/test_dead_targets_sweep.py
 //

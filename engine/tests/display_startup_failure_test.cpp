@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Authored SDL and thread stubs. Production startup code is extracted by the
 // driver; no SDL library, OS window, renderer, game, or real thread is started.
 #include <cstdarg>
@@ -118,6 +120,8 @@ static void load_hookshot_env() { ++env_loads; }
 // setenv is _putenv_s; applying it keeps the child's environment what the harness asked for.
 static int setenv(const char* name, const char* value, int) { return _putenv_s(name, value); }
 #endif
+
+static void nv_cache_env(void) {}   // (QUICK1: the NVIDIA driver cache environment, set before Vulkan loads; nothing to do here)
 
 #include "display_startup_actual.inc"
 

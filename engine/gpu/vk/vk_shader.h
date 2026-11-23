@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // NVN2 programs as SPIR-V modules (vk_shader.cpp) and what the pipelines need of them.
 #pragma once
 

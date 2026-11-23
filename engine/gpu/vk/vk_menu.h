@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The Insert menu (vk_menu.cpp): options that apply while the game runs, kept in hookshot_options.ini beside the executable.
 #pragma once
 

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (heylisten) The detailed performance profile's runtime (profile_report.h has the rules and the JSON): the CPU sampler thread and the
 // GPU's per-pass timestamps, both adding into per-map counts that perf_report.cpp takes out as a batch every few minutes.
 //

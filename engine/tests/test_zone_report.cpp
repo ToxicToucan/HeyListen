@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // tests/test_zone_report.py: gpu/vk/zone_report.h, the per-zone shader and pipeline usage's rules: the recorder (the
 // dedupe per map, the first-use order within a visit, the caps, the count buckets, the arrival flag), the sent file
 // (hookshot_zones_sent.bin), the batch JSON against the documented schema and the gating. Without arguments it runs its

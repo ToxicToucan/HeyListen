@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The SPIR-V Hookshot's translator kept in hookshot_programs.bin, checked offline before a driver sees it again.
 
 Each stage goes through the Vulkan SDK's spirv-val, and through the device limits spirv-val does not know: the workgroup's

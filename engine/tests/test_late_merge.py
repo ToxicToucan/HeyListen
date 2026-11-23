@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-053) The late pages merged: the capture's wait for the GPU ended (gpu/vk/vk_memory.cpp, "the late pages merged").
 
 Compiles late_diff_runs (cut out of vk_memory.cpp) and checks its runs: 4-byte granular, adjacent words joined, nothing for

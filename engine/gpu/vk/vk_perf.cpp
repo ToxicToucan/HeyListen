@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // See vk_perf.h.
 #include "vk_perf.h"
 

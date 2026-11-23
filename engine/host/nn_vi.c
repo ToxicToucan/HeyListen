@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* nn::vi for MKW (TOTKPort's nn_vi.c is bound to its renderer and TOTK's frame pacing): the default display, one
    layer, and the display's vsync event, signaled at 60 Hz by a host thread. HDR and VRR are reported unsupported,
    so the game takes its SDR path. Frames are paced at the native NVN layer's window acquire (the end of this file). */
@@ -261,6 +263,7 @@ static void scan_dt(long long presents) {
 extern volatile uint64_t hos_gfx_module;
 extern volatile int hos_realtime_fps;   /* (nn_os_sync.c) */
 extern volatile uint32_t hos_frame_seconds_bits;   /* (hl_step.c) */
+extern volatile int hos_frame_carry_step;   /* (hl_step.c: 1 while a step under the cap of 60 is not a whole frame) */
 extern volatile uint64_t hos_step_probe;
 volatile int hos_fixed_resolution = 0;   /* (the lifted code reads these: nx2/oot_patches.py) */
 volatile uint32_t hos_fixed_scale_bits = 0x3f800000;   /* (HOS_RES_SCALE: the fixed path's scale) */
@@ -361,6 +364,7 @@ static void realtime_step(int64_t now) {
         if (*slot >= 15 && *slot <= 60) *slot = 60;
         hos_realtime_fps = 0;
         hos_frame_seconds_bits = 0;
+        hos_frame_carry_step = 0;
         return;
     }
     static int64_t last;
@@ -371,7 +375,7 @@ static void realtime_step(int64_t now) {
     const double dt = (now - last) / 1e9;
     last = now;
     if (dt <= 0 || dt > 0.25) {   /* (a load: the average starts again) */
-        count = next = 0, carry = 0, hos_realtime_fps = 0, hos_frame_seconds_bits = 0;
+        count = next = 0, carry = 0, hos_realtime_fps = 0, hos_frame_seconds_bits = 0, hos_frame_carry_step = 0;
         step_steady_reset(&steady);
         return;
     }
@@ -452,6 +456,18 @@ static void realtime_step(int64_t now) {
     carry = carry > 0.5 ? 0.5 : carry < -0.5 ? -0.5 : carry;
     *slot = fps;
     hos_realtime_fps = fps;   /* (and at the game's read of it: nn_os_sync.c) */
+    {   /* (Longshot 2ae9bffcf, SadTransGirl, #1828; HOS_FRAME_CARRY, on) At a cap of 60 a rate under 60 that is not 30, 20 or 15 makes the game
+           step 60 / rate, not a whole frame: 46 fps steps 1.30. The game's cuts to whole frames then dropped the fraction each frame
+           and counted 46 whole frames a second, not 60: the time of day, the water's ripples, the floor web and the Scarecrow's
+           Song ran at 77 %. host/hl_step.c keeps their fractions then (hos_frame_carry_step), as it does above a cap of 60.
+           A rate of 60, 30, 20 or 15, Per frame, and a cap above 60 without the frames' time (HOS_FPS_STEP=0) are cut as before.
+           (Upstream reads the rate where the game reads it; here it is the one written at this present.) */
+        static int on = -1;
+        /* HOS_FRAME_CARRY (default on): at a cap of 60 with a rate under 60 that is not a whole step, the game's whole-frame counters keep
+           their fractions; 0 cuts them as the game does (46 whole frames a second at 46 fps). */
+        if (on < 0) on = !(getenv("HOS_FRAME_CARRY") && !atoi(getenv("HOS_FRAME_CARRY")));
+        hos_frame_carry_step = on && !timed && cap == 60 && fps >= 15 && fps <= 60 && 60 % fps != 0;
+    }
     if (!(steps++ % 3000)) hos_log("vi: real-time step on: ratio %.3f, game's frame rate %d", ratio, fps);
 }
 /* HOS_PRESENT_TRACE=<csv>: native game present-call returns, not GPU completion or display times.

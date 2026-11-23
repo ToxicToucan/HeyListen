@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """RX_VK_READBACK_LATE (gpu/vk/readback_late.h): the rules that name the CPU reads of GPU results read without their wait.
 
 The header is compiled with a small program that parses rule lists and asks which ranges are late:
@@ -71,7 +73,7 @@ def main():
     i_late = inv.index("readback_late_wanted(size, v >= f0)")
     i_wait = inv.index("if (pend && !late) {")
     assert i_val < i_late < i_wait, "the rules are asked before the write-back's value is known, or after the wait"
-    assert "const bool pend = v > completed();" in inv and "pend && readback_late_wanted" in inv, "a range that is not pending is asked"
+    assert "const bool pend = v > completed();" in inv and "pend && (rb_late || readback_late_wanted" in inv, "a range that is not pending is asked"
     # RX_VK_READBACK_STRICT: 0 / 1 / the driver's default as before, any other value a list of the sizes that wait (the light
     # meter's: 1040,c0); the strict wait is asked by size, inside the pending range's wait
     strict = function(rp, "bool readback_strict_wanted(uint64_t size) {")

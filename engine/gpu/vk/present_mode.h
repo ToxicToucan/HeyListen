@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Which present mode the swapchain uses (vk_main.cpp create_swapchain): the Insert menu's V-Sync and V-Sync mode rows, the
    VRR row, RX_VK_FIFO and RX_VK_IMMEDIATE, and the modes the surface offers. Plain ints, no Vulkan header:
    tests/test_present_mode.cpp compiles it. */

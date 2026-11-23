@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The sparse texture binds (sparse_take/sparse_flush/sparse_queue in vk_texture.cpp) cut out and run against a
 stand-in driver whose vkQueueBindSparse or vkCreateFence fails: the blocks of a failed bind are marked unbound again
 (so the next write queues them anew), the retry reuses their memory instead of taking more, and no bind is ever made

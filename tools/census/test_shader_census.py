@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Tests for the shader census, using a synthetic NUP container only."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen) What the shaders' preparation (vk_draw.cpp prepare_run) is made of: its progress bar and its workers.
 //
 // The bar went by programs. A compute program is up to 64 translations and as many driver builds of 0.3 s to tens of seconds, a

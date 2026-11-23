@@ -12,6 +12,7 @@
    6df80a8d). Not thread-safe by itself: the caller holds a lock. */
 #pragma once
 #include <stdint.h>
+#include "frame_carry.h"
 #include <string.h>
 
 #define FRAME_WHOLE_SLOTS 64

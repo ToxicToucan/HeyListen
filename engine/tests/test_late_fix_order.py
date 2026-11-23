@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-060m) RX_VK_LATE_DEFER's pending late fixes when their values do not rise in take order.
 
 A capture's late value is the newest write-back of its own late pages, so the next capture's can be lower (its late pages

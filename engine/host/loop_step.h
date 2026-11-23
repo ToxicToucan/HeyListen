@@ -13,6 +13,7 @@
    at most, and an entry that finds no place starts again from 0 (a pose that stands still, as it did). */
 #pragma once
 #include <stdint.h>
+#include "frame_carry.h"
 #include <string.h>
 
 #define LOOP_STEP_SLOTS 4096

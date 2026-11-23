@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The pipeline state list a release ships (profile/pipeline_states.bin) passes tools/release/check_states.py, and the checker refuses
 lists that hold a title id, a name, a path or an address (synthetic records; no game data). The list is shipped by
 engine/scripts/release_parts.py's PROFILE_FILES and checked by tools/release/make_release.py before the package is made.

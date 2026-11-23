@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen TICK-052) Which objects each bump of a destroy generation was for, so that a cache entry resolved at one generation
 // can tell, at a later one, whether its own object went in between (it is stale) or only others did (it stands). Used for the
 // textures' destroy generation (vk_texture.cpp destroy_later): each eviction made every recording thread's view and slot caches

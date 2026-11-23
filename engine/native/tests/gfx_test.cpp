@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the graphics front end's recording pass, its bridge and its check, run with no game
 // (tests/test_native_engine.py).
 #include <cstdint>

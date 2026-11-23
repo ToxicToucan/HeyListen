@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Game-free test of the crash recorder's core (host/hl_trace_core.c; tests/test_hl_trace.py builds it): the threads' rings
    under eight writers (no torn event, each ring in order), the live and freed blocks' tables (an address inside a freed
    block, a block allocated again over a freed one, removals among colliding entries, eight threads at once), the file,

@@ -148,6 +148,7 @@ typedef long long LONG64;
 #define InterlockedIncrement64(p) (++*(p))
 static void hos_log(const char *f, ...) { (void)f; }
 volatile uint32_t hos_frame_seconds_bits;
+volatile int hos_frame_carry_step;
 static void a64_vset64(uint64_t *v, uint64_t bits) { v[0] = bits; v[1] = 0; }
 static uint64_t recomp_load64(Ctx *c, uint64_t a) { uint64_t v; (void)c; memcpy(&v, guest(a), 8); return v; }
 static uint64_t recomp_load32(Ctx *c, uint64_t a) { uint32_t v; (void)c; memcpy(&v, guest(a), 4); return v; }

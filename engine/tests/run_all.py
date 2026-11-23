@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Every game-free check in one run: each tests/test_*.py and nx2/test_*.py in its own process, the C++ unit tests under
 gpu/vk/tests and a byte-compile of every tracked Python file. All of them run even when one fails; the failures are
 printed whole at the end, with a table of every check (slowest first), also to $GITHUB_STEP_SUMMARY when it is set.
@@ -110,6 +112,15 @@ ARGS = {
     "tests/test_capture_dimensions.py": ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"],
     "tests/test_ui_texture_upload.py": ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"],
     "tests/test_multiwait_wake.py": ["--cxx", "{cxx}"],
+    "tests/test_event_handoff.py": ["--cxx", "{cxx}"],
+    "tests/test_recording_log_handoff.py": ["--cc", "clang"],
+    "tests/test_stream_decode_away.py": ["--cc", "clang"],
+    "tests/test_capture_pool_refresh.py": ["--cxx", "{cxx}"],
+    "tests/test_capture_get_fallback.py": ["--cxx", "{cxx}"],
+    "tests/test_capture_read_mapped.py": ["--cxx", "{cxx}"],
+    "tests/test_pass_sample_mask.py": ["--cxx", "{cxx}"],
+    "tests/test_write_history.py": ["--cxx", "{cxx}"],
+    "tests/test_posix_cv_wake.py": ["--cc", "cc"],
     "tests/test_parallel_rb_refresh.py": ["--cxx", "{cxx}"],
     "tests/test_prof_sampling.py": ["--cxx", "{cxx}"],
     "tests/test_present_geometry_trace.py": ["--cxx", "{cxx}"],
@@ -119,6 +130,7 @@ ARGS = {
     "tests/test_short_sleep_timer.py": ["--cc", "gcc"],
     "tests/test_sdl_audio_reopen.py": ["--cc", "gcc"],
     "tests/test_guestpages.py": ["--cc", "gcc"],
+    "tests/test_region_keep.py": ["--cc", "gcc"],
     "tests/test_hl_trace.py": ["--cc", "gcc"],
     "tests/test_windows_display_startup.py": ["--cc", "gcc"],
     "tests/test_texture_handle_banks.py": ["--cxx", "{cxx}"],
@@ -161,6 +173,8 @@ ARGS = {
     "tests/test_upscaler_off.py": ["--cxx", "{cxx}"],
     "tests/test_target_overlap.py": ["--cxx", "g++"],
     "tests/test_segment_plan.py": ["--cxx", "g++"],
+    "tests/test_completion_tracker.py": ["--cxx", "g++"],
+    "tests/test_feed_stats.py": ["--cxx", "g++"],
     "tests/test_desc_counts.py": ["--cxx", "{cxx}"],
     "tests/test_gone_ring.py": ["--cxx", "g++"],
     "tests/test_split_count.py": ["--cxx", "g++"],
@@ -172,6 +186,8 @@ ARGS = {
     "tests/test_menu_keys.py": ["--cxx", "{cxx}"],
     "tests/test_menu_touchpad.py": [],
     "tests/test_warp_wide.py": [],
+    "tests/test_subgroup_pin_limit.py": ["--cxx", "{cxx}"],
+    "tests/test_uint8_quads.py": ["--cxx", "{cxx}"],
     "tests/test_prompt_font_bind.py": ["--cc", "gcc"],
     "tests/test_hl_gates.py": ["--cc", "gcc"],
     "tests/test_stick_dead_zone.py": ["--cc", "gcc", "--cxx", "g++"],
@@ -188,6 +204,7 @@ ARGS = {
     "tests/test_audio_output_menu.py": ["--cxx", "g++"],
     "tests/test_motion.py": ["--cc", "gcc"],
     "tests/test_low_memory_notice.py": ["--cc", "gcc"],
+    "tests/test_romfs_boot_notice.py": ["--cc", "gcc"],
     "tests/test_cpp_preflight.py": ["--cxx", "g++"],
     "tests/test_invalidate_vcore.py": ["--cxx", "g++"],
     "tests/test_linux_driver_fault_guard.py": ["--cxx", "{cxx}"],
@@ -220,6 +237,7 @@ ARGS = {
     "nx2/test_texture_init_barrier.py": ["--headers", "{vulkan_headers}"],
     "tests/test_parallel_init_order.py": ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"],
     "tests/test_vertex_bind_range.py": ["--cxx", "{cxx}"],
+    "tests/test_stutter_report.py": ["--cxx", "{cxx}"],
     "tests/test_device_lost_exit.py": ["--cxx", "{cxx}"],
     "tests/test_mesh_unreachable_outputs.py": ["--cxx", "{cxx}", "--headers", "{spirv_headers}", "--spirv-val", "{spirv_val}"],
     "nx2/test_default_point_size.py": ["--headers", "{spirv_headers}", "--spirv-val", "{spirv_val}"],
@@ -268,6 +286,7 @@ SKIP = {
     "tests/test_linux_driver_fault_guard.py": ({"windows"}, "POSIX signals: the Linux guard"),
     "tests/test_jt_mark_export.py": ({"windows"}, "the Linux exe's dynamic exports (on Windows the mark is a DLL export)"),
     "tests/test_sdl_audio_reopen.py": ({"windows"}, "Linux's waveOut on SDL (host/posix): Windows plays through its own"),
+    "tests/test_posix_cv_wake.py": ({"windows"}, "tests the Linux futex implementation (host/posix)"),
 }
 # (spirv-val: SPIRV-Tools comes with the Linux runner's packages, not on Windows)
 for _name in ("nx2/test_texture_phi_dominance.py", "nx2/test_unsigned_image_types.py", "nx2/test_depth_sample_types.py", "nx2/test_default_point_size.py", "nx2/test_draw_parameters.py", "nx2/test_coop_spirv.py",

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-044) The FPX slow paths with A64_FPX_SLOWPATH=1 (a64_lift.py, a64_rtgen.py), game-free: bit-exact with
 the default ones.
 

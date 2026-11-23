@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the provenance table of decompressed resources (hl/stream/Provenance.h).
 #include "hl/stream/Provenance.h"
 

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the drop policy and its touch hook, run with no game against a stand-in substrate
 // (tests/test_native_engine.py).
 #include <atomic>

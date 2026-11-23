@@ -988,6 +988,14 @@ const Shader::Profile& profile(VkShaderStageFlagBits stage) {
     return (dev.warp_wide_stages & stage) ? wide : narrow;
 }
 
+/// The profile of a compute program of this many invocations: the stage's own, or (c4e8e2ea) the wide one when 32-lane subgroups
+/// cannot cover its workgroup (pins_32: its pipeline is not pinned, it runs at the default size)
+const Shader::Profile& profile_compute(uint64_t invocations) {
+    static const Shader::Profile wide = make_profile(true);
+    if (dev.compute_unpinned_wide && !pins_32(VK_SHADER_STAGE_COMPUTE_BIT, invocations)) return wide;
+    return profile(VK_SHADER_STAGE_COMPUTE_BIT);
+}
+
 const std::vector<Code>& codes_of(const NvnState& s) {
     auto& v = codes[s.prog.serial];
     if (v.empty())
@@ -1345,7 +1353,7 @@ uint64_t disk_stamp() {
     // (and a GPU's mesh shaders: a file of native task and mesh programs is no use to the compute fallback, nor its to one)
     // (the fallback's bit is 0x12, not 2: a file a start-up made with programs marked native mesh and fallback at once (seed_translate)
     // is no use to it, and only a fallback GPU wrote one)
-    const uint32_t mesh = (dev.mesh_shader ? 1u : 0u) | (dev.mesh_fallback ? 0x12u : 0u) | (dev.task_mesh_fallback ? 4u : 0u);
+    const uint32_t mesh = (dev.mesh_shader ? 1u : 0u) | (dev.mesh_fallback ? 0x12u : 0u) | (dev.task_mesh_fallback ? 4u : 0u) | (dev.mesh_only_fallback ? 8u : 0u);
     add(&mesh, sizeof mesh);
     // (the records keep Shader::Info as it lies in memory: a cache written by another C++ library (the MSVC build's, then the
     // llvm-mingw one's libc++) has other layouts, and reading it crashed at start. The library and the sizes, so it starts again)
@@ -1409,6 +1417,9 @@ uint64_t disk_stamp() {
         const uint32_t stages = (uint32_t)dev.warp_wide_stages;
         add(&stages, sizeof stages);
     }
+    // (c4e8e2ea: and a GPU whose 32-lane subgroups cannot cover the largest guest workgroup, 1024 invocations: its larger compute
+    // programs are not pinned, pins_32. Only then, so other GPUs keep their caches)
+    if (dev.sg32_stages && 32ull * dev.max_workgroup_subgroups < 1024) add(&dev.max_workgroup_subgroups, sizeof dev.max_workgroup_subgroups);
     for (char** e = _environ; e && *e; e++)
         for (const char* pre : {"RX_VK_OOT", "RX_VK_MMA", "RX_VK_NATIVE", "RX_VK_NAN", "RX_VK_TASK_CAP", "RX_VK_NETWORK", "RX_VK_GP", "RX_VK_FOLLOW", "RX_VK_NO_FOLLOW", "RX_VK_NO_F16", "RX_VK_SHARED", "RX_VK_MESH", "RX_VK_LOCAL", "RX_VK_FOLD", "RX_VK_NO_INVARIANT", "RX_VK_NO_NAN_GUARD", "RX_VK_MARKERS", "EDEN_"})
             if (!strncmp(*e, pre, strlen(pre))) add(*e, strlen(*e));
@@ -2067,7 +2078,7 @@ void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* 
                 if ((!kept_one && (Shader::Backend::SPIRV::mma_software || dev.props.vendorID != 0x10DE)) || !float16_shaders())
                     throw std::runtime_error("a network left out on this card");
             }
-            const std::vector<uint32_t> spirv = Shader::Backend::SPIRV::EmitSPIRV(profile(VK_SHADER_STAGE_COMPUTE_BIT), rt, t->program, bindings);
+            const std::vector<uint32_t> spirv = Shader::Backend::SPIRV::EmitSPIRV(profile_compute(uint64_t(t->program.workgroup_size[0]) * t->program.workgroup_size[1] * t->program.workgroup_size[2]), rt, t->program, bindings);
             // (EvilOOT) RX_VK_DUMP_SPV=<folder>: the SPIR-V of the programs RX_VK_MISS_LOG_PROG names (all: unset), for spirv-val
             if (const char* dir = getenv("RX_VK_DUMP_SPV"); dir && Shader::Optimization::g_nvn2_miss_log_this) {
                 char path[512];

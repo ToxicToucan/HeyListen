@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The decode-ahead thread of host/nn_video.c (HeyListen): submissions are decoded into the queue by a thread of the
 decoder's own, not on the game's AcquireXDecoderOutputBuffer.
 

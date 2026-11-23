@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the narrow-phase leaves of hl/math/Support.h with no game (tests/test_native_engine.py): the
 // support point against a brute-force argmax over vertex sets of every size (the guest's four jump cases and the rounds),
 // its ties, its give-ups and its C surface; the relative transform against the identity, a pure translation and a plain

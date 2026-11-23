@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The builder's note under the bar while the game prepares its shaders (the build's last step).
 
 The note said "Usually about 45 minutes" for the whole build whatever happened: a PC whose graphics card has no mesh shaders, or a

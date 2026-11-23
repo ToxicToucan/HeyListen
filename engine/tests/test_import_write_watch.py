@@ -19,6 +19,9 @@ CPP = r"""
 #define NOMINMAX
 #include <windows.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+using clk = std::chrono::steady_clock;   // (the enclosing import function's clock; PORT2's RX_VK_IMPORT_VQ timing in the cut uses it)
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -104,6 +107,13 @@ def main():
     source = args.source.read_text(encoding="utf-8")
     start = source.index("    // (pages the game has not touched yet may be only reserved:")
     commit = source[start:source.index("#ifdef __linux__", start)]
+    if "    {   // (RX_VK_IMPORT_VQ=1" in commit:   # (PORT2's VirtualQuery timing: a diagnostic block, not the commit path tested here)
+        a = commit.index("    {   // (RX_VK_IMPORT_VQ=1")
+        b, depth = commit.index("{", a) + 1, 1
+        while depth:
+            depth += (commit[b] == "{") - (commit[b] == "}")
+            b += 1
+        commit = commit[:a] + commit[b:]
     with tempfile.TemporaryDirectory(prefix="import-write-watch-") as tmp:
         tmp = Path(tmp)
         cpp, exe = tmp / "test.cpp", tmp / "test.exe"

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """RX_VK_MESH_G3 (the storage buffers' ranges worked out once in a task or mesh program's first block) is on by default.
 
 It is off only for RX_VK_MESH_G3=0 (or any value atoi reads as 0). It is not tied to a GPU vendor: the change is in the

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Census of the NVN shader programs stored inside a Switch 2 .nup package.
 
 The census reads the package index, walks the romfs tree in place, and only

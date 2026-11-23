@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-056) RX_VK_PRESYNC_EARLY: the mirrors' pre-sync on a replay worker during the dry pass keeps its place in the queue.
 
 By the text of gpu/vk/vk_replay.cpp and vk_texture.cpp:

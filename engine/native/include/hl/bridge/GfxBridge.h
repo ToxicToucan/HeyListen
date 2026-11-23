@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: where the graphics front end (hl::gfx) meets the game's graphics module, still run from the
 // user's local translation (docs/native-engine/gfx-record-job.md has the reading behind every address here).
 //

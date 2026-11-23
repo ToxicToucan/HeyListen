@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Median frame rate and replay time of the gameplay windows of a log (scripts/bench-replay.sh)."""
 import re
 import statistics

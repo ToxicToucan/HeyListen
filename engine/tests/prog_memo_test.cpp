@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The program pick's validated-handle memo (gpu/vk/prog_memo.h) against a made-up world: texture slots whose type answer is a function
 // of (slot, version), a variant that was translated for some types, and draws that bind other textures of the same or other types,
 // some slots re-registered (the version moves) between draws. The memo may answer "valid" only where the descriptors read again would.

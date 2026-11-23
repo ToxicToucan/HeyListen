@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The VRAM allowance as the renderer's rules take it (Longshot #1091's vram_compact::past_allowance, on its own here).
 #pragma once
 #include <cstdint>

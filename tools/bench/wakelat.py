@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-058) Wake latency of the game's hand-offs from a HOS_JOBTRACE file: for every wait that slept, the time from
 the signal that ended it (on another thread) to the waiter running again, by primitive, caller (lr) and thread.
 

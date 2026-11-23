@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The Insert menu's scaling rows (vk_menu.cpp), as plain functions: what the Render resolution row steps through for each
    Upscaler, and the names it shows for DLSS's (and FSR 3.1's and FSR 4's) modes. No Vulkan, no menu: tests/test_upscaler_rows.cpp checks them. */
 #pragma once

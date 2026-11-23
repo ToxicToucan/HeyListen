@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """HeyListen Builder for Linux: what builder/HookshotBuilder (WPF) is on Windows, in Tk. It runs nx2/make_game.py and
 follows its @@ lines (make_game.py's docstring), then offers to start the game. The AppImage starts it (builder/linux/AppRun),
 with the compiler, sysroot and libraries it brings in the environment.

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Linux's CreateThread when its own memory is refused (host/posix/win32_posix.c, issue 333): the out-of-memory notice is
    started on a thread after a host allocation kept failing, so the thread's calloc may be refused too. The real thread_new
    and CreateThread, cut out by tests/test_host_alloc_wait.py, with a calloc that can refuse and pthread stand-ins: NULL and

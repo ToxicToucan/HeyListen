@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // drawn_writeback (gpu/vk/drawn_writeback.h): which textures the GPU drew go into guest memory, and when.
 // tests/test_drawn_writeback.py
 #include "../gpu/vk/drawn_writeback.h"

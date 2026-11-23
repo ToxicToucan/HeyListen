@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Vulkan Memory Allocator (v3.3.0, from Eglantine's CPM cache: nx2/build.py adds its include path): images and
 // device buffers are sub-allocated from large blocks (NVIDIA allows ~4096 allocations, and the imported pools
 // already take about 2400 of them). Its Vulkan functions come from vkGetInstanceProcAddr / vkGetDeviceProcAddr.
@@ -134,7 +136,7 @@ void tag_mapped(const VmaAllocationInfo& info, MemKind kind) {
 // dedicated image/buffer is destroyed: 4 to 7 ms a block on an RTX 3060 Ti, about 250 ms on a player's RTX 4080 SUPER (83 in a row
 // at the Market: 5 frames a second for half a minute). VMA is done with the handle when it calls (its own accounting is updated
 // before), so the call goes to a thread of its own, in the order given: the images and buffers destroyed before are gone before the
-// memory is. (Upstream's reaper thread and its defragmentation step limit do not exist here: this tree has no image defragmentation.)
+// memory is. (Upstream's defragmentation step limit does not exist here: no image defragmentation. The images' own reaper is RX_VK_REAP, below.)
 // RX_VK_FREE_LATER=0: on the caller's thread, as before
 namespace {
 std::mutex free_mu;
@@ -408,6 +410,7 @@ static bool create_image_(const VkImageCreateInfo& ci, VkImage& image, VmaAlloca
         if (vmaCreateImage(vma, &ci, &pai, &image, &allocation, nullptr) == VK_SUCCESS) return true;
     }
     if (vmaCreateImage(vma, &ci, &ai, &image, &allocation, nullptr) == VK_SUCCESS) return true;
+    if (reap_drain() && vmaCreateImage(vma, &ci, &ai, &image, &allocation, nullptr) == VK_SUCCESS) return true;   // (RX_VK_REAP: what was queued is freed now)
     // (TICK-023) noted for the texture budget: the next check (texture_end_frame, every 10 presents) evicts the least recently
     // used before the next image is refused too, instead of waiting for the driver's count
     vram_alloc_failures.fetch_add(1, std::memory_order_relaxed);
@@ -426,7 +429,91 @@ bool create_image(const VkImageCreateInfo& ci, VkImage& image, VmaAllocation& al
     note_alloc(allocation, image_kind(ci));
     return true;
 }
+// ---- (longshot RX_VK_REAP, relink, pixl27) The images, their views and the buffers destroyed on a thread of their own. On NVIDIA's
+// Windows driver a vmaDestroyImage is a kernel call of a millisecond or more, and the render thread destroyed the dead textures one
+// after the other as it presented: ReLink counted 2.4 ms of each frame over 25 ms against 0.1 ms of a normal one while the camera
+// turned in the Market. Every caller destroys an image the GPU is done with, so a later destruction changes nothing but when its
+// memory goes back; one thread takes them in the order given (a texture's views before its image), and a creation the driver
+// refuses waits for what is queued and tries again (reap_drain). RX_VK_REAP=0: on the caller's thread, as before ----
+namespace {
+std::mutex reap_mu;
+std::condition_variable reap_cv, reap_idle_cv;
+std::vector<std::function<void()>> reap_queue;
+std::atomic<int64_t> reap_pending{0}, st_reaped{0}, st_reap_inline{0};
+std::atomic<int64_t> st_reap_ns{0}, st_reap_max_ns{0};
+thread_local bool on_reaper = false;
+bool reap_enabled() {
+    static const bool on = [] {
+        const char* e = getenv("RX_VK_REAP");
+        if (!e || atoi(e) == 0) {   // (off by default since 2026-11-22: the 5070 A/B was noise, 2 of 3 Market pairs slower; the 3050 decides)
+            logf("vk: images and buffers destroyed on the caller's thread, as before (RX_VK_REAP=1 moves them to a reaper thread)");
+            return false;
+        }
+        std::thread([] {
+            on_reaper = true;
+            std::vector<std::function<void()>> batch;
+            for (;;) {
+                {
+                    std::unique_lock lk(reap_mu);
+                    reap_cv.wait(lk, [] { return !reap_queue.empty(); });
+                    batch.swap(reap_queue);
+                }
+                for (auto& fn : batch) {
+                    const auto t0 = std::chrono::steady_clock::now();
+                    fn();
+                    const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+                    st_reap_ns += ns;
+                    int64_t m = st_reap_max_ns.load();
+                    while (ns > m && !st_reap_max_ns.compare_exchange_weak(m, ns)) {}
+                    st_reaped++;
+                    if (--reap_pending == 0) {
+                        std::lock_guard lk(reap_mu);   // (so a waiter that has just checked the count does not miss this)
+                        reap_idle_cv.notify_all();
+                    }
+                }
+                batch.clear();
+            }
+        }).detach();
+        logf("vk: images and buffers destroyed on a thread of their own (RX_VK_REAP=0: on the caller's)");
+        return true;
+    }();
+    return on;
+}
+}  // namespace
+void reap(std::function<void()> fn) {
+    if (!fn) return;
+    if (on_reaper || !reap_enabled()) {
+        st_reap_inline++;
+        return fn();
+    }
+    reap_pending++;
+    {
+        std::lock_guard lk(reap_mu);
+        reap_queue.push_back(std::move(fn));
+    }
+    reap_cv.notify_one();
+}
+bool reap_drain() {
+    if (reap_pending.load() <= 0 || on_reaper) return false;
+    std::unique_lock lk(reap_mu);
+    reap_idle_cv.wait_for(lk, std::chrono::seconds(5), [] { return reap_pending.load() <= 0; });
+    return true;
+}
+int64_t reap_queued() { return reap_pending.load(std::memory_order_relaxed); }
+void reap_report(char* out, size_t n) {
+    snprintf(out, n, "reaper: %lld destroys off the thread (%.1f ms in all, %.2f ms the longest), %lld on the caller's, %lld queued",
+             (long long)st_reaped.load(), st_reap_ns.load() / 1e6, st_reap_max_ns.load() / 1e6, (long long)st_reap_inline.load(),
+             (long long)reap_pending.load());
+}
+namespace {
+void destroy_image_now(VkImage image, VmaAllocation allocation);
+}
 void destroy_image(VkImage image, VmaAllocation allocation) {
+    if (!image && !allocation) return;
+    reap([image, allocation] { destroy_image_now(image, allocation); });
+}
+namespace {
+void destroy_image_now(VkImage image, VmaAllocation allocation) {
     note_free(allocation);
     if (image_generations_on() && allocation) {
         std::lock_guard lk(gen_mu);
@@ -448,6 +535,7 @@ void destroy_image(VkImage image, VmaAllocation allocation) {
     }
     vmaDestroyImage(vma, image, allocation);
 }
+}  // namespace
 uint64_t allocation_size(VmaAllocation allocation) {
     VmaAllocationInfo info{};
     if (allocation) vmaGetAllocationInfo(vma, allocation, &info);
@@ -485,6 +573,16 @@ bool create_buffer_cached(uint64_t size, VkBufferUsageFlags usage, VkBuffer& buf
     if (dedicated) ai.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;   // (its own memory object: no part of a 64 MB block left unused)
     VmaAllocationInfo info{};
     if (vmaCreateBuffer(vma, &bi, &ai, &buffer, &allocation, &info) != VK_SUCCESS) return false;
+    // (longshot 7daafa7a, #1553; RX_VK_MAP_CHECK=0: as before) A buffer made for a caller that asked for its mapping, and given
+    // none, is not returned: the callers took false for failure and left the buffer made (a capture buffer, a staging one)
+    static const bool check = !getenv("RX_VK_MAP_CHECK") || atoi(getenv("RX_VK_MAP_CHECK")) != 0;
+    if (check && mapped && !info.pMappedData) {
+        vmaDestroyBuffer(vma, buffer, allocation);
+        buffer = VK_NULL_HANDLE;
+        allocation = nullptr;
+        *mapped = nullptr;
+        return false;
+    }
     if (mapped) *mapped = info.pMappedData;
     tag_mapped(info, mem_kind_tag);
     note_alloc(allocation, mem_kind_tag);
@@ -504,7 +602,8 @@ void destroy_buffer(VkBuffer buffer, VmaAllocation allocation) {
         if (info.pMappedData) host_untag(info.pMappedData);
     }
     note_free(allocation);
-    vmaDestroyBuffer(vma, buffer, allocation);
+    if (!buffer && !allocation) return;
+    reap([buffer, allocation] { vmaDestroyBuffer(vma, buffer, allocation); });
 }
 bool create_device_buffer(uint64_t size, VkBufferUsageFlags usage, VkBuffer& buffer, VmaAllocation& allocation, bool dedicated) {
     VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};

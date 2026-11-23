@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The game's update offer (host/hos_update.c) is on for a game the player started, off when the launcher or the builder started it,
 and the player can turn it off for good: "Never ask again" in the offer and the menu's Settings row "Check for updates" both keep
 update_check=0 in hookshot_options.ini. The two helpers for that line are compiled as they are; the rest is checked in the source.

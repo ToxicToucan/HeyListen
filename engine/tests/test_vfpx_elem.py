@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-041) The lifter's vectorized FMUL / FMLA / FMLS by element (.4S) and vector FMLA / FMLS (.4S), game-free:
 bit-exact with the per-lane loops they replace.
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The pipeline cache's fetches and builds take turns on Intel (gpu/vk/vk_draw.cpp PcacheFetch, PcacheUse;
 https://github.com/NotRexed/Hookshot/issues/999).
 

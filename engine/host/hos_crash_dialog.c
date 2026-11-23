@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* (heylisten) The window right after a crash, at start or in play: "HeyListen closed unexpectedly", when, why where it is known,
    and Report automatically, Report manually, Open the log folder, Close. Report automatically shows the report it would post
    to the HeyListen telemetry server's /telemetry/crash and posts it with the system's curl only when the player presses Send. Report manually

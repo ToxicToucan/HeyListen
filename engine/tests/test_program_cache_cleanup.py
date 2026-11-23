@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Count module lifetimes through the production cache loader, without a GPU or game.
 
 Auto-discovered by tests/run_all.py. Optional local checks:

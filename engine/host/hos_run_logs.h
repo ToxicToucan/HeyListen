@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (heylisten) logs/ in the game folder: this run's log and the last four as .log files, for RecompLauncher, which attaches the newest
    .log of a declared "logs" folder to a crash report the player sends (recomplauncher.json "folders"). hookshot_log.txt and its
    .1.txt to .4.txt stay as they are, for players and the docs. Each .log is a hard link to the same file, so the run's log is there

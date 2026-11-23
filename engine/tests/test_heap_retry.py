@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The OptimizeChangeBank thread's allocations are tried again when their heap is full (host/hl_heap_retry.c, nx2/hl_gates.py).
 
 Issue 1697 (thread OptimizeChangeBanc writes guest 0x8 a few frames after loading a save) and TomShafford/Hookshot's crash at

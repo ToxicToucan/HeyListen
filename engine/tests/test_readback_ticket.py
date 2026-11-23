@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-059) RX_VK_READBACK_TICKET: a fast fence poll notes the sync_order_mu section in progress (a ticket), and a CPU
 readback waits until that section has left: the order the poll's lock gave it, without the poll waiting.
 
@@ -64,7 +66,7 @@ def main():
     need(fast < take < ans < locked, "the fast poll does not take its ticket before it answers")
 
     inv = function(rp, "void invalidate(uint64_t gpu, uint64_t size) {")
-    w = inv.index("if (size && ticket == 1) order_ticket_wait();")
+    w = inv.index("if (size && ticket == 1 && !rb_late && !ring_serve) order_ticket_wait();")
     need(w < inv.index("memory_cpu_reads(") and w < inv.index("memory_writeback_value("),
          "the readback's ticket wait is not before memory_cpu_reads and the write-back check")
     need("else if (!ticket && fence_poll_fast_on() && !async_on() && sync_waits_on() && !per_queue_fences_off()) {" in inv,
@@ -87,6 +89,8 @@ def main():
 #include <vector>
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "FAIL:%d %s\n", __LINE__, #x); std::exit(1); } } while (0)
 static void jt_mark(int, uint64_t) {}
+struct WaitScope { explicit WaitScope(int) {} };
+enum { WS_TICKET };
 ''' + parts + r'''
 std::atomic<uint64_t> registered{0};   // (the newest section that made its "registrations")
 int main() {

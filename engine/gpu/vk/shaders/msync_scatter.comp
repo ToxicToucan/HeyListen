@@ -1,4 +1,6 @@
 #version 450
+// Copyright (C) 2026 Sacrappy
+
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference_uvec2 : require
 // (TICK-021) The mirror syncs' many small copies (CPU pages from a capture or guest memory -> a pool's VRAM mirror) in one

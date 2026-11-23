@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of direct emission: native producers write the back end's command
    records into a command buffer's own segment (engine/native: hl/c/hl_gfx_rec.h, hl/gfx/Records.h;
    docs/native-engine/direct-emission.md, bricks A and B).

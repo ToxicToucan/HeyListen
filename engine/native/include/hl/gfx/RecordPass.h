@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the graphics recording pass (docs/native-engine/gfx-record-job.md, unit A).
 //
 // The game's graphics module records a frame's scene into NVN command buffers in jobs; the largest part of that recording

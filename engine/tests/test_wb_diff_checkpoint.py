@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The write-back diff pass has a checkpoint of its own (gpu/vk/vk_memory.cpp), named in the device-lost report
 (gpu/vk/vk_draw.cpp checkpoint_kind): without it a fault in the pass read as the last pool's copy (issues 899, 1008). No game/GPU."""
 from pathlib import Path

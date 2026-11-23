@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free crash records, real fatal children, and locked unclean-end markers.
 
 Uses the real writer, crash adapter, hos_fatal/logger, control quit and restart

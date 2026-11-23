@@ -54,6 +54,7 @@ typedef int SRWLOCK;
 static void AcquireSRWLockExclusive(SRWLOCK *l) { *l = 1; }
 static void ReleaseSRWLockExclusive(SRWLOCK *l) { *l = 0; }
 volatile uint32_t hos_frame_seconds_bits;
+volatile int hos_frame_carry_step;
 @HOST@
 #define A64_NOESC
 typedef struct { uint64_t x[32], vreg[32][2]; uint32_t fpcr, fpsr, counter, other; } Ctx;

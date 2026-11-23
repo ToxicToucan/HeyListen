@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (TICK-043) A submit's capture made of the pages copied ahead of it (the pre-copy thread, vk_memory.cpp) and the pages
 // written since (collected at the submit).
 //

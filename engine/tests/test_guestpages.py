@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The guest window's substrate (host/hos_guestpages.c): a small window reserved the way the guest window is, granules
 dropped and restored atomically while threads touch them (tests/guestpages_test.c). Windows only: skipped elsewhere."""
 import argparse

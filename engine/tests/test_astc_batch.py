@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-051) RX_VK_ASTC_BATCH: ASTC textures kept as BC1 / BC7 decoded, encoded and copied a group of (level, layer) pieces
 at a time. The group must give each piece a scratch layer and an encoder-buffer range of its own, keep the dispatches'
 inputs those of the one-piece path, and order decode -> encode -> copy -> next group with full barriers.

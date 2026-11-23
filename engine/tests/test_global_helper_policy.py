@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A mesh stage over RX_VK_MESH_NOINLINE_ABOVE IR instructions keeps its global-memory helpers out of line (default off).
 
 The decision (gpu/vk/eden/shader_recompiler/backend/spirv/global_helper_policy.h) is compiled and run on its own against a

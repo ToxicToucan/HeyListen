@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (heylisten) The per-zone shader and pipeline usage's rules (perf_report.cpp records it on the draw path and queues the
 // batch, the host's sender, host/hos_crash_dialog.c, posts it to <the build's address>/telemetry/zones): which shader
 // program keys and which pipeline state keys a map's draws first used, in first-use order, so that the next release can

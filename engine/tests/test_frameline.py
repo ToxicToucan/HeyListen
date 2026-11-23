@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-054) tools/bench/frameline.py: the frame timeline from a HOS_JOBTRACE file. A synthetic trace of two frames (the main
 thread's job-group wait and end-of-frame wait, a poll, the Presentation Thread's queue wait, its submit and present marks, the
 GPU's completion marks) must give frames cut at the present's end, the main thread's phases in order, the Presentation Thread's

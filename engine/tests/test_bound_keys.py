@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The keys-only controls (the left stick's and the camera's directions) and the mouse's buttons are bindings like
 the Switch's buttons (host/nn_hid.c).
 

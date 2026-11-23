@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the lazy write-back's pool rule (gpu/vk/wb_pool_eager.h; no game/GPU) and check that vk_memory.cpp applies it
 where a mirror sync's dirty page reaches the lazy write-back (issue 50, cut-grass debris)."""
 import argparse

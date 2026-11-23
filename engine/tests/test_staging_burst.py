@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The staging arenas a load used a moment ago are kept, so frames that stage in a row do not make one each time.
 
 A staging arena is free for reuse once the GPU finished the submission that read it, which is after the next frame

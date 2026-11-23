@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Without nullDescriptor, a texture or storage image that does not resolve must get a dummy view, never VK_NULL_HANDLE
 (VUID-VkWriteDescriptorSet-descriptorType-02997). Runs the real make_dummies against stubbed Vulkan calls."""
 import argparse

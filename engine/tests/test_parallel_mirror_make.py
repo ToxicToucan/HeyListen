@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """No pool's mirror is made inside a parallel replay's segment, except a never-imported pool's, into the earliest segment's init.
 
 gpu_buffer_bind makes a pool's mirror at its first binding: the page table points at the mirror at once, and its fill

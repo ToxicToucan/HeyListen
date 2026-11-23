@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The commit limit (RAM plus the page file on Windows; HeyListen issues 55 and 62, Hookshot 2972, Longshot 91a1ae8b; on Linux,
 since Longshot f1b17d59, MemAvailable plus SwapFree from /proc/meminfo). Every VRAM block is charged to the process's commit, as
 the guest's memory is: a run held private commit at the VRAM blocks plus ~21 GB the whole way, and a 32 GB PC reached its commit

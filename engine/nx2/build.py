@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile the lifted game (work/gen, from `lift.py --write`) into work/build/hookshot_game.dll (or a static library).
 
 The flags are a64-kit's for lifted code (its build.py, cmd_native): -O1, LoopRotate's header copies capped (most of

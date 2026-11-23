@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The storage reserved for a character's shadow map (nvn_native.c nvnTextureBuilderGetStorageSize and ...Alignment).
    tests/test_shadow_slot.py
 
@@ -29,6 +31,19 @@ static inline uint32_t hos_shadow_slot_side(int is_2d, int format, uint32_t leve
         return 0;
     const uint32_t side = (width + step - 1) / step * step;
     return side > HOS_SHADOW_SLOT_MAX ? HOS_SHADOW_SLOT_MAX : side;
+}
+
+/* (QUICK1, HOS_SHADOW_LADDER=1, off until measured; idea: Rekarina's notes, 2026-11) The same for every size, as a ladder of rungs
+   128, 192, 256, 384, 512, 768, 1152, 1536, 1920 instead of multiples of one step: a side up to 1920 (and from 32 up) reserves the
+   next rung's storage, so the maps under 384 that change by a few pixels as well stay in the same slot. 0: its own */
+static inline uint32_t hos_shadow_slot_side_ladder(int is_2d, int format, uint32_t levels, uint32_t depth, uint32_t width, uint32_t height) {
+    static const uint32_t rungs[] = {128, 192, 256, 384, 512, 768, 1152, 1536, 1920};
+    if (!is_2d || format != HOS_SHADOW_SLOT_FORMAT || levels != 1 || depth > 1 || width != height || width < 32 ||
+        width > HOS_SHADOW_SLOT_MAX)
+        return 0;
+    for (unsigned i = 0; i < sizeof rungs / sizeof rungs[0]; i++)
+        if (width <= rungs[i]) return rungs[i];
+    return 0;
 }
 
 #endif

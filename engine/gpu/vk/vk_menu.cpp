@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The Insert menu. Drawn with Dear ImGui over the window's image at the last step of a present (menu_record; vk_imgui.h, in the
 // game's style: vk_ui.h), so it costs nothing while closed and it never touches the game's picture, nor what frame interpolation
 // sees. The FPS counter and the start-up screen are drawn the same way. Insert or F1 opens and closes it by default.
@@ -999,7 +1001,10 @@ Row rows[] = {
      "of what was sent. At exit it also queues the graphics pipeline states your game made that the shipped list lacks (hashes "
       "and render state only, nothing of the game's code or data; pipelines_pending, pipelines_sent), unless HL_TELEMETRY_PIPELINES=0. "
       "It also notes, per map, which shader programs and pipelines your game's draws used, by hash alone (zones_pending, "
-      "zones_sent), unless HL_TELEMETRY_ZONES=0. Turning it off deletes those folders. See docs/performance-statistics.md.",
+      "zones_sent), unless HL_TELEMETRY_ZONES=0. Each summary also carries a short memory record (your RAM size as a class, the least "
+      "free RAM, the commit charge, working-set trims and page-fault counts, and how long the game held its memory trimming back) and, "
+      "for each stutter, which kind of wait it was (a lock, a sleep, a file, a page fault...), all as numbers, with no path or name "
+      "(HL_TEL_MEMORY=0 and HL_TEL_WAITS=0 leave them out). Turning it off deletes those folders. See docs/performance-statistics.md.",
      hn_telemetry, false, true},
     {TAB_GAMEPLAY, "Send crash reports automatically", &opts.send_crash, 0, 1, 1, tx_telemetry,
      "Off by default: after a crash a window asks what to do. On: the crash report (the error, your PC's hardware, the end of the "
@@ -2673,6 +2678,7 @@ void menu_option_set(int id, int value) {
         perf_parts::note_pace(value);
         return;
     }
+    if (perf_parts::note_option(id, value)) return;   // (v0.4.4: the presenting thread's waits by kind, the cold pages' hold)
     if (id == perf_parts::kOptLoading) {   // (the game loads a map, host/hos_main.c's push: the hitch rows' load side)
         perf_parts::note_loading(value);
         return;

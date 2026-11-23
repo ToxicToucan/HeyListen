@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """What the shader caches' translator stamp is made of (nx2/translator_files.py, HOOKSHOT_SHADER_STAMP of nx2/build.py), run
 on tiny authored files without building the renderer: a translator edit changes it; an edit to a file the translator does not
 read (another renderer source, vk_api.h's host interface and menu ids) keeps it, so every player's translated programs are kept.

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Reads hl_trace.bin, the crash recorder's file (engine/host/hl_trace.h; HL_TRACE=1, written at a crash or with
 HL_TRACE_DUMP=<s>).
 

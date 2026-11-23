@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The writer side of tests/test_settings_atomic.py: the writes of a setting, over host/hos_atomic_file.h, with a kill point at
    each step (the header's HOS_AF_STEP, and one between the calls of the old way) at which the process kills itself.
 

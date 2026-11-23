@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """NVIDIA's DLSS SDK files for a local build with NVIDIA DLSS Super Resolution (HOOKSHOT_NGX_SDK, gpu/vk/vk_dlss.cpp).
 
 NVIDIA's files are not part of Hookshot and are never committed or bundled: they are under NVIDIA's own license (the DLSS

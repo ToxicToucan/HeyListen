@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The builders ship what nx2/build.py compiles into the game: the native engine (native/) and zstd's decoder
 (third_party/zstd/lib, for host/hl_stream.c). A Windows release whose package left native/ out stopped every player's
 build at its first step; the AppImage carried neither.

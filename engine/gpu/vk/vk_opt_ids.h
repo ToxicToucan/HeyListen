@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #pragma once
 /* (HeyListen) Runtime option ids that are ours alone, in a header of their own: gpu/vk/vk_api.h is part of the shader stamp
    (nx2/build.py), and a change there makes every player prepare shaders again. The ids upstream uses (Hookshot's and

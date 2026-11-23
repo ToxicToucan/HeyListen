@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* (heylisten) The window after a crash (host/hos_crash_dialog.c): the parts that decide, as plain C with no system calls, for
    tests/test_crash_dialog.py.
 

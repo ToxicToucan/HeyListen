@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(ported from Hookshot 54530a0d, pixl27) The captures' wait for late pages follows the GPU: no white flashes on slower cards.
 
 Read from the source (no GPU or game):

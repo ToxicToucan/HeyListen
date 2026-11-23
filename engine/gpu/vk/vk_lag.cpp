@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, 2026-11-14) RX_VK_LAG_LOG=1: replay lag, the truth of the game's waits, and what the capture protects. See vk_lag.h.
 //
 // What is measured, with the host clock (the same as the host's hos_now_ns) and the game's present count (the presents it has

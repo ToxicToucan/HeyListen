@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen TICK-055) tests/test_fpx_xmm.py's driver: each guest word or sequence lifted with the default lowering (fn_old)
    and with A64_FPX_XMM=1 (fn_new), on random registers, guest memory and FP states: the whole Ctx and the guest memory
    must match.

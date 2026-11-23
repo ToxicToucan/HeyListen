@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: where the native job system meets the gameplay code that is still run from the user's local
 // translation (docs/native-engine/jobs-boundary.md has the reading behind every number here).
 //

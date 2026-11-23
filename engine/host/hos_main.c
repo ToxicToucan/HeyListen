@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Horizon OS layer, native host: process start and boot.
 
    What rtld and nn::init::Start do on hardware (see ports/zelda-totk/PORT.md, "How the game starts"), done here:
@@ -10,6 +12,7 @@
                 HOS_NVN_CONTINUE=1 (go on past nvnBootstrapLoader). */
 #include "hos.h"
 #include "hos_paths.h"
+#include "ws_floor.h"        /* (the game's memory kept in RAM: HOS_WS_FLOOR_MB) */
 #include "hos_run_logs.h"
 #include "../gpu/vk/vk_api.h"
 #include "../gpu/vk/oot_cheat_items.h"
@@ -89,6 +92,24 @@ static void no_power_throttling(void) {
         s.control = 0x1;
         set(GetCurrentProcess(), 4, &s, sizeof s);
     }
+}
+#endif
+
+#ifdef _WIN32
+/* (longshot 1618c190) The game's memory kept in RAM under memory pressure: a soft working-set minimum (host/ws_floor.h, HOS_WS_FLOOR_MB) */
+static void ws_floor(void) {
+    uint64_t mb, ram_mb;
+    unsigned long err;
+    /* (STALL1, 22 Nov: off unless HOS_WS_FLOOR_MB is set; the floor was the worst run on both benches under a memory hog) */
+    const char *floor_env = getenv("HOS_WS_FLOOR_MB");
+    const int r = ws_floor_apply(floor_env && *floor_env ? floor_env : "0", &mb, &ram_mb, &err);
+    if (r > 0)
+        hos_log("mem: the working set's minimum is %llu MB of the PC's %llu MB: Windows keeps that much of the game in RAM before "
+                "it trims below it (HOS_WS_FLOOR_MB=0: Windows' own)", (unsigned long long)mb, (unsigned long long)ram_mb);
+    else if (!r)
+        hos_log("mem: the working set's minimum is Windows' own (HOS_WS_FLOOR_MB=0)");
+    else
+        hos_log("mem: a working set minimum of %llu MB was refused (error %lu): Windows' own stays", (unsigned long long)mb, err);
 }
 #endif
 
@@ -484,6 +505,72 @@ static void hos_env_notes_log(void) {
         l = e + 1;
     }
     env_notes_n = 0, env_notes[0] = 0;
+}
+
+/* (QUICK1, HL_NV_CACHE_DIR; idea: Rekarina's notes, 2026-11) The NVIDIA driver's own shader cache, kept beside the game instead of in
+   the shared per-user default (Windows: %LOCALAPPDATA%\NVIDIA\DXCache and GLCache, on C:; Linux: ~/.nv), which is 1 GB for every
+   program on the machine and, once full, drops entries to make room: Rekarina measured in-play pipeline builds at 533 ms on average
+   (2.6 s at most) against 2-5 ms with the cache moved and enlarged. Our own VkPipelineCache (vk_draw.cpp pcache_init) holds what the
+   driver hands back to it, ~1.1 GB, but the driver reports most precompiled pipelines as "not found in the app's cache" (~460 of
+   ~12,900 here) and serves them from its own, so a driver cache that was evicted still costs a compile.
+   Set before anything loads Vulkan (the driver reads these when its library is loaded): HL_NV_CACHE_DIR=1 the folder
+   nv_shader_cache in the game's folder, =<path> that folder, unset or 0 off (off until measured). On NVIDIA only (its driver's
+   library is there), and never over a value the environment already sets. __GL_SHADER_DISK_CACHE_SIZE 4 GB: four times the
+   pipeline cache's size, so a driver update's new entries (they are keyed by driver version, the old ones stay) and the game's own
+   do not push each other out; SKIP_CLEANUP=1 stops the driver deleting entries to stay under the size, which is what evicted ours. */
+static int nvidia_driver_present(void) {
+#ifdef _WIN32
+    char sys[MAX_PATH + 32];
+    const UINT n = GetSystemDirectoryA(sys, MAX_PATH);
+    if (!n || n >= MAX_PATH) return 0;
+    strcat(sys, "\\nvapi64.dll");
+    return GetFileAttributesA(sys) != INVALID_FILE_ATTRIBUTES;
+#else
+    return access("/proc/driver/nvidia/version", F_OK) == 0;
+#endif
+}
+static void nv_cache_env(void) {
+    const char *want = getenv("HL_NV_CACHE_DIR");
+    if (!want || !*want || !strcmp(want, "0")) return;
+    if (!nvidia_driver_present()) {
+        env_note("env: HL_NV_CACHE_DIR set, but no NVIDIA driver here: left alone");
+        return;
+    }
+    if (getenv("__GL_SHADER_DISK_CACHE_PATH")) {
+        env_note("env: HL_NV_CACHE_DIR: __GL_SHADER_DISK_CACHE_PATH is set already (%s): left alone", getenv("__GL_SHADER_DISK_CACHE_PATH"));
+        return;
+    }
+    char dir[MAX_PATH + 32];
+    if (!strcmp(want, "1")) {
+        DWORD n = hos_game_path_a(dir, MAX_PATH);
+        while (n && dir[n - 1] != 92 && dir[n - 1] != 47) n--;
+        if (!n || n + 20 >= sizeof dir) return;
+        memcpy(dir + n, "nv_shader_cache", 16);
+    } else {
+        if (strlen(want) >= MAX_PATH) return;
+        snprintf(dir, sizeof dir, "%s", want);
+    }
+#ifdef _WIN32
+    CreateDirectoryA(dir, NULL);
+    char kv[MAX_PATH + 64];
+    snprintf(kv, sizeof kv, "__GL_SHADER_DISK_CACHE_PATH=%s", dir);
+    _putenv(kv);
+    SetEnvironmentVariableA("__GL_SHADER_DISK_CACHE_PATH", dir);
+    if (!getenv("__GL_SHADER_DISK_CACHE_SIZE")) {
+        _putenv("__GL_SHADER_DISK_CACHE_SIZE=4294967296");
+        SetEnvironmentVariableA("__GL_SHADER_DISK_CACHE_SIZE", "4294967296");
+    }
+    if (!getenv("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP")) {
+        _putenv("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1");
+        SetEnvironmentVariableA("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP", "1");
+    }
+#else
+    mkdir(dir, 0755);
+    setenv("__GL_SHADER_DISK_CACHE_PATH", dir, 1);
+    setenv("__GL_SHADER_DISK_CACHE_SIZE", "4294967296", 0);
+    setenv("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP", "1", 0);
+#endif
+    env_note("env: the NVIDIA driver's shader cache is %s (HL_NV_CACHE_DIR; 4 GB, no cleanup)", dir);
 }
 
 static void load_hookshot_env(void) {
@@ -1971,6 +2058,50 @@ static void memory_notice(void) {
     MessageBoxA(NULL, text, "HeyListen", MB_OK | MB_ICONWARNING);
 }
 #endif
+/* (HeyListen, #55: seven "Title and intro" crashes since v0.4.1, "exception 0xc0000005 (write 0x100000000000, guest 0)" in the
+   guest's memset, from the module system's set-up (f_83b797e0), on RTX 3060, RX 580, RX 6700 XT.) The game sizes the heap of each
+   of its modules from a file of its own, System/HeapSize/Product.Nin_Ounce_NVN2.HeapDef.byml.zs, which it opens first of all. Where
+   the game's files do not hold it (an incomplete or another version's romfs folder), nothing says so: the game reads no sizes,
+   creates no heap for its third module, and its first allocation there returns null and is written through. A run with that
+   file taken out crashes with the same address and the same eleven guest frames. The file's absence (or an empty one) is told
+   before the boot instead, and the game does not start. HOS_ROMFS_CHECK=0: not checked (as before). */
+#ifndef A64_MEM_ZERO
+#define HOS_ROMFS_SHOWN "System/HeapSize/Product.Nin_Ounce_NVN2.HeapDef.byml"
+#define HOS_ROMFS_BOOT_FILE "System" SEP_S "HeapSize" SEP_S "Product.Nin_Ounce_NVN2.HeapDef.byml"
+static int romfs_file_ok(const char *romfs, const char *rel_with_ext) {
+    char p[MAX_PATH];
+    snprintf(p, sizeof p, "%s" SEP_S "%s", romfs, rel_with_ext);
+    const DWORD at = GetFileAttributesA(p);
+    if (at == INVALID_FILE_ATTRIBUTES || (at & FILE_ATTRIBUTE_DIRECTORY)) return 0;
+    FILE *f = fopen(p, "rb");   /* (not empty, and readable) */
+    if (!f) return 0;
+    const int one = fgetc(f) != EOF;
+    fclose(f);
+    return one;
+}
+/* 1: the boot file is in the folder (the compressed one the game asks for, or the plain one it falls back to) */
+static int romfs_boot_file_present(const char *romfs) {
+    return romfs_file_ok(romfs, HOS_ROMFS_BOOT_FILE ".zs") || romfs_file_ok(romfs, HOS_ROMFS_BOOT_FILE);
+}
+static int romfs_notice(const char *romfs, int quiet) {   /* 1: the game can start */
+    const char *off = getenv("HOS_ROMFS_CHECK");
+    if (!romfs || (off && atoi(off) == 0) || romfs_boot_file_present(romfs)) return 1;
+    hos_log("boot: the game's files are incomplete: %s lacks the game's heap sizes (" HOS_ROMFS_SHOWN ".zs): "
+            "the game would crash right after its window opens (HOS_ROMFS_CHECK=0: start anyway)", romfs);
+    if (quiet || getenv("HOS_HEADLESS")) return 0;
+    char text[MAX_PATH + 700];
+    snprintf(text, sizeof text,
+             "The game's files in this folder are incomplete:\n\n%s\n\nThe file " HOS_ROMFS_SHOWN ".zs is missing or empty, "
+             "and without it the game stops with a crash when its window opens.\n\nPrepare the game's files again with "
+             "HeyListen Builder (the full game, with its update), then start the game.", romfs);
+#ifndef _WIN32
+    int hos_sdl_load(void);
+    hos_sdl_load();
+#endif
+    MessageBoxA(NULL, text, "HeyListen: the game's files", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+    return 0;
+}
+#endif
 #ifdef _WIN32
 /* (hookshot) On laptops with two GPUs, the drivers run a program on the dedicated one when it exports these (NVIDIA Optimus, AMD
    PowerXpress): without them a laptop could put the game on its integrated GPU, 5 fps (issue 176) */
@@ -2018,6 +2149,7 @@ static int game_main(int argc, char **argv) {
     }
     if (!narrow_paths_ok(argc, argv)) return 1;
     load_hookshot_env();
+    nv_cache_env();
 #endif
 #if defined(_WIN32) || defined(__linux__)
     process_start_ns = hos_now_ns();
@@ -2275,6 +2407,11 @@ static int game_main(int argc, char **argv) {
             (unsigned long long)(hos_total_memory >> 20));
 #ifndef A64_MEM_ZERO
     memory_notice();
+    {   /* (a romfs folder without the game's heap sizes: told here, not crashed on later; the builder's shader run has no window to tell) */
+        int prepare = 0;
+        for (int i = 1; i < argc; i++) prepare |= !strcmp(argv[i], "--prepare-shaders");
+        if (!romfs_notice(hos_romfs_dir, prepare)) return 4;
+    }
 #endif
     void hos_mods_init(const char *image_path);
     hos_mods_init(image);   /* mods.c: <exe folder>\mods (RomFS files) */
@@ -2287,6 +2424,7 @@ static int game_main(int argc, char **argv) {
 #ifdef _WIN32
     timeBeginPeriod(1);   /* 1 ms timer resolution: the 60 Hz vsync and the game's frame pacing sleep in short steps */
     no_power_throttling();
+    ws_floor();   /* (the game's memory kept in RAM under memory pressure: host/ws_floor.h) */
 #endif
     void hos_display_start(void);
     hos_display_start();  /* the game's window; HOS_HEADLESS=1 for none */
@@ -2336,6 +2474,7 @@ int main(int argc, char **argv) {
     int hos_display_init(void);
     void hos_display_loop(void);
     load_hookshot_env();
+    nv_cache_env();
 #ifdef __linux__
     /* (after hookshot_env.txt, which may set RX_VK_RADV_SUBMIT_THREAD, and before hos_display_init's SDL_Init, the first
        thread: its setenv is safe only while this is the one thread. HL_TRACE's dump threads, a constructor's, are the one

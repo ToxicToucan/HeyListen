@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the mirror syncs' chunk diff (gpu/vk/msync_diff.h; no game/GPU), with and without AVX2, and check that
 vk_memory.cpp still voids the hashes wherever the mirror may be written another way (TICK-048)."""
 import argparse

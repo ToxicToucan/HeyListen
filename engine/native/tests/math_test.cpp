@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: hl::math with no game (tests/test_native_engine.py): the exactness helpers' truth tables, each
 // kernel against a reference written straight from its specification (docs/native-engine/physics-loops.md section 6,
 // critical-jobs.md), the inputs the kernels must give up on, and the C surface reading the guest's layouts.

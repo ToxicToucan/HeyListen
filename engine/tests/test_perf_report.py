@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The performance summary (gpu/vk/perf_report.h, perf_report.cpp), ported from Longshot's #983, with no game and no GPU.
 
 - tests/test_perf_report.cpp: the buckets, the interval, what a hitch is and what it waited on, the pacing misses, the JSON
@@ -174,8 +176,27 @@ def parts_wiring():
           "the summary reads the pacing sleep, the loading flag and the presenting thread's CPU time per frame")
     check("const bool loading = load_now || load_last || map_switched;" in report and "load_last = load_now, map_switched = false;" in report,
           "a load's stall frame is the one presented once it has ended, or the frame its map changed on: the loading flag is kept for it")
-    check("if (current) map_switched = true;" in report,
+    check("map_switched = true;" in report and "if (current) {" in report,
           "a map change is the area change's load (the game thread is inside the load, so its tick never sees the flag)")
+    # v0.4.4: the load hitches (the flag is never seen: the map change seen later marks the window before it), the stalls, the waits by kind
+    check("pr::reclassify_as_load(*current, recent_hitches" in report and "pr::add_stall(*current" in report and
+          "&recent_hitches" in report,
+          "a map change seen late marks the hitches and stalls just before it as the load's; a gap of over 2 s is counted as a stall")
+    check("hos_wn_add(HOS_WN_LOCK" in (ROOT / "host/hos_thread.c").read_text(encoding="utf-8") and
+          "hos_wn_add(HOS_WN_SLEEP" in (ROOT / "host/hos_thread.c").read_text(encoding="utf-8") and
+          "hos_wn_add(HOS_WN_VCORE" in (ROOT / "host/hos_thread.c").read_text(encoding="utf-8") and
+          "hos_wn_add(HOS_WN_FILE" in (ROOT / "host/nn_fs.c").read_text(encoding="utf-8"),
+          "the host times the presenting thread's lock, sleep, virtual-core and file waits (hos_waitnote.h)")
+    check("rx_option_set(94 + k" in nvn and "perf_parts::note_option(id, value)" in menu and "perf_parts::wait_us[" in report and
+          "HL_TEL_WAITS" in nvn and "HL_TEL_WAITS" in report,
+          "the waits by kind are pushed at each present (ids 94 to 97) and read per frame; HL_TEL_WAITS=0 turns them off")
+    check("rx_option_set(98," in (ROOT / "host/hl_mem.c").read_text(encoding="utf-8") and "perf_parts::cold_held_ds" in report and
+          "HL_TEL_MEMORY" in report,
+          "the cold pages' hold is pushed (ids 98, 99) and goes in the memory record; HL_TEL_MEMORY=0 leaves the new fields out")
+    check("HL_HITCH_LOG" in report, "HL_HITCH_LOG logs the numbers of each slow frame")
+    internal = (ROOT / "gpu/vk/vk_internal.h").read_text(encoding="utf-8")
+    check("RX_VK_PROF_CAP" in internal and "raw > prof_cap_ns ? raw : raw * k" in internal,
+          "a sampled scope over 1 ms is counted once, not eight times (RX_VK_PROF_CAP=0: as before): the descriptors cause was inflated by it")
     check("perf_parts::on.store(true" in report and "perf_parts::on.store(false" in report,
           "the parts' scopes are turned on and off with the row")
 

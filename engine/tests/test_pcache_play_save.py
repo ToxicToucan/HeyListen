@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The pipeline cache's save in play (gpu/vk/vk_draw.cpp pcache_play_save_gate, RX_VK_PCACHE_PLAY_SAVE).
 
 A save in play fetches the whole cache (1.27 GB after a long session) into new file pages and writes it out; on a PC with

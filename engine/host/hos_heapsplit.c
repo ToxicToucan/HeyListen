@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen, 2026-11-13) HOS_HEAP_SPLIT=<seconds>: once, that long after the start, the game's heaps as a table. Every heap
    reachable from the heap manager's two root arrays, as a tree: name, class (its vtable), size, used and free by the heap's
    own bookkeeping, the resident bytes (pages in the working set) that are its own (in its range and in no child's), outside

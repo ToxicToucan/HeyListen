@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (hookshot) NVIDIA DLSS Super Resolution, one of the temporal upscaler's engines (vk_dlss.h). The frame chain it draws
 // with (the scene's camera and depth, the inputs, the actor motion, the jitter, the picture into the network's output) is
 // vk_temporal.cpp's; here are NGX, DLSS's feature and its evaluation.

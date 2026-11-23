@@ -69,6 +69,7 @@ static uint64_t get_info(uint32_t id0, uint64_t id1, int *ok) {
 typedef struct { HosThread *t; uint64_t mutex, key; uint32_t tag; int on_key; } Waiter;
 static Waiter waiters[1024];
 static int nwaiters;
+static int addr_waiting;   /* (QUICK1, HOS_ADDR_SIGNAL_FAST=1: waiters on an address, counted for svcSignalToAddress's lock-free look) */
 static SRWLOCK klock = SRWLOCK_INIT;
 
 static uint32_t word_get(uint64_t a) { return __atomic_load_n((uint32_t *)GP(a), __ATOMIC_SEQ_CST); }
@@ -94,20 +95,39 @@ static int best_waiter(uint64_t addr, int on_key, int *others) {
     }
     return best;
 }
-static void remove_waiter(int i) { memmove(&waiters[i], &waiters[i + 1], (nwaiters - i - 1) * sizeof *waiters); nwaiters--; }
+static void remove_waiter(int i) { if (waiters[i].on_key == 2) __atomic_sub_fetch(&addr_waiting, 1, __ATOMIC_SEQ_CST); memmove(&waiters[i], &waiters[i + 1], (nwaiters - i - 1) * sizeof *waiters); nwaiters--; }
+/* (QUICK1, HOS_KWAKE_AFTER_UNLOCK=1, off until measured; idea: Rekarina's notes, 2026-11) Threads the kernel wakes are woken after
+   klock is released, not inside it: a woken thread that goes straight to the kernel finds klock free instead of waiting for the
+   waker's SetEvent (one syscall each) to finish. The wake is a sticky event (hos_thread_wait takes a pending one), so a woken
+   thread that has not slept yet, or one that timed out meanwhile, finds it all the same. At most 16 are held back in a call; any
+   more are woken at once, inside the lock, as before. */
+typedef struct { HosThread *t[16]; int n; } Wakes;
+static int kwake_deferred(void) {
+    static int on = -1;
+    if (on < 0) on = getenv("HOS_KWAKE_AFTER_UNLOCK") && atoi(getenv("HOS_KWAKE_AFTER_UNLOCK")) != 0;
+    return on;
+}
+static void wake_or_defer(Wakes *w, HosThread *t) {
+    if (w && kwake_deferred() && w->n < 16) w->t[w->n++] = t;
+    else hos_thread_wake(t);
+}
+static void flush_wakes(Wakes *w) {
+    for (int i = 0; i < w->n; i++) hos_thread_wake(w->t[i]);
+    w->n = 0;
+}
 static int find_thread(HosThread *t) {
     for (int i = 0; i < nwaiters; i++) if (waiters[i].t == t) return i;
     return -1;
 }
 
 /* Hand a held mutex to its next waiter, or free it. Caller holds klock. */
-static void release_locked(uint64_t mutex) {
+static void release_locked(uint64_t mutex, Wakes *wk) {
     int others, i = best_waiter(mutex, 0, &others);
     if (i < 0) { word_set(mutex, 0); return; }
     Waiter w = waiters[i];
     remove_waiter(i);
     word_set(mutex, w.tag | (others ? HANDLE_WAIT_MASK : 0));
-    hos_thread_wake(w.t);
+    wake_or_defer(wk, w.t);
 }
 
 #if (defined(__x86_64__) || defined(_M_X64)) && !defined(__EMSCRIPTEN__)
@@ -162,9 +182,11 @@ static uint32_t arbitrate_lock(uint32_t owner, uint64_t mutex, uint32_t tag) {
 
 /* svcArbitrateUnlock(mutex address) */
 static uint32_t arbitrate_unlock(uint64_t mutex) {
+    Wakes wk = {{0}, 0};
     AcquireSRWLockExclusive(&klock);
-    release_locked(mutex);
+    release_locked(mutex, &wk);
     ReleaseSRWLockExclusive(&klock);
+    flush_wakes(&wk);
     return 0;
 }
 
@@ -178,8 +200,10 @@ static uint32_t wait_key(uint64_t mutex, uint64_t key, uint32_t tag, int64_t tim
     word_set(key, 1);
     if (nwaiters == 1024) hos_fatal(NULL, "kernel: too many waiters");
     waiters[nwaiters++] = (Waiter){self, mutex, key, tag, 1};
-    release_locked(mutex);
+    Wakes wk = {{0}, 0};
+    release_locked(mutex, &wk);
     ReleaseSRWLockExclusive(&klock);
+    flush_wakes(&wk);
     int to;
     HOS_JT(JT_K_WAIT_B, key, hos_jt_lr());
     hos_thread_wait(self, timeout, &to);
@@ -201,6 +225,7 @@ static uint32_t wait_key(uint64_t mutex, uint64_t key, uint32_t tag, int64_t tim
 
 /* svcSignalProcessWideKey(key address, count): count <= 0 wakes all */
 static void signal_key(uint64_t key, int32_t count) {
+    Wakes wk = {{0}, 0};
     AcquireSRWLockExclusive(&klock);
     for (int n = 0; count <= 0 || n < count; n++) {
         int others, i = best_waiter(key, 1, &others);
@@ -215,7 +240,7 @@ static void signal_key(uint64_t key, int32_t count) {
                 if (!word_cas(w->mutex, 0, w->tag)) continue;
                 HosThread *t = w->t;
                 remove_waiter(i);
-                hos_thread_wake(t);
+                wake_or_defer(&wk, t);
             } else {                                  /* queue on the mutex */
                 if (!(cur & HANDLE_WAIT_MASK) && !word_cas(w->mutex, cur, cur | HANDLE_WAIT_MASK)) continue;
                 w->on_key = 0;
@@ -226,6 +251,7 @@ static void signal_key(uint64_t key, int32_t count) {
     int others;
     if (best_waiter(key, 1, &others) < 0) word_set(key, 0);
     ReleaseSRWLockExclusive(&klock);
+    flush_wakes(&wk);
 }
 
 /* ---- (hookshot) the address arbiter: svcWaitForAddress / svcSignalToAddress -----------------------------------
@@ -239,18 +265,21 @@ static int addr_waiters(uint64_t addr) {
     for (int i = 0; i < nwaiters; i++) if (waiters[i].on_key == 2 && waiters[i].key == addr) n++;
     return n;
 }
-static void wake_address_locked(uint64_t addr, int32_t count) {
+static void wake_address_locked(uint64_t addr, int32_t count, Wakes *wk) {
     for (int n = 0; count <= 0 || n < count; n++) {
         int others, i = best_waiter(addr, 2, &others);
         if (i < 0) break;
         HosThread *t = waiters[i].t;
         remove_waiter(i);
-        hos_thread_wake(t);
+        wake_or_defer(wk, t);
     }
 }
 static uint32_t wait_address(uint64_t addr, uint32_t type, uint64_t value, int64_t timeout) {
     HosThread *self = hos_self();
     AcquireSRWLockExclusive(&klock);
+    /* (QUICK1) counted BEFORE the word is read (seq_cst): a signal that skips the lock (HOS_ADDR_SIGNAL_FAST) either sees the count
+       or stored its word before this read. The count stays with the entry (remove_waiter takes it off); the paths that do not wait take it back */
+    __atomic_add_fetch(&addr_waiting, 1, __ATOMIC_SEQ_CST);
     int wait;
     switch (type) {
     case 0: wait = (int32_t)word_get(addr) < (int32_t)value; break;
@@ -266,12 +295,13 @@ static uint32_t wait_address(uint64_t addr, uint32_t type, uint64_t value, int64
     case 2: wait = (int32_t)word_get(addr) == (int32_t)value; break;
     case 3: wait = __atomic_load_n((uint64_t *)GP(addr), __ATOMIC_SEQ_CST) == value; break;
     default:
+        __atomic_sub_fetch(&addr_waiting, 1, __ATOMIC_SEQ_CST);
         ReleaseSRWLockExclusive(&klock);
         hos_log("svcWaitForAddress: arbitration type %u", type);
         return R_INVALID_ENUM;
     }
-    if (!wait) { ReleaseSRWLockExclusive(&klock); return R_INVALID_STATE; }
-    if (timeout == 0) { ReleaseSRWLockExclusive(&klock); return R_TIMED_OUT; }
+    if (!wait) { __atomic_sub_fetch(&addr_waiting, 1, __ATOMIC_SEQ_CST); ReleaseSRWLockExclusive(&klock); return R_INVALID_STATE; }
+    if (timeout == 0) { __atomic_sub_fetch(&addr_waiting, 1, __ATOMIC_SEQ_CST); ReleaseSRWLockExclusive(&klock); return R_TIMED_OUT; }
     if (nwaiters == 1024) hos_fatal(NULL, "kernel: too many waiters");
     waiters[nwaiters++] = (Waiter){self, 0, addr, 0, 2};
     ReleaseSRWLockExclusive(&klock);
@@ -292,6 +322,17 @@ static uint32_t wait_address(uint64_t addr, uint32_t type, uint64_t value, int64
     return 0;
 }
 static uint32_t signal_address(uint64_t addr, uint32_t type, int32_t value, int32_t count) {
+    /* (QUICK1, HOS_ADDR_SIGNAL_FAST=1, off until measured; idea: Rekarina's notes, 2026-11) A plain signal (type 0) while no thread waits
+       on any address wakes nobody and changes nothing. A waiter counts itself (addr_waiting, seq_cst), then reads the word, inside klock;
+       the signaller's own store to the word came before this call, and the fence here orders it before the count's read; a waiter counts
+       itself before it reads the word, so either this sees it (and takes the lock) or it reads the new word and does not sleep. */
+    static int fast = -1;
+    if (fast < 0) fast = getenv("HOS_ADDR_SIGNAL_FAST") && atoi(getenv("HOS_ADDR_SIGNAL_FAST")) != 0;
+    if (fast && type == 0) {
+        __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        if (!__atomic_load_n(&addr_waiting, __ATOMIC_SEQ_CST)) return 0;
+    }
+    Wakes wk = {{0}, 0};
     AcquireSRWLockExclusive(&klock);
     uint32_t r = 0;
     if (type == 1) {
@@ -311,8 +352,9 @@ static uint32_t signal_address(uint64_t addr, uint32_t type, int32_t value, int3
         hos_log("svcSignalToAddress: signal type %u", type);
         return R_INVALID_ENUM;
     }
-    if (!r) wake_address_locked(addr, count);
+    if (!r) wake_address_locked(addr, count, &wk);
     ReleaseSRWLockExclusive(&klock);
+    flush_wakes(&wk);
     return r;
 }
 

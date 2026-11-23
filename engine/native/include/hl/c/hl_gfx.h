@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: the graphics front end's C surface for the layer that runs guest code (engine/host/hl_gfx.c).
    docs/native-engine/gfx-record-job.md has the plan and the check. */
 #ifndef HL_C_GFX_H

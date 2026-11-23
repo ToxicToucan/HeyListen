@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The Insert menu's frame rows (vk_menu.cpp, vk_framegen.cpp, host/nn_vi.c), as plain functions: what the Frame generation
    multiplier row offers for each Frame generation by, and how the Frame rate limit divides between the game and the made
    frames. No Vulkan, no menu: tests/test_framegen_rows.cpp checks them. */

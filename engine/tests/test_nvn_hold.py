@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-054) HOS_NVN_HOLD=2 (host/nvn_native.c): the submits of threads other than the presenting one are held and replayed by
 the presenting thread before its own next submit, or by whoever needs them first. The source must keep: the mode read as a
 number (2 is a mode of its own); the presenting thread learned at the present; its own submit flushing the held ones under
@@ -97,7 +99,7 @@ class NvnHoldTests(unittest.TestCase):
         self.assertIn("held_count() ? rx_nvn_fence() + held_count() : rx_nvn_fence_q(", fence)
 
     def test_sweep_keeps_held_recordings(self):
-        sweep = block(self.nvn, "static void sweep_overwritten_copies(void)")
+        sweep = block(self.nvn, "static size_t sweep_overwritten_copies(void)")
         self.assertIn("const uint64_t after = rx_nvn_pushed() + held_count();", sweep)
         self.assertIn("dead_copy_add(pre, after);", sweep)   # (Hookshot d1ce8a4cd: the dead list's add in one place)
         self.assertIn("dead[ndead].after = after;", block(self.nvn, "static void dead_copy_add("))

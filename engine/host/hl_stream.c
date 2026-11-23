@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of the stream module (engine/native, hl/c/hl_stream.h;
    docs/native-engine/stream-boundary.md): the game's decode of a resource file, answered natively.
 
@@ -571,6 +573,16 @@ static int decode_chunked(Ctx *c, uint64_t obj, uint64_t sp, uint64_t holder, ui
     return 1;
 }
 
+static int stream_away(void) {
+    static int v = -1;
+    int on = __atomic_load_n(&v, __ATOMIC_RELAXED);
+    if (on < 0) {
+        const char *e = getenv("HL_STREAM_AWAY");
+        __atomic_store_n(&v, on = !(e && e[0] == '0' && !e[1]), __ATOMIC_RELAXED);
+    }
+    return on;
+}
+
 static void hl_decode_file(Ctx *A64_NOESC c) {
     if (check_on) {
         check_file(c);
@@ -775,9 +787,16 @@ static void hl_decode_file(Ctx *A64_NOESC c) {
         size_t r;
         if (h.dictID && !dd) r = (size_t)-ZSTD_error_dictionary_wrong;
         else {
+            /* (longshot 7daafa7a, #1553, d87dd600) A decode of at least one maximum zstd block (128 KiB), in or out, gives
+               the thread's virtual core up for the call: libzstd touches no guest registers and no lock of ours while it
+               fills the buffer, and a decode of a few MB held the core for milliseconds, which a waiting audio or job
+               thread felt. A smaller one keeps it (the give-up and take-back cost more than it frees).
+               HL_STREAM_AWAY=0: the thread keeps its core, as before */
+            const int away = (size >= ZSTD_BLOCKSIZE_MAX || csize >= ZSTD_BLOCKSIZE_MAX) && stream_away() && hos_vcore_away();
             r = dd ? ZSTD_decompress_usingDDict(thread_dctx(), GP(dest), size, s, csize, dd)
                    : ZSTD_decompressDCtx(thread_dctx(), GP(dest), size, s, csize);
             HOS_WRITTEN(GP(dest), size);
+            if (away) hos_vcore_back();
         }
         int32_t e = 0;
         if (ZSTD_isError(r)) e = ZSTD_getErrorCode(r) == ZSTD_error_dstSize_tooSmall ? -2 : -1;

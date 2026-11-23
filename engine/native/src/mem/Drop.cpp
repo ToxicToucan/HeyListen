@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: GPU data's system-memory copy given back for good (hl/mem/Drop.h).
 #include "hl/mem/Drop.h"
 

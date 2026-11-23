@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The FPS box's first sample is not the frames since launch divided by one second.
 
 HeyListen draws the counter with vk_overlay.cpp's fps_tick (the performance overlay, F10), which replaced upstream's fps_take: the

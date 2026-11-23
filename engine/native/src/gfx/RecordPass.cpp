@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the graphics recording pass (hl/gfx/RecordPass.h).
 #include "hl/gfx/RecordPass.h"
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The parallel replay's dry pass appends render conditions and uniform updates while early segments read them, without
 waiting behind the workers' reads (gpu/vk/vk_replay.cpp; RX_VK_GROW_LOCK_PLAIN=1: as before).
 
@@ -67,12 +69,17 @@ def main():
     append = first + " " + other + "\n" + publish
     if append.count("UbGrowGuard ug;") != 1 or not re.search(r"\} else \{\s*par_conds\.push_back", append):
         raise SystemExit("FAIL: the condition's append is not as expected (the guard only when the buffer moves)")
-    read = "s.render_enabled = cond_at < par_conds_n.load(std::memory_order_acquire) ? par_conds[cond_at] != 0 : true;"
-    if read not in source:
+    read_at = source.find("if (cond_at < par_conds_n.load(std::memory_order_acquire)) {")
+    if read_at < 0:
         raise SystemExit("FAIL: a worker does not read the render condition by the published count")
+    read = block(source, "if (cond_at < par_conds_n.load(std::memory_order_acquire)) {", read_at)
+    read_rest = source[read_at + len(read):]
+    if not read_rest.lstrip().startswith("else {"):
+        raise SystemExit("FAIL: a worker's read of a condition has no else")
+    read += " " + block(read_rest, "else {")   # (OCC1: the entry is a CondRes, its gate read with the result)
     if "cond_at < par_conds.size()" in source:
         raise SystemExit("FAIL: a worker still reads par_conds' size")
-    if source.count("par_points.clear(), par_conds_reset(), dry_work = 0;") != 2 or "par_conds.clear()" in source.replace(reset, ""):
+    if source.count("par_points.clear(), par_conds_reset(), dry_work = 0;") != 1 or source.count("if (!P) par_conds_reset();") != 1 or "par_conds.clear()" in source.replace(reset, ""):
         raise SystemExit("FAIL: a dry pass does not reset par_conds with room")
     docs = (ROOT / "docs/development.md").read_text(encoding="utf-8")
     if "RX_VK_GROW_LOCK_PLAIN" not in docs:
@@ -90,7 +97,9 @@ def main():
 #include <vector>
 enum class Mode { Serial, Dry, Worker };
 thread_local Mode rmode = Mode::Serial;
-std::vector<uint8_t> par_conds;
+struct CondRes { uint64_t gate, at; uint8_t on; };
+thread_local uint64_t gate_cur = 0;
+std::vector<CondRes> par_conds;
 std::atomic<size_t> par_conds_n{0};
 std::shared_mutex ub_grow_mu;
 std::atomic<bool> ub_growing{false};
@@ -107,6 +116,7 @@ std::atomic<size_t> updates_n{0};
 void append_cond(bool on) {
     State s;
     s.render_enabled = on;
+    const CondRes cr{0, 0, (uint8_t)(s.render_enabled ? 1 : 0)};
     @APPEND@
 }
 bool read_cond(size_t cond_at) {
@@ -167,7 +177,7 @@ int main() {
     ub_growing.store(false);
     if (par_conds.size() != N || par_conds_n.load() != N) { std::printf("count %zu/%zu\n", par_conds.size(), par_conds_n.load()); return 1; }
     for (size_t i = 0; i < N; i++)
-        if ((par_conds[i] != 0) != want(i)) { std::printf("entry %zu\n", i); return 1; }
+        if ((par_conds[i].on != 0) != want(i)) { std::printf("entry %zu\n", i); return 1; }
     if (bad) { std::printf("%ld wrong reads\n", bad.load()); return 1; }
     if (reads < 100) { std::printf("readers starved (%ld reads)\n", reads.load()); return 1; }
     par_conds_reset();

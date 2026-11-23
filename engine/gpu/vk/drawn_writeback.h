@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Which textures the GPU drew have their texels written into guest memory soon after, and when (vk_texture.cpp).
 // tests/test_drawn_writeback.py
 #pragma once

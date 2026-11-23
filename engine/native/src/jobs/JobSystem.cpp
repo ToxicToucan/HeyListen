@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the job system (hl/jobs/JobSystem.h). First version: one lock, correct before fast.
 #include "hl/jobs/JobSystem.h"
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The sticks' dead zone is the player's: the Insert menu's "Stick dead zone" row (stick_dead_zone in
 hookshot_options.ini), issue 752.
 

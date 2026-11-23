@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the graphics front end's boundary with the game's graphics module (hl/bridge/GfxBridge.h).
 #include "hl/bridge/GfxBridge.h"
 

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (longshot 11-18, 35a4a9fc #1617) The pages the GPU can read, a bit each, for the lifted code's page marks
    (build.py RX_MARK_BITMAP, nx2/rtgen.py A64_MARK_BITMAP): a store marks its pages only if its first byte is on one (and
    the page before each mapping counts as one, for a store that crosses into it). The renderer reads the marks of GPU pages

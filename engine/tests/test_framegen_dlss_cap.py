@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Frame generation row stops at DLSS Frame Generation's runtime while DLSS FG makes the frames.
 
 NGX tells the most frames its runtime makes between two of the game's (MultiFrameCountMax: 5 on an RTX 50's, 1 on an

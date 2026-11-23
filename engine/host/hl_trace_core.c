@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The crash recorder's core (hl_trace.h): the threads' rings, the live and freed blocks' tables,
    the report and the file. Plain C11 with no OS layer, so that tests/hl_trace_test.c runs it with no game. */
 #include "hl_trace.h"

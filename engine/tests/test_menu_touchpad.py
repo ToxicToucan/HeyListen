@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A DualSense / DualShock 4 touchpad click opens and closes the Insert menu, as Home does.
 
 SDL reports the click as its gamepad touchpad button (index 20 in SDL2's and SDL3's enums). host/pad_sdl.c turns it into

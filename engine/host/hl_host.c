@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's common ground for the native modules (hl_host.h): the list of guest functions
    answered natively, and the callbacks the native side works through. docs/native-engine/README.md has the plan. */
 #include "hl_host.h"

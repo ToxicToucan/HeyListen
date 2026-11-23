@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Rules of the eviction pass (vk_texture.cpp). tests/test_evict_reason.py
 //
 // Ported from Longshot 25ee6a83 (#323), without the rest of Longshot's header (the reason tally): only the rule that is used.

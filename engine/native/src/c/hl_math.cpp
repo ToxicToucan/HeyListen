@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the C surface (hl/c/hl_math.h) over the math kernels, reading the guest's structures in place
 // through hl/bridge/MathBridge.h.
 #include "hl/c/hl_math.h"

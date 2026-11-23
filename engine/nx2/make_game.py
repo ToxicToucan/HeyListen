@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A game folder from the user's own dump: what the builder app (builder/) runs.
 
     python -I nx2/make_game.py --nup <file.nup> --out <folder> [--work <folder>] [--jobs <n>]

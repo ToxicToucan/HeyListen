@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """On Intel's one-at-a-time compute builds a dispatch's pipeline is made first without the optimizer, then with it.
 
 Ported from Longshot's check of the same name (b2911d33, #404), cut to what this tree has: no Debug-tab row, so

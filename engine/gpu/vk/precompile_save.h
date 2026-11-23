@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (longshot) The pipeline cache written before the title after a start that compiled its noted pipelines (vk_draw.cpp
 // precompile_run), and what a forced save did, in words (pipeline_cache_save). In play the cache is written only once it has
 // grown 64 MB (RX_VK_PLAY_SAVE_START_MB). A start that compiled every noted pipeline under new keys grew it far less on RADV:

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-061, D2/D3) RX_VK_DRY_LEAN: keeping only the dry pass's points next to the planned boundaries picks the same boundaries.
 
 Two parts.
@@ -57,12 +59,12 @@ def main():
     early = function(src, "const uint8_t* replay_handle_early(")
     for need in ("const int64_t T = count_work(h);",
                  "mkwvk::segment_plan::segment_count(T, per, recorders, seg_cap(), one_round);",
-                 "mkwvk::segment_plan::balanced_targets(profile, nplan, T, want);",
+                 "mkwvk::segment_plan::balanced_targets(profile, nplan, T, want, seg_tail());",
                  "const int64_t w = balance ? want[k - 1] : T * k / nplan;",
                  "lean.work[lean.n++] = lo, lean.work[lean.n++] = lo + pe;",
                  "if (nplan < 2 || lean_mode >= 2) lean_points = &lean;",
                  "mkwvk::segment_plan::segment_count(total, per, recorders, seg_cap(), one_round);",
-                 "if (balance) mkwvk::segment_plan::balanced_targets(profile, nseg, total, wants);"):
+                 "if (balance) mkwvk::segment_plan::balanced_targets(profile, nseg, total, wants, seg_tail());"):
         if need not in handle:
             raise SystemExit("replay_handle's lean plan is not as this check knows it: " + need)
     if handle.index("lean_points = &lean;") > handle.index("replay(none, state, h);") or \

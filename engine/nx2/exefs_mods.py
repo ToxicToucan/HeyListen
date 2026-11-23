@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Code (exeFS) mods, applied by the builder to the game's modules before they are translated.
 
     python -I nx2/exefs_mods.py --list <mods folder> [--exefs <exefs folder>]     the mods with code patches, as JSON lines

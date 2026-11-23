@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Game controllers through SDL (host/hos_sdl.c: SDL3, else SDL2, third_party/sdl2/SDL2.dll; zlib license, loaded at
    run time): DualSense, DualShock 4, Switch Pro, Xbox and most other pads, over USB or Bluetooth. XInput alone sees
    only Xbox-style pads.

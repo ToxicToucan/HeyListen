@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Frame interpolation (vk_framegen.cpp): made frames shown between the game's (in a window; RX_VK_FRAMEGEN=0: off).
 #pragma once
 
@@ -17,6 +19,13 @@ int framegen_by_now();
 /// frames a second under the Frame rate limit (framegen_rows.h limited). A saved value past it is kept in the options file
 /// and is shown and run as the top
 int framegen_now();
+/// (longshot 382a3d675) Each present: frame generation off for 120 presents lets its images go (the built-in interpolation's two frames, its
+/// sets of made frames and their lumas and flows: about 112 MB at 2560x1440 2x, 823 MB at 4K 8x; FSR 3.1's frame interpolation's
+/// images too, also while another one is chosen). They were let go only when the window's size changed, so a player who tried it
+/// and turned it off kept them for the run. They are made again when it is turned on. recorded: this present recorded made frames
+/// (counted as on: framegen_idle.h); FSR 3.1's images are counted by this present's own use of FSR, not by recorded. Called after
+/// framegen_queue, so a set this present filled is the display thread's by then
+void framegen_idle(bool recorded);
 /// (the performance statistics, perf_report.cpp) what makes the frames now, as perf_report::FrameGen: 0 none (the row Off, or the
 /// interpolation not running: RX_VK_FRAMEGEN=0, no window, its images not made), 1 the renderer's own, 2 AMD FSR 3.1's frame
 /// interpolation (a fixed 2x where it runs; a present it takes no inputs for is made by the renderer's own). *mult: the frames shown
@@ -29,12 +38,10 @@ int framegen_engine(int* mult, bool* automatic);
 bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t sh, const int crop[4], bool native_pq);
 /// The first frame the last framegen_record made (null when it made none), w x h, GENERAL
 VkImage framegen_made_image(uint32_t* w, uint32_t* h);
-/// After that recording's submit (value): the display thread shows its frames
-void framegen_queue(uint64_t value);
-/// The window's present of an image (GENERAL, w x h; crop as above or null), vk_replay.cpp: the display thread's. pq: the image
-/// is the game's own HDR10 picture (PQ codes), not an SDR one for the HDR pass. It goes with the image, not in a flag the replay
-/// thread sets for the next game frame: the display thread shows frames a game frame late, and at a change (a loading screen
-/// in SDR, the play in HDR) a frame was taken for the other kind, a flash
+/// After that recording's submit (value): the display thread shows its frames. held: the storm hold withheld this
+/// frame's present (storm_hold.h) — its frames are not shown, even if the hold lifts before the display thread gets there
+void framegen_queue(uint64_t value, bool held = false);
+/// The window's present of an image (GENERAL, w x h; crop as above or null), vk_replay.cpp: the display thread's
 void present_image(VkImage src, uint32_t w, uint32_t h, const int crop[4], VkImageView view = VK_NULL_HANDLE, bool pq = false);
 /// The Insert menu's upscaling of a frame to the window (dw x dh), recorded: the image to show, or null when it is off.
 /// pq: src is the game's own HDR10 picture (Native HDR), scaled into an RGB10A2 image

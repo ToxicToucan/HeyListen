@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The encoder decoded ASTC textures are kept with (gpu/vk/shaders/astc_bc_encode.comp, TICK-031): its own functions compiled
 as C++, their blocks read back by a BC7 / BC1 decoder written from the format's specification. Issue 16: texels of alpha 0
 and 255 come back exactly so (blending leaves the scene as it is only under alpha 0; BC7 mode 6's p-bit gave a transparent

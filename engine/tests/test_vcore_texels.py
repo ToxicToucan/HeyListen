@@ -50,7 +50,8 @@ typedef struct {
 static int started = 1, kept;
 static int keep_early(early_call *c) { kept++; free(c->data); return 1; }
 static int nvn_fmt_bpb(int format, int *bw, int *bh) { (void)format; *bw = *bh = 1; return 4; }
-static int held, takes, copies, copies_with_core;
+static int held, takes, copies, copies_with_core, keep_flag;
+static int texels_keep_core(void) { return keep_flag; }   /* (HOS_TEXELS_KEEP_CORE) */
 int hos_vcore_away(void) { if (!held) return 0; held = 0; return 1; }
 void hos_vcore_back(void) { if (!held) held = 1, takes++; }
 typedef void (*read_fn)(const nvn_tex *, unsigned, unsigned, const NVNcopyRegion *, uint8_t *, size_t, size_t);
@@ -85,6 +86,11 @@ int main(void) {
         check(copies == 1 && copies_with_core == 0, "the write copied without the core");
         check(takes == core && held == core, core ? "the core back once after the write" : "no core taken (none held)");
     }
+    keep_flag = 1, held = 1, takes = copies = copies_with_core = 0;   /* HOS_TEXELS_KEEP_CORE=1: the core kept, as before */
+    rx_nvn_read_texels(&t, 0, 0, &r, buf, 8, 16);
+    rx_nvn_write_texels(&t, 0, 0, &r, buf, 8, 16);
+    check(copies == 2 && copies_with_core == 2 && takes == 0, "HOS_TEXELS_KEEP_CORE=1 keeps the core through both copies");
+    keep_flag = 0;
     started = 0, held = 1, takes = copies = 0;
     rx_nvn_write_texels(&t, 0, 0, &r, buf, 8, 16);
     check(kept == 1 && copies == 0 && held == 1, "a write before the start: kept for later, the core kept");

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the module system's job group, natively (hl/bridge/JobGroup.h). Each step below follows a step
 // of docs/native-engine/jobs-boundary.md, "The module system's job group"; the guest instruction addresses in the comments
 // are where the reading of that step is, in the translated group 0x8007fe60 (or the push 0x80083350, the heap's erase

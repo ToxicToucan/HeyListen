@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the back end's command records written by native code (hl/gfx/Records.h).
 //
 // Every record here is the OS layer's NVN procedure's, byte for byte (engine/host/nvn_native.c: rec(), cmd_alloc(),

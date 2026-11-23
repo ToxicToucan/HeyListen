@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The host's own allocations at Windows' commit limit (issue 333). A malloc or calloc in the NVN layer that failed at the
 limit ended the game at once ("FATAL: native NVN: recording handle set"), with no wait and no out-of-memory notice. Now
 hos_xmalloc / hos_xcalloc / hos_xrealloc (host/mkw_glue.c) wait for commit as a guest commit does, then say out of

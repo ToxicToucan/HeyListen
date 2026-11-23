@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the back end's records written by native code (hl/gfx/Records.h), run with no game
 // (tests/test_native_engine.py).
 #include <cstdint>

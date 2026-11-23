@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The list of guest code an exeFS mod patches: see hl_patched.h. */
 #include "hl_patched.h"
 #include <stdio.h>

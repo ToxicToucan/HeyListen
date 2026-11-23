@@ -92,7 +92,7 @@ def main():
         "init_create.inc": create,
         "init_scratch.inc": block(texture, "bool bc_scratch_layout("),
         "init_hooks.inc": "\n".join(hooks),
-        "init_recording.inc": block(replay, "struct Recording {") + ";",
+        "init_recording.inc": block(replay, "struct Recording {") + ";\n" + block(replay, "struct FenceGroup {") + ";\nFenceGroup fence_groups[48];",
         "init_barrier.inc": block(replay, "void host_read_barrier(VkCommandBuffer cmd) {"),   # (each segment's recording ends with it)
         "init_jobs.inc": jobs,
         "init_pools.inc": "\n".join(block(replay, m) for m in ("void init_pools_destroy() {", "bool init_pools_make(")) if have_pools else "",

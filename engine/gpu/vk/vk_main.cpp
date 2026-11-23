@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The Vulkan back end's start: vulkan-1.dll, the instance, the device (Vulkan 1.3 and the extensions the NVN replay
 // wants where the GPU has them: mesh shaders, host memory import, graphics pipeline libraries), the window's
 // swapchain, and the rx_* table (vk_api.h). The NVN replay itself is vk_replay.cpp.
@@ -83,6 +85,7 @@ namespace mkwvk {
 std::vector<std::string> gpu_device_names;
 const MkwVkHost* host;
 SplitCount prof_ns[PROF_COUNT];
+SplitCount prof_desc[PD_COUNT];   // (v0.4.4: vk_internal.h DescPart)
 Device dev;
 PFN_vkGetInstanceProcAddr instance_proc() { return vkx::instance_proc_addr(); }
 
@@ -285,8 +288,15 @@ bool create_instance() {
     // RX_VK_VALIDATION=1: the Khronos validation layer (when installed)
     const char* layer = "VK_LAYER_KHRONOS_validation";
     if (getenv("RX_VK_VALIDATION")) ci.enabledLayerCount = 1, ci.ppEnabledLayerNames = &layer;
-    if (vkCreateInstance(&ci, nullptr, &dev.instance) != VK_SUCCESS) {
-        logf("vk: vkCreateInstance failed");
+    if (const VkResult made = vkCreateInstance(&ci, nullptr, &dev.instance); made != VK_SUCCESS) {
+        // (-9 VK_ERROR_INCOMPATIBLE_DRIVER: no Vulkan driver for any GPU of this PC, or one older than 1.3; -6 VK_ERROR_LAYER_NOT_PRESENT and
+        // -7 VK_ERROR_EXTENSION_NOT_PRESENT: a broken or overlay-injected layer; -1/-2 out of memory; -3 VK_ERROR_INITIALIZATION_FAILED)
+        logf("vk: vkCreateInstance failed (VkResult %d: %s)", (int)made,
+             made == VK_ERROR_INCOMPATIBLE_DRIVER      ? "no Vulkan driver for this PC's GPU, or one older than Vulkan 1.3"
+             : made == VK_ERROR_INITIALIZATION_FAILED ? "the driver's start failed"
+             : made == VK_ERROR_LAYER_NOT_PRESENT     ? "a layer that is not there"
+             : made == VK_ERROR_EXTENSION_NOT_PRESENT ? "an instance extension that is not there"
+                                                      : "see the Vulkan specification's VkResult");
         return false;
     }
     load_instance(dev.instance);
@@ -472,7 +482,7 @@ bool create_device() {
     bool atomic_float = false;
     if (fadd_wanted) optional(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME, atomic_float);
     optional(VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME, dev.swap_mutable);   // (hookshot: the overlays, vk_imgui.cpp)
-    if (getenv("RX_VK_TL") || getenv("RX_VK_TL_S")) optional(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, dev.calibrated_ts);   // (stream R2: the timeline's GPU side)
+    if (getenv("RX_VK_TL") || getenv("RX_VK_TL_S") || getenv("RX_VK_FEED_LOG")) optional(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, dev.calibrated_ts);   // (stream R2: the timeline's GPU side)
 #ifndef _WIN32
     // (Linux) tl_gpu_dump asks for the device's and the host clock's time (vk_tl_clock.h: CLOCK_MONOTONIC, the shim's
     // QueryPerformanceCounter); a domain the device does not list may not be asked for, so the GPU side (and RX_VK_TL_PROBE) is off
@@ -704,6 +714,7 @@ bool create_device() {
         vkGetPhysicalDeviceProperties2(dev.physical, &p2);
         const bool pin = f13.subgroupSizeControl && sc.minSubgroupSize <= 32 && sc.maxSubgroupSize >= 32 && !getenv("RX_VK_NO_SUBGROUP_PIN");
         dev.sg32_stages = pin ? sc.requiredSubgroupSizeStages : 0;
+        dev.max_workgroup_subgroups = sc.maxComputeWorkgroupSubgroups;
         logf("vk: subgroups: default %u lanes, %u-%u, pinned to 32 on stages %#x", sg.subgroupSize, sc.minSubgroupSize, sc.maxSubgroupSize,
              (unsigned)dev.sg32_stages);
         {   // (issues 67 and 37) a stage the GPU does not hold to 32 lanes, with a default of more, runs the programs' lane masks and
@@ -716,7 +727,14 @@ bool create_device() {
                                                    VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT;
             if (forced) dev.warp_wide_stages = kStages;
             else if (sg.subgroupSize > 32) dev.warp_wide_stages = kStages & ~dev.sg32_stages;
-            if (dev.warp_wide_stages) {
+            // (c4e8e2ea: a pinned compute stage that cannot hold the largest guest workgroup, 32 * maxComputeWorkgroupSubgroups < 1024:
+            // its bigger programs are not pinned (pins_32) and run at the default size, so they are translated for it too)
+            if (sg.subgroupSize > 32 && (dev.sg32_stages & VK_SHADER_STAGE_COMPUTE_BIT) && 32ull * dev.max_workgroup_subgroups < 1024 &&
+                !(dev.warp_wide_stages & VK_SHADER_STAGE_COMPUTE_BIT)) {
+                dev.compute_unpinned_wide = true;
+                if (!dev.warp_wide_stages) dev.warp_lanes = std::max<uint32_t>({sg.subgroupSize, sc.maxSubgroupSize, 33u});
+            }
+            if (dev.warp_wide_stages || dev.compute_unpinned_wide) {
                 dev.warp_lanes = std::max<uint32_t>({sg.subgroupSize, sc.maxSubgroupSize, forced ? 64u : 33u});   // (forced: 64, so the wide code is made even on 32 lanes)
                 logf("vk: subgroups wider than the guest's 32 lanes on stages %#x: programs translated for %u lanes, 32-lane warps emulated%s",
                      (unsigned)dev.warp_wide_stages, dev.warp_lanes, forced ? " (RX_VK_WARP_WIDE)" : "");
@@ -740,9 +758,15 @@ bool create_device() {
     bool task_mesh_fallback = mesh_rule::task_mesh_fallback_wanted(!linux_os, dev.props.vendorID, dev.props.deviceID, mesh_choice.mode,
                                                                    getenv("RX_VK_TASK_MESH_FALLBACK"));
     dev.task_mesh_fallback = task_mesh_fallback && dev.mesh_shader && f12.bufferDeviceAddress && !getenv("RX_VK_NO_MESH_FALLBACK");
-    if (dev.task_mesh_fallback) logf("vk: task + mesh programs use the compute fallback (RX_VK_TASK_MESH_FALLBACK=0: native)");
+    // (longshot 3228cb5f, #1650, #1239) on Windows Navi 21 to 23 the driver also hangs on a mesh-only draw (Saria's stump in Kokiri
+    // Forest, an RX 6800 XT): those take the compute path too, by the same default rule and switch, RX_VK_TASK_MESH_FALLBACK=0 turns both off
+    dev.mesh_only_fallback = dev.task_mesh_fallback && !linux_os && mesh_rule::task_mesh_fallback_default(dev.props.vendorID, dev.props.deviceID);
+    if (dev.task_mesh_fallback)
+        logf("vk: %s programs use the compute fallback (RX_VK_TASK_MESH_FALLBACK=0: native)",
+             dev.mesh_only_fallback ? "mesh-only and task + mesh" : "task + mesh");
     logf("vk: mesh shaders: %s, from %s: %s", mesh_choice.mode == 2 ? "Compute" : mesh_choice.mode == 1 ? "Native" : "Automatic",
-         mesh_choice.why, dev.mesh_shader ? (dev.task_mesh_fallback ? "native, task + mesh draws on the compute path" : "native")
+         mesh_choice.why, dev.mesh_shader ? (dev.mesh_only_fallback ? "native, mesh-only and task + mesh draws on the compute path"
+                            : dev.task_mesh_fallback ? "native, task + mesh draws on the compute path" : "native")
                          : dev.mesh_fallback ? "the compute path" : "none");
     if (robust) logf("vk: robust buffer access %s", robust_ok ? "on" : "not supported");
     f.features.robustBufferAccess = robust_ok ? VK_TRUE : VK_FALSE;   // (off by default: the game's accesses stay in their buffers)
@@ -1237,6 +1261,7 @@ bool started_up() {
         remove(skipped_path().c_str());
         return true;
     }
+    predict_play_test();   // (test only: RX_VK_TEST_PREDICT_PLAY)
     if (FILE* f = fopen(skipped_path().c_str(), "rb")) {
         fclose(f);
         logf("vk: the shaders' preparation was skipped at the build: left to when each is first drawn");

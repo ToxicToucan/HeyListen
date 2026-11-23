@@ -1,4 +1,5 @@
 #version 450
+// Copyright (C) 2026 Sacrappy
 
 layout(location = 0) in vec2 vUV;
 layout(location = 0) out vec4 oColor;

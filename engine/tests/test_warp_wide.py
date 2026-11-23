@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Wave64 GPUs (issue 67): the translator emulates the guest's 32-lane warps on a wider subgroup, only where the GPU cannot run
 a stage at 32 lanes, and the cache stamp carries that only then. Reads the sources (no GPU, no game)."""
 import re
@@ -31,8 +33,9 @@ pf = body(shader, "const Shader::Profile& profile(VkShaderStageFlagBits stage) {
 assert "make_profile(false)" in pf and "make_profile(true)" in pf and "dev.warp_wide_stages & stage" in pf
 assert "profile()" not in shader, "every translation names its stage"
 emits = re.findall(r"EmitSPIRV\(profile\(([^)]*(?:\([^)]*\))?[^)]*)\)", shader)
-assert len(emits) == 7, emits
-assert "VK_SHADER_STAGE_COMPUTE_BIT" in emits[0] and "VK_SHADER_STAGE_VERTEX_BIT" in emits[1]
+assert len(emits) == 6, emits
+assert "profile_compute(uint64_t(t->program.workgroup_size[0])" in shader, "a compute program names its workgroup (c4e8e2ea)"
+assert "VK_SHADER_STAGE_VERTEX_BIT" in emits[0]
 assert any("fallback ? VK_SHADER_STAGE_COMPUTE_BIT" in e for e in emits), "a fallback task / mesh program runs as compute"
 
 # the stamp: added only when on, so a 32-lane GPU keeps its cache
@@ -42,7 +45,7 @@ assert m and "dev.warp_lanes" in m.group(1) and "dev.warp_wide_stages" in m.grou
 assert st.index("dev.warp_wide_stages") > st.index("handle_tables_on()"), "added after the existing inputs, not among them"
 
 # a stage the GPU cannot hold to 32 lanes is never asked to (VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02761)
-assert "if (!(dev.sg32_stages & st.stage)) return;" in draw
+assert "if (!pins_32(st.stage, invocations)) return;" in draw
 assert "dev.sg32_stages & VK_SHADER_STAGE_COMPUTE_BIT" in (vk / "vk_coopmat.cpp").read_text(encoding="utf-8")
 assert "dev.sg32_stages = pin ? sc.requiredSubgroupSizeStages : 0;" in main
 print("PASS: wide-warp translation only where 32 lanes cannot be pinned; the stamp carries it only then")

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: what the layer that runs guest code (plain C) gives the engine and asks of it.
    The engine never includes that layer's headers; this file is the whole surface between the two. */
 #ifndef HL_C_BRIDGE_H

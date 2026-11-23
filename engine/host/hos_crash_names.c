@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* See hos_crash_names.h. The table format is nx2/symtab.py's; this file only reads it. */
 #include "hos_crash_names.h"
 #include <stdio.h>

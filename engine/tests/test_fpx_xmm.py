@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-055) A64_FPX_XMM=1 (a64_lift.xmm_text / xmm_header) and A64_LR_SCALAR=1 (LR_STP), game-free: bit-exact
 with the default lowering.
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The pipeline state telemetry (gpu/vk/state_report.h, perf_report.cpp states_queue, the sender in host/hos_crash_dialog.c), with no game and no GPU.
 
 - tests/test_state_report.cpp: which records are new (not in the shipped list, not sent before, once each, fit to send), what is

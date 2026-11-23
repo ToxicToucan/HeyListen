@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """TICK-043: the capture copied ahead of its submit (gpu/vk/capture_merge.h, RX_VK_CAPTURE_PRECOPY) holds every page written
 since the last submit once, each as it is at the submit: compiled and run against a simulation (no game, no GPU); and
 vk_memory.cpp still makes its captures through that rule.

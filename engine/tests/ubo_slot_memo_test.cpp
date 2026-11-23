@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The user-uniform slot memo (gpu/vk/ubo_memo.h) against a made-up world: a lookup that is a pure function of (addr, n, stamp, epoch,
 // limit, segment) and a world whose stamp, update list and segment move at random, some of them while a lookup is under way. The
 // memo may skip the lookup only where the lookup would have given the same answer.

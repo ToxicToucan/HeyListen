@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: bounding-box kernels of the physics and actor loops (docs/native-engine/physics-loops.md
 // section 6, critical-jobs.md). Plain functions on plain values; each computes exactly what the guest function it
 // replaces computes, operation for operation (hl/math/Exact.h), or returns false having written nothing when an input or

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (issue 50) gpu/vk/wb_pool_eager.h: when a CPU write makes a lazy pool eager. Built and run by test_wb_pool_eager.py.
 #include "../gpu/vk/wb_pool_eager.h"
 #include <cstdio>

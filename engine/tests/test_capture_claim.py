@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-061, C1) RX_VK_CAPTURE_CLAIM: the capture's copy in claimed chunks writes the same slots and the same ok[] as the
 equal parts.
 

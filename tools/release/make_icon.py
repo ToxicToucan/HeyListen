@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """HeyListen's icon: an original glowing blue fairy orb with four translucent wings (no Nintendo artwork).
 
     python -I tools/release/make_icon.py

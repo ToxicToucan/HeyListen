@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* (heylisten) What the detailed performance profile (gpu/vk/profile_run.cpp) asks of the executable: which kind of code a sampled
    program counter of the executable is in, and the executable's build id. The renderer's sampler thread asks, after the sampled thread
    is running again, so the lookups here may allocate (the first one builds the lifted code's table) and read the symbol table.

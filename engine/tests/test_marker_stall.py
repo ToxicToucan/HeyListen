@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """RX_VK_CHECKPOINTS's marker watch (issue 14): the AMD buffer markers scanned, and a GPU stuck for the stall time reported
 once, before any reset, with no submission coming back. gpu/vk/vk_draw.cpp's MarkerScan, marker_scan and MarkerStall,
 compiled alone against a marker buffer of the test's own."""

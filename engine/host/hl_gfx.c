@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of the graphics front end (engine/native, hl/c/hl_gfx.h;
    docs/native-engine/gfx-record-job.md).
 
@@ -775,7 +777,8 @@ __attribute__((constructor)) static void hl_gfx_prep_gate(void) { hl_gate_on_800
    HL_GFX_VAR=1 answers the entries of its plain path natively and runs every other entry through the translation (the
    function keeps nothing between entries but the block, so the translated body is called on a sublist of one entry);
    HL_GFX_VAR=2 only classifies the entries (the line "key loop" says how many take each way) and runs them all
-   translated; 0 (the default) leaves the function to the translation. */
+   translated; 0 leaves the function to the translation. Unset means 1 (pictures and speed checked on the 5070 and the 3050,
+   2026-11-21: uniform-writer.md). */
 #define HL_VAR_FN 0x8008d640ULL
 #define HL_VAR_PREPARE 0x8008fc00ULL
 static int var_mode;
@@ -784,7 +787,7 @@ static volatile LONG var_ready;   /* as state_ready */
 
 static int var_asked(void) {
     const char *e = getenv("HL_GFX_VAR");
-    var_mode = e && e[0] ? atoi(e) : 0;
+    var_mode = e && e[0] ? atoi(e) : 1;
     if (var_check_wanted() && var_mode != 2) var_mode = 1;   /* (the check compares native entries: native on) */
     return var_mode == 1 || var_mode == 2;
 }

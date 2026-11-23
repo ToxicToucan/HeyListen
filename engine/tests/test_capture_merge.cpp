@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // capture_merge::merge (gpu/vk/capture_merge.h, TICK-043): a capture made of pages copied ahead of its submit and the pages
 // written since holds every page written since the last submit once, each as it is at the submit. A simulation of guest
 // pages, their write marks, GPU write-backs and the pre-copy thread's rounds against a plain copy at the submit. No game, no GPU.

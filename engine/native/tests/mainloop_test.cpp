@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the game's main loop driven by the native one (hl/bridge/FrameLoop.h) run with no game, on a
 // model of the framework object laid out as the guest has it. The game's functions the frame's steps call (the tasks,
 // the four virtual steps, the present, the tick, the SDK's queries, a function static's guard) are played by this file;

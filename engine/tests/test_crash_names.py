@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free: the crash names a player's build can give its own frames, and the signature they group by.
 
 Compiles the real host/hos_crash_names.c (with a counting allocator) and tests/crash_names_test.c, writes a crafted

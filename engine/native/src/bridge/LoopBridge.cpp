@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the key-0xa0 draw function's entries, in place (hl/bridge/LoopBridge.h).
 #include "hl/bridge/LoopBridge.h"
 

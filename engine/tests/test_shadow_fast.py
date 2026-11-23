@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-061, C3) RX_VK_SHADOW_FAST: take_capture's texture-shadow block by shadow_take_fast leaves the same shadow.
 
 gpu/vk/vk_memory.cpp's shadow (the page map, the regions' counts, shadow_n, the spans) and both forms of the block are cut out

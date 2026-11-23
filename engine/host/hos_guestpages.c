@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen) The guest window's substrate: 64 KB granules given back to Windows and restored atomically
    (hos_guestpages.h; docs/native-engine/memory-boundary.md section 13).
 

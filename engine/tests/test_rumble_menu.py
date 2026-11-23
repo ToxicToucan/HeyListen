@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The Insert menu's Rumble strength row (Controls): Off, 25% to 150% in steps of 25, stopping at its ends.
 
 gpu/vk/vk_menu.cpp's row, set_row (the arrows, Enter and a click on the value) and the ini's snap to the row's steps are

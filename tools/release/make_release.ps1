@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 # HeyListen release: a wrapper for make_release.py (the real steps and their notes are there).
 #   powershell -File tools/release/make_release.ps1 -Tag v0.1.0 [-Out build\release] [-Dotnet C:\path\dotnet.exe] [-AllowDirty]
 param(

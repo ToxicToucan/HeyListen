@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the GPU clock's rules (gpu/vk/gpu_clock.h; no game/GPU), and check that the renderer still uses them: the
 device's render node and power level read, the state asked through an amdgpu context of its own, once the device is made, and
 the Steam Deck told apart as the Quality preset Auto (this PC) tells it. The rules are built twice: with the system's

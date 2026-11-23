@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """RX_VK_CAP_ONLY_GPU: a pool made between two refreshes of the pool list is a pool, and out of the left-out ranges, from
 the moment it is made (gpu/vk/vk_memory.cpp: cap_pool_born, called from memory_pool_flags at nvnMemoryPoolInitialize), and
 the clip's list comes from the host's live pools (host/nvdrv.c hos_gpu_live_pools), which a pool made over an older one's

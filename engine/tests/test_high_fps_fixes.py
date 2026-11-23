@@ -178,6 +178,7 @@ typedef int64_t LONG64;
 #define InterlockedIncrement64(p) __atomic_add_fetch((p), 1, __ATOMIC_SEQ_CST)
 static void hos_log(const char *fmt, ...) { va_list a; va_start(a, fmt); vprintf(fmt, a); va_end(a); putchar('\n'); }
 volatile uint32_t hos_frame_seconds_bits;
+volatile int hos_frame_carry_step;
 @HOST@
 @LOGIC@
 /* (the lifted code's helpers, as the lift has them for these lines) */

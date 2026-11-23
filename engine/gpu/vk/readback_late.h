@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // RX_VK_READBACK_LATE=<rule>[,<rule>...]: the CPU reads of GPU results that do not wait for their write-back (vk_replay.cpp
 // invalidate). Off unless set: every such read waits, as before. The CPU then reads what guest memory holds, the write-back
 // of the frame before. Rules, either of the first two is enough to make a range late:

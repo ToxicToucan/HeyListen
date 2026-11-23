@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The game's job graph from a HOS_JOBTRACE taken with a job-marked build (TICK-042).
 
 A job-marked build is a diagnostic lift: tools/bench/jobmarks.py wraps the job dispatcher's calls (f_8004ab40 and its

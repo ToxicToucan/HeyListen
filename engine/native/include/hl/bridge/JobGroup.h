@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the module system's job group, natively, in place on the game's own group scheduler.
 //
 // Written from a reading of the guest's group function (docs/native-engine/jobs-boundary.md, "The module system's job

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the recording pass's check (hl/gfx/PassCheck.h).
 #include "hl/gfx/PassCheck.h"
 

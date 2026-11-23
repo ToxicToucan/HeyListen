@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Windows Intel's compiler is entered by one thread, and a fault creating a shader module leaves that program out.
 
 Longshot #252 (an Intel UHD on Windows read address 0x170 inside igvk64 during the first scene's compiles; the stack had no

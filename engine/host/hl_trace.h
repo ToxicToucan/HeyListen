@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The crash recorder HL_TRACE (hl_trace_core.c: the rings and the tables, no OS layer; hl_trace.c:
    the game's side: the switches, the heaps' entry gates, the crash reporter's call).
 

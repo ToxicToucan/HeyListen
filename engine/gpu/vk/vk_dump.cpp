@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // Frame dumps (vk_dump.h): each step's image blitted (nearest) into a small RGBA32 image of its numeric kind and copied
 // to host memory with the submission; written once the submission completed.
 #include <algorithm>

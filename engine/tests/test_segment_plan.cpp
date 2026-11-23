@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #include "../gpu/vk/segment_plan.h"
 
 #include <cstdio>
@@ -8,6 +10,7 @@ int main() {
     using mkwvk::segment_plan::recorders;
     using mkwvk::segment_plan::rounds;
     using mkwvk::segment_plan::segment_count;
+    using mkwvk::segment_plan::with_mid;
     const int kMaxBatch = 6;
 
     CHECK("4 workers are 4 recorders", recorders(4, false) == 4);
@@ -75,6 +78,25 @@ int main() {
         CHECK("an empty range is no sample", !r.valid);
         balanced_targets(r, 3, 900, out);
         CHECK("still even", out[0] == 300 && out[1] == 600);
+        // (RX_VK_SEG_TAIL: the last part shorter)
+        Profile e;
+        balanced_targets(e, 4, 700, out, 0.5);   // (3.5 parts: 200 each, the last 100)
+        CHECK("tail 0.5, no profile: the last part is half", out[0] == 200 && out[1] == 400 && out[2] == 600);
+        balanced_targets(p, 4, 800, out, 1.0);
+        CHECK("tail 1 is the default", out[0] == 200 && out[1] == 400 && out[2] == 600);
+        balanced_targets(p, 4, 700, out, 0.5);
+        CHECK("tail 0.5, even cost: the last part is half", out[0] > 195 && out[0] < 205 && out[2] > 595 && out[2] < 605);
+        balanced_targets(p, 2, 800, out, 0.25);
+        CHECK("tail 0.25 of two parts: the boundary at 4/5", out[0] > 635 && out[0] < 645);
+        balanced_targets(p, 3, 800, out, 100.0);
+        CHECK("a tail above 1 is 1", out[0] > 265 && out[0] < 270);
     }
+    // (stream SMALL1, RX_VK_MID_SEG: a command buffer under two segments' worth, from the given work on, is two segments)
+    CHECK("mid: off (0) leaves one segment", with_mid(segment_count(200, 128, 4, 10, false), 200, 10, 0) == 1);
+    CHECK("mid: 105 of a threshold of 100 is two", with_mid(segment_count(105, 128, 4, 10, false), 105, 10, 100) == 2);
+    CHECK("mid: 99 of a threshold of 100 stays one", with_mid(segment_count(99, 128, 4, 10, false), 99, 10, 100) == 1);
+    CHECK("mid: already more than one is unchanged", with_mid(segment_count(830, 128, 4, 10, false), 830, 10, 100) == segment_count(830, 128, 4, 10, false));
+    CHECK("mid: a cap of 1 keeps one", with_mid(1, 500, 1, 100) == 1);
+    CHECK("mid: never fewer than before", with_mid(3, 10, 6, 100) == 3);
     std::puts("segment plan: all checks passed");
 }

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #include "../gpu/vk/vram_allowance.h"
 #include <cstdio>
 using vram_allowance::past_allowance;

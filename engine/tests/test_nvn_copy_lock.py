@@ -124,7 +124,7 @@ def main():
     check = src[ch:src.index("\n}\n", ch) + 3]
     if "live_handle_seen(h)" not in check:
         raise SystemExit("check_handle takes copy_lock before it looks: Hookshot d1ce8a4cd's lock-free first read is gone")
-    if "if (++made % SWEEP_EVERY == 0) sweep_overwritten_copies();" not in src:
+    if "recording % SWEEP_EVERY == 0 ? sweep_overwritten_copies() : 0;" not in src:
         raise SystemExit("EndRecording no longer sweeps a slice every SWEEP_EVERY recordings")
     with tempfile.TemporaryDirectory(prefix="nvn-copy-lock-") as tmp:
         c, exe = Path(tmp) / "t.c", Path(tmp) / "t"

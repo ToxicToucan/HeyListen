@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 #include "../gpu/vk/framegen_rows.h"
 
 #include <cstdio>

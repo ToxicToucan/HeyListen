@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (heylisten) The detailed performance profile's rules (profile_run.cpp samples the CPU and collects the GPU's passes, perf_report.cpp
 // queues the batches, the host's sender, host/hos_crash_dialog.c, posts them to <the build's address>/telemetry/profile): WHERE a
 // map's time goes, as opposed to the performance summary's what a slow frame waited on. Per map: how many samples of each kind of

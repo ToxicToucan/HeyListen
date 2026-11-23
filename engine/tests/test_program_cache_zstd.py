@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The program cache keeps its records packed with zstd, and still reads the old raw ones (gpu/vk/vk_shader.cpp).
 
 hookshot_programs.bin was 6.5 GB of records, 58% of them zero bytes. A record is now stored as its kind word with kKindZstd set, then

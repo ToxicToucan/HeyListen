@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the game's job dispatcher, natively (hl/bridge/Dispatcher.h). Each step below follows a step
 // of docs/native-engine/jobs-boundary.md, "The dispatcher's protocol"; the guest instruction addresses in the comments are
 // where the reading of that step is, in the translated dispatcher 0x8004ab40 (or the push 0x8004fa40). The loop around

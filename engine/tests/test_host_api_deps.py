@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Game-free: the host objects' dependency blob (nx2/build.py host_deps) takes gpu/vk/vk_api.h on Windows as it does on Linux.
 host/rx_backend.c fills the back end's host table with MKWVK_API_VERSION: a cached host object from before a change of it
 still passed the old version and the built game fell back to the WebGPU renderer ("rx: the Vulkan back end did not start")

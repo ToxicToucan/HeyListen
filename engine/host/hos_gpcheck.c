@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen) HOS_GUEST_PAGES's counters, and its self-test in the game (hos_guestpages.c; memory-boundary.md section 13).
 
    With HOS_GUEST_PAGES=1 a line "mem: guest pages: ..." every 10 s gives the substrate's counters (granules dropped,

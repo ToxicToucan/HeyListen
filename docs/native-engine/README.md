@@ -1,5 +1,7 @@
 # HeyListen native engine: plan, inventory, boundary
 
+> **2026-11-21: the engine refactor plan (`refactor-plan.md`) takes priority over every other performance stream.**
+
 **The directive below is this project's main reference; the rest of this document serves it.**
 
 Decided by the project owner on 2026-11-13, after the translated code's speed stopped moving (`docs/tickets/SPRINT-5.md`,

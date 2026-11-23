@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: the back end's command records as native code writes them (docs/native-engine/
    direct-emission.md, sections 3.2 and 5, bricks A and B).
 

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-041) Where the lifted guest code's time goes, by x86 instruction class.
 
 python -I tools/bench/guestmix.py <samples.txt> <HeyListen.map> <HeyListen.exe> [--from-ms 0] [--cover 0.6] [--threads regex] [--out dir]

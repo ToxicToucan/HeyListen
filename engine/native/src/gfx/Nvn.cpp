@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the NVN procedures the graphics front end calls (hl/gfx/Nvn.h).
 #include "hl/gfx/Nvn.h"
 

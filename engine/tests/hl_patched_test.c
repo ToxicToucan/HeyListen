@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* host/hl_patched.c on a made-up hookshot_code_patches.txt and made-up native answers: an answer or gate for a function an exeFS mod
    patches is left to the lifted code, with one log line each; the others are not touched. */
 #include "hl_patched.h"

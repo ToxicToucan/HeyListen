@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 # (tests/import_reach_test.cpp: one case each, each in a process of its own; "header" only where import_reach.h exists)
-CASES = ["lookup", "query", "drain", "background", "prefetch", "retire"]
+CASES = ["span", "span_off", "lookup", "query", "drain", "background", "prefetch", "retire"]
 ADD = "std::map<uint64_t, Pool>::iterator imported_add("
 TAKE = "std::map<uint64_t, Pool>::node_type imported_take("
 

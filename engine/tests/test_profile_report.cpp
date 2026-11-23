@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // tests/test_profile_report.py: gpu/vk/profile_report.h, the detailed performance profile's rules: the module classifier on fake
 // ranges, the thread roles, the hitch tagging of samples, the tables' caps, the payload's JSON and its batches, the gating.
 // Without arguments it runs its own checks; "payload" prints a small body, "caps" one with every table over its cap (the python

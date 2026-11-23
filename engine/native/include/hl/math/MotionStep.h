@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: one motion's step in Havok's last solver substep (guest 0x8182dc20, subIntegrateLastStep,
 // docs/native-engine/physics-loops.md section 9.3, steps 1 to 9 and the position of step 11), operation for operation
 // (hl/math/Exact.h). It works on copies: the caller gives the motion's 128 bytes and the values the function reads, and

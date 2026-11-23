@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-054) The frame's serial loop from a HOS_JOBTRACE file: per frame (cut at the Presentation Thread's present end), the
 main thread's part up to its last held submit, the held flush, the Presentation Thread's submits and present, and the time
 of each traced step on each side (the renderer's marks, gpu/vk/vk_replay.cpp jt_mark).

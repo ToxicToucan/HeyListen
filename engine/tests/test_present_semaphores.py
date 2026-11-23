@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile actual swapchain lifecycle/selection statements with CPU Vulkan stubs.
 Usage: python -I -B tests/test_present_semaphores.py [--cxx clang++]
 Checks per-image ownership and recovery from recreation failures. No GPU.

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The crash names as a game-free fixture (tests/test_crash_names.py): a crafted nx2/symtab.py table, looked up as
    the crash handler does, then the signature the report groups on. The counting allocator proves the lookup path
    makes none (the loader's two are counted separately). */

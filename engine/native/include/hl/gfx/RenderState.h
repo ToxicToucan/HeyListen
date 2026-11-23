@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the render-state function of the game's draw path (docs/native-engine/gfx-record-job.md,
 // section 8).
 //

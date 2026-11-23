@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A linker map -> a compact symbol table for the crash handler (HeyListen.sym, hookshot_vk.sym).
 
 The game is compiled on each player's PC, so a report's `HeyListen.exe+0x12f44593` means a different function in

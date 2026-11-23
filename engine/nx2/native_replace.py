@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Native replacements of hot guest code (TICK-026): gates in the lifted C that hand a guest block to a host function
 (host/hos_native.c). Applied by oot_patches.apply after the lift (and by hand: python -I nx2/native_replace.py <gen>).
 

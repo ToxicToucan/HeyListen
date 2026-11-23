@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """scripts/ngx_sdk.py: its per-platform file table, the SHA-256 checks and NVIDIA's license gate, without the network.
 
 Run with: python -I tests/test_ngx_sdk.py

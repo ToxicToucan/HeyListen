@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The prediction's limits (gpu/vk/predict_limits.h): the header against the sizes measured on the PC 3050, and the wiring in
 vk_draw.cpp's predict_run (what is left out for its size, where the commit is looked at, that the builds in hand are waited for).
 python -I -B tests/test_predict_limits.py [--cxx clang++]"""
@@ -24,6 +26,9 @@ def check_wiring():
         # (the wait for them is bounded, and what the workers use outlives the function)
         "RX_VK_PREDICT_WAIT_S", "shared->abandoned = true;", "t.detach()", "predict_slow_add(", "predict_slow_has(", "RX_VK_TEST_SLOW_PIPELINE",
         "std::make_shared<Shared>()", "if (S.abandoned.load()) return;",
+        # (v0.4.3.1: the prediction in play is small and polite, and RX_VK_PREDICT_PLAY_GENTLE=0 is what it was)
+        "RX_VK_PREDICT_PLAY_GENTLE", "RX_VK_PREDICT_PLAY_WORKERS", "RX_VK_PREDICT_PLAY_FREE_MB", "predictlimits::play_workers(",
+        "predictlimits::low_memory(memory_available_mb(), play_free_mb)", "soft ? THREAD_PRIORITY_IDLE : THREAD_PRIORITY_BELOW_NORMAL",
     ):
         if needle not in body:
             raise SystemExit("predict_run no longer has: " + needle)

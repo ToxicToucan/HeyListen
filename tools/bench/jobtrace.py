@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The game's job chain from a HOS_JOBTRACE file (engine/host/hos_jobtrace.c, TICK-039).
 
     python -I tools/bench/jobtrace.py <trace.txt> [--present <present_trace.csv>] [--lr 80080188]

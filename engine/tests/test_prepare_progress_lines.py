@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """--prepare (RecompLauncher's setup): the shaders are prepared as the setup's last step, and the game's @@stage / @@progress lines
 become the launcher's `progress <0..1> <text>` lines inside the shaders span, after the build's own stages.
 

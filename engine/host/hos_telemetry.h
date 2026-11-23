@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Sacrappy */
 /* (heylisten) Where the game's opt-in reports go: the one rule for the crash window (host/hos_crash_dialog.c), the performance
    summaries' sender (host/perf_send.c) and the menu's two rows (gpu/vk/vk_menu.cpp). Plain C that C++ can include, no system
    calls, for tests/test_telemetry.py.

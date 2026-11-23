@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The local memory array of a program is declared larger when RX_VK_LOCAL_PAD says so (default off).
 
 The size rule (gpu/vk/eden/shader_recompiler/backend/spirv/local_memory_pad.h) is compiled and run on its own against a table: off by

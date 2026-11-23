@@ -22,6 +22,7 @@
 #include <string.h>
 
 volatile uint32_t hos_frame_seconds_bits = 0;   /* the frame's seconds as a float's bits; 0: the game's own divide */
+volatile int hos_frame_carry_step = 0;          /* 1: at a cap of 60 the game's step is not a whole frame (nn_vi.c; HOS_FRAME_CARRY) */
 volatile uint64_t hos_step_probe = 0;           /* f_80706be0's object (its +0xd58: the game clock in 1/60 s) once the hook ran */
 
 HL_STEP_HOOK(80706be0, "9e4c8d7da24dafcf", 8, 1);   /* the frame's step (vreg 8), and the probe */
@@ -127,7 +128,7 @@ uint32_t hos_frame_whole(uint64_t at, uint32_t amount_bits, uint32_t game) {
     static int on = -1;
     int v = __atomic_load_n(&on, __ATOMIC_RELAXED);
     if (v < 0) v = !(getenv("HOS_FPS_WHOLE") && !atoi(getenv("HOS_FPS_WHOLE"))), __atomic_store_n(&on, v, __ATOMIC_RELAXED);
-    if (!v || !__atomic_load_n(&hos_frame_seconds_bits, __ATOMIC_RELAXED)) return game;
+    if (!v || !HOS_FRAME_CARRYING()) return game;
     AcquireSRWLockExclusive(&lock);
     const uint32_t whole = frame_whole(&state, at, amount_bits, 1);
     ReleaseSRWLockExclusive(&lock);
@@ -144,7 +145,7 @@ uint32_t hos_frame_whole_times(uint64_t at, uint32_t amount_bits, uint32_t times
     int v = __atomic_load_n(&on, __ATOMIC_RELAXED), w = __atomic_load_n(&water, __ATOMIC_RELAXED);
     if (v < 0) v = !(getenv("HOS_FPS_WHOLE") && !atoi(getenv("HOS_FPS_WHOLE"))), __atomic_store_n(&on, v, __ATOMIC_RELAXED);
     if (w < 0) w = !(getenv("HOS_FPS_WATER") && !atoi(getenv("HOS_FPS_WATER"))), __atomic_store_n(&water, w, __ATOMIC_RELAXED);
-    const int timed = __atomic_load_n(&hos_frame_seconds_bits, __ATOMIC_RELAXED) != 0;
+    const int timed = HOS_FRAME_CARRYING();
     AcquireSRWLockExclusive(&lock);
     uint32_t whole;
     if (v && timed && !w) {   /* (the whole frames carried per counter, then multiplied: the substeps all or none) */
@@ -165,7 +166,8 @@ uint32_t hos_frame_whole_times(uint64_t at, uint32_t amount_bits, uint32_t times
    - HL_POSE_HOOK, f_80944aa0 writes the time the skeletons are drawn at (x22: the value +0, the range it is kept in +4, +8)
      from a clock of its own that also moved by the fractional step: a range of one frame or less is drawn at its start
      (hos_loop_pose), the phase of a clock that moves in whole frames.
-   A cap of 60 (hos_frame_seconds_bits 0) leaves both as the game has them. HOS_FPS_LOOP=0: the game's, both places. */
+   A cap of 60 (hos_frame_seconds_bits 0) leaves both as the game has them, unless its step is not a whole frame (HOS_FRAME_CARRY:
+   hos_frame_carry_step, below 60 fps). HOS_FPS_LOOP=0: the game's, both places. */
 HL_LOOP_HOOK(802cfca0, "9111a12ac4e739a5");
 HL_POSE_HOOK(80944aa0, "7554cb8a60fc4426");
 
@@ -173,7 +175,7 @@ static int loop_timed(void) {
     static int on = -1;
     int v = __atomic_load_n(&on, __ATOMIC_RELAXED);
     if (v < 0) v = !(getenv("HOS_FPS_LOOP") && !atoi(getenv("HOS_FPS_LOOP"))), __atomic_store_n(&on, v, __ATOMIC_RELAXED);
-    return v && __atomic_load_n(&hos_frame_seconds_bits, __ATOMIC_RELAXED) != 0;
+    return v && HOS_FRAME_CARRYING();
 }
 
 uint32_t hos_loop_step(uint64_t at, uint32_t step_bits, uint32_t start_bits, uint32_t end_bits) {

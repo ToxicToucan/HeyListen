@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The per-zone shader and pipeline usage (gpu/vk/zone_report.h, perf_report.cpp zones_queue, the sender in host/hos_crash_dialog.c), no game, no GPU.
 
 - tests/test_zone_report.cpp: the recorder (once a key per map, the first-use order within a visit, the caps, the count

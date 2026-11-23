@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Counts the places in the lifted code that match the current thread's id against the BaseProc manager's six executor ids
 (the table at [manager + 128]: ids at +32..+52, their current procs at +56.., a seventh id at +104 with its proc at +112):
 a 32-bit load at +32, +36, +40, +44, +48 and +52 of one register within a short window. usage: idsites.py [-v]"""

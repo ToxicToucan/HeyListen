@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen TICK-044) tests/test_fpx_slowpath.py's driver: each guest word lifted against the default a64_fpx.h
    (fn_old, cases TU built with it) and against the A64_FPX_SLOWPATH=1 one (fn_new), on random registers and FP states:
    the whole Ctx must match. Then recomp_fp_estimate with and without its fast path (recomp_fp_estimate_new), binary32:

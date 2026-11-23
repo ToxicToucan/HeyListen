@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, HL_UBO_WRITER) The native writer of the driver's constant banks of a graphics stage: the per-draw uniform data
 // the replay builds itself (c2: the texture, image and sampler handles; c0: the storage buffer table and the vertex stage's
 // fixed word), written as the words' final bytes in one pass instead of word by word.

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen) HOS_MEM_SPLIT=<seconds>: once, that long after the start, where the game's memory in RAM is: the pages of
    the guest window that are resident (in the working set), by part of the window (system region, image, heap, address
    regions), and of them, those inside an NVN memory pool with storage (what the GPU reads: textures, vertex and index

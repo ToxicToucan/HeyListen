@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: two narrow-phase leaves (docs/native-engine/physics-loops.md section 12): the support point of
 // a small vertex set along a direction (guest 0x817472e0) and the relative placement of two precise transforms (guest
 // 0x817036a0). Each computes what the guest function computes, operation for operation (hl/math/Exact.h), or returns

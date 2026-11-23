@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Run actual pool lookup/range guards/prefetch queueing with fake GPU/background dependencies.
 
 No Vulkan, background import thread, SDK or game data is used.

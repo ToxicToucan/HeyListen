@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the shared draw preparation of the game's draw path on its cached path
 // (docs/native-engine/gfx-record-job.md, section 10).
 //

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Lifted stores mark only pages the GPU can read (nx2/rtgen.py A64_MARK_BITMAP, host/mark_bitmap.c, build.py RX_MARK_BITMAP).
 
 Longshot 35a4a9fc (#1617): every lifted store wrote its page's mark, and the renderer reads the marks of GPU pages only.

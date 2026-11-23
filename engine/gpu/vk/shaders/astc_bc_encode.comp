@@ -1,4 +1,6 @@
 #version 450
+// Copyright (C) 2026 Sacrappy
+
 // (TICK-031) Decoded ASTC texels (RGBA8 in the BC scratch, vk_texture.cpp) encoded as BC1 or BC7, written for this engine.
 // A thread a 4x4 block. Values are the stored bytes (sRGB textures are encoded in their sRGB bytes, as BC's own are).
 //   mode 1, BC1 (4 bits a texel, for textures whose ASTC blocks have no alpha): the colours' principal axis, endpoints

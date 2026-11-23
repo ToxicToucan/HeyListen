@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (longshot) The GPU's clock on the Steam Deck (vk_gpu_clock.cpp; the rules: gpu_clock.h): amdgpu's stable power state, asked
 // by an amdgpu context of the renderer's own and held while the game runs.
 #pragma once

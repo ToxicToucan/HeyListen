@@ -106,6 +106,7 @@ typedef long long LONG64;
 static void hos_log(const char *f, ...) { (void)f; }
 static int fps_log(void) { return 1; }
 volatile uint32_t hos_frame_seconds_bits;
+volatile int hos_frame_carry_step;
 @HOST@
 @LIFTED@
 static int failures, checks;

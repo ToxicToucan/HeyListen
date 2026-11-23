@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The performance overlay (F10, vk_menu.cpp), drawn with Dear ImGui over the window's image at the last step of a present.
 // Modes: FPS (the rate, the frame time and the worst frame in a small box, top right) and Full (a panel with the machine's GPU,
 // VRAM, CPU and RAM load and temperatures, the frame rate and frame times with a graph, the waits and the picture lines).

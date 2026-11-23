@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // GPU profile (vk_gprof.h): a query pool of timestamps per recording slot and command buffer (the recording's, and its upload one).
 #include <algorithm>
 #include <cstdio>

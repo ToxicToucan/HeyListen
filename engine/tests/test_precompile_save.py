@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A start whose noted pipelines were compiled, not found, writes the pipeline cache when the precompile ends (gpu/vk/precompile_save.h).
 
 In play the pipeline cache is written only once it has grown 64 MB. A Steam Deck start compiled its 32,438 noted pipelines for 20

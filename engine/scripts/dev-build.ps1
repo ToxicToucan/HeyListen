@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 # Incremental developer build: recompiles only what changed since the last build and copies the result into a
 # game folder, in minutes instead of the Builder's ~40. It reuses the lifted code and object cache of an earlier
 # full build (the Hookshot Builder's work folder, %LOCALAPPDATA%\HookshotBuilder, or your own --work folder).

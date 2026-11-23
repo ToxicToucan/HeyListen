@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the graphics front end's output, one seam (docs/native-engine/gfx-record-job.md).
 //
 // Everything the front end records leaves it as a stream of commands into one sink: a draw or a state change is one

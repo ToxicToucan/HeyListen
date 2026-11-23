@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (heylisten) A frame's parts on the thread that presents (perf_report.cpp's parts_ms and its hitch causes): what the
    renderer measures itself. The parts are wall-clock times on the presenting thread, so they add up to the frame:
 
@@ -47,6 +49,23 @@ struct Scope {
     Scope(const Scope&) = delete;
     Scope& operator=(const Scope&) = delete;
 };
+
+/// (v0.4.4) What the presenting thread waited on since its last present, us, by kind (host/hos_waitnote.h: lock, sleep, vcore, file;
+/// host/nvn_native.c's push before each present, replaced each time), and the cold pages' hold (host/hl_mem.c, HL_MEM_COLD_LOWMEM: tenths
+/// of a second held in all, passes left out in all; 0 without the line)
+enum { kOptWaitLock = 94, kOptWaitSleep, kOptWaitVcore, kOptWaitFile, kOptColdHeld, kOptColdPasses };
+constexpr int kWaitKinds = 4;
+inline std::atomic<int64_t> wait_us[kWaitKinds] = {};
+inline std::atomic<int64_t> cold_held_ds{0}, cold_passes{0};
+inline std::atomic<bool> waits_seen{false};   // (the host has pushed the waits at least once: a push of 0 is a frame with none)
+/// An option id of those, taken: false for any other
+inline bool note_option(int id, int value) {
+    if (id >= kOptWaitLock && id < kOptWaitLock + kWaitKinds)
+        return wait_us[id - kOptWaitLock].store(value, std::memory_order_relaxed), waits_seen.store(true, std::memory_order_relaxed), true;
+    if (id == kOptColdHeld) return cold_held_ds.store(value, std::memory_order_relaxed), true;
+    if (id == kOptColdPasses) return cold_passes.store(value, std::memory_order_relaxed), true;
+    return false;
+}
 
 /// (host/nvn_native.c's push) this frame's pacing sleep, and the option ids both sides know
 inline void note_pace(int us) { pace_us.store(us, std::memory_order_relaxed); }

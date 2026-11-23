@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The actual save function, with authored cache bytes and Vulkan/file API spies. No driver is loaded.
 #include <atomic>
 #include <chrono>

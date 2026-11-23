@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // (HeyListen, 2026-11-14) RX_VK_LEDGER=<seconds>: the memory ledger (vk_ledger.cpp). Every <seconds> and at a normal exit, one
 // table by class of game resource: what the game allocated for it (the console's bytes), and every copy this engine holds of
 // it: guest memory committed and in RAM, the VRAM mirror, the Vulkan image, the imports that pin it; then what belongs to no

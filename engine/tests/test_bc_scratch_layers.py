@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The BC scratch has the layers a run uses (Longshot #384): 1 on a card under 8 GB of video memory (20 MB, not 160), 8 where
 the batched transcodes (TICK-051) can use them, RX_VK_BC_LAYERS=<n> over both. Every place that sizes, views, transitions or
 walks the scratch asks bc_layers(), not the largest the scratch could be (kBcLayers). Reads gpu/vk/vk_texture.cpp: no GPU/game.

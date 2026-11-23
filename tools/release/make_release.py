@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Build a HeyListen release locally: the HeyListen Builder setup and its parts, checksums, release notes and the user guide.
 No game data is involved: the builder is built from engine/ and the tools come from their official releases (as upstream
 Hookshot's .github/workflows/windows-builder.yml does it, which this follows step by step).
@@ -17,7 +19,9 @@ at this repository's builder-parts release for them (it mirrors the ones first m
 is gone), and at llvm-mingw's official release. No link of the list leads anywhere else: the build fails otherwise.
                                      HeyListen-<tag>-Windows-x64.zip (the whole builder with recomplauncher.json at its top: what
                                      RecompLauncher installs; tools/release/make_launcher_zip.py)
-Nothing is uploaded or tagged here: the maintainer does that (see the printed commands).
+Nothing is uploaded or tagged here: the maintainer does that (see the printed commands). The notes (docs/release/RELEASE_NOTES.md)
+get {TAG} and {SINCE} filled in: the tag, and the previous full release's tag (or --since). On GitHub's runners the same script
+runs in .github/workflows/release.yml, which makes the draft release (docs/release.md).
 """
 import argparse
 import hashlib
@@ -74,17 +78,38 @@ def prompt_pins():
     return [tuple(l.split("==")) for l in lines if l]
 
 
-def missing_prompt_packages(package):
-    """The pins of nx2/prompt_requirements.txt that the package folder's Python (tools/python) does not have installed"""
+CACHE = os.path.join(ROOT, "build", "release", "cache")   # (main() sets it to <out>/cache, where release_parts.py caches the parts)
+
+
+def python_part_dist_infos(list_path):
+    """The dist-info folder names inside the parts list's Python part, read from the parts cache (release_parts.py downloads it
+    there). Empty when the list names no Python part or the file is not cached."""
+    import zipfile
+    if not list_path or not os.path.isfile(list_path):
+        return set()
+    with open(list_path, encoding="utf-8") as f:
+        urls = [l.split()[-1] for l in f.read().splitlines() if l.startswith("part ") and "-python-" in l]
+    for url in urls:
+        cached = os.path.join(CACHE, "release-parts", url.rsplit("/", 1)[-1])
+        if os.path.isfile(cached):
+            with zipfile.ZipFile(cached) as z:
+                return {m.split("/")[-2].lower() for m in z.namelist() if m.count("/") >= 1 and m.split("/")[-2].endswith(".dist-info")}
+    return set()
+
+
+def missing_prompt_packages(package, list_path=None):
+    """The pins of nx2/prompt_requirements.txt that the package folder's Python (tools/python) does not have installed. When the
+    package has no tools/python, release_parts.py found the list's Python part already carrying every pin and ships that part as
+    it is: the part's own dist-infos are checked instead."""
     site = os.path.join(package, "tools", "python", "Lib", "site-packages")
-    have = {n.lower() for n in os.listdir(site)} if os.path.isdir(site) else set()
+    have = {n.lower() for n in os.listdir(site)} if os.path.isdir(site) else python_part_dist_infos(list_path)
     return ["%s==%s" % p for p in prompt_pins() if "%s-%s.dist-info" % (p[0].lower().replace("-", "_"), p[1]) not in have]
 
 
-def check_prompt_packages(package):
+def check_prompt_packages(package, list_path=None):
     """Stops a release whose builder could not draw the button prompts: nx2/make_game.py skips them without fontTools (and the
     game then shows the Switch's icons whatever the Button prompts row says: issue #69)"""
-    missing = missing_prompt_packages(package)
+    missing = missing_prompt_packages(package, list_path)
     if missing:
         sys.exit("the package's Python lacks %s: the game would keep the Switch's button icons (nx2/prompt_requirements.txt)"
                  % ", ".join(missing))
@@ -137,6 +162,8 @@ def main():
     p.add_argument("--tag", help="the release's tag, e.g. v0.1.0 (required unless --allow-dirty)")
     p.add_argument("--out", default=os.path.join(ROOT, "build", "release"))
     p.add_argument("--dotnet", help="dotnet.exe to use (default: the one on PATH)")
+    p.add_argument("--since", help="the version the notes say the release is new since (default: the previous full release, "
+                                   "the one heylisten-setup.txt's parts are reused from)")
     p.add_argument("--allow-dirty", action="store_true", help="build with uncommitted changes (a test, not a release)")
     a = p.parse_args()
     if os.name != "nt":
@@ -157,6 +184,8 @@ def main():
     work = os.path.join(out, "work-" + tag)
     dist = os.path.join(out, tag)
     cache = os.path.join(out, "cache")
+    global CACHE
+    CACHE = cache
     for d in (work, dist):
         if os.path.exists(d):
             shutil.rmtree(d)
@@ -171,7 +200,8 @@ def main():
     # 1. the previous release's setup list: the Python, emsdk, CPM, wgpu-native and
     #    third_party parts and the play profile come from it
     previous = os.path.join(work, "previous-setup.txt")
-    run(py + [parts_py, "previous", previous, "--repo", REPO, "--skip-tag", tag], env=env)
+    since = out_of(py + [parts_py, "previous", previous, "--repo", REPO, "--skip-tag", tag], env=env).splitlines()[-1]
+    since = a.since or since
 
     # 2. llvm-mingw (official release, SHA-256 checked) and the setup exe
     llvm = out_of(py + [parts_py, "llvm-mingw", os.path.join(cache, "llvm")], env=env).splitlines()[-1]
@@ -203,7 +233,7 @@ def main():
     run(py + [parts_py, "package", package, "--publish", publish, "--setup", setup, "--list", previous,
               "--profile", os.path.join(ROOT, "profile"),
               "--python-packages", os.path.join(ENGINE, "nx2", "prompt_requirements.txt")], env=env)
-    check_prompt_packages(package)
+    check_prompt_packages(package, previous)
     for f in ("THIRD_PARTY_NOTICES.md",):
         shutil.copyfile(os.path.join(ROOT, f), os.path.join(package, f))
 
@@ -225,7 +255,7 @@ def main():
 
     # 6. notes, guide, checksums
     with open(os.path.join(ROOT, "docs", "release", "RELEASE_NOTES.md"), encoding="utf-8") as f:
-        notes = f.read().replace("{TAG}", tag)
+        notes = f.read().replace("{TAG}", tag).replace("{SINCE}", since)
     with open(os.path.join(dist, "RELEASE_NOTES.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write(notes)
     shutil.copyfile(os.path.join(ROOT, "docs", "USER_GUIDE.md"), os.path.join(dist, "USER_GUIDE.md"))

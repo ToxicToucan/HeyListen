@@ -120,6 +120,7 @@ typedef int SRWLOCK;
 static void AcquireSRWLockExclusive(SRWLOCK *l) { CHECK(!*l); *l = 1; }
 static void ReleaseSRWLockExclusive(SRWLOCK *l) { CHECK(*l); *l = 0; }
 volatile uint32_t hos_frame_seconds_bits;
+volatile int hos_frame_carry_step;
 @HOST@
 @HELPER@
 /* (the lifted code's helpers, as the lift has them for these lines, on a small guest) */

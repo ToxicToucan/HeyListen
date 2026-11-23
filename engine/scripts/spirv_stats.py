@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Statistics of the SPIR-V Hookshot's translator kept in hookshot_programs.bin, and where they sit in the GPU's frame time.
 
 It reads a local program cache (the layout scripts/validate_spirv.py reads: records of a u64 key, a u64 size and a payload whose

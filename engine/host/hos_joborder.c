@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen, TICK-047) HOS_JOB_ORDER=1: the game's long jobs first. Needs a lift made with OOT_JOB_ORDER=1 (the hooks below;
    the default lift has none, so the switch then does nothing). Not adopted: the A/B is inside the spread (perf-audit.md).
 

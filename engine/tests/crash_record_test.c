@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
+   Copyright (C) 2026 Sacrappy
    Authored process/guest stand-ins; the writer and adapter functions are real. */
 #define _GNU_SOURCE
 #define _CRT_SECURE_NO_WARNINGS

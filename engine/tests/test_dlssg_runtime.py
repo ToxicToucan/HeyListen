@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """NVIDIA DLSS Frame Generation's runtime and its refusals (gpu/vk/vk_dlss.cpp, scripts/ngx_sdk.py), game-free.
 
 The build placed only DLSS's runtime (nvngx_dlss.dll) in the game's ngx folder, so NGX took the driver's own copy of DLSS

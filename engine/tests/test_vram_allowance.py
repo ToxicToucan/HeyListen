@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """An allowance AMD's driver gives as the count itself is taken as past it (gpu/vk/vram_allowance.h, vk_vma.cpp vram_usage);
 Longshot #1091. Compiles and runs the rule; no game/GPU."""
 import argparse

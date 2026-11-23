@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) What the OS layer's files for the native modules share (host/hl_host.c): how a native module
    answers a guest function at its address, and what the native side (engine/native, reached only through hl/c/) is given
    to work in the guest's memory and on its threads. One file a module: hl_jobs.c, and the next ones beside it. */
@@ -73,6 +75,11 @@ void hl_answer(uint64_t guest, A64Fn fn, HlOn on, const char *what);
 #define HL_LOOP_HOOK(addr, hash)     __attribute__((constructor)) static void hl_loop_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_loop_hook_##addr
 #define HL_POSE_HOOK(addr, hash)     __attribute__((constructor)) static void hl_pose_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_pose_hook_##addr
 #define HL_SONG_HOOK(addr, hash)     __attribute__((constructor)) static void hl_song_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_song_hook_##addr
+
+/* HL_OCB_HOOK(832b9880, "<hash>"): a lift hook (nx2/hl_gates.py) in the OptimizeChangeBank preload manager's update: its choice of
+   the neighbouring map to preload goes through hos_oot_ocb_pick (host/hl_ocb_hold.c, Longshot c88f70440), which keeps the map
+   held while the choice only flickers. One line. Nothing in C. */
+#define HL_OCB_HOOK(addr, hash)     __attribute__((constructor)) static void hl_ocb_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_ocb_hook_##addr
 
 /* HL_HEAP_HOOK(804566e0, "<hash>"): a lift hook (nx2/hl_gates.py) around f_804566e0's four allocations that are not checked
    (two CPU buffers, two GPU-memory calls): a failed one is tried again in the heap's parents (host/hl_heap_retry.c). Both

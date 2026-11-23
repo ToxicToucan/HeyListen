@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the destroy generation's ring (gpu/vk/gone_ring.h, TICK-052; no game/GPU required)."""
 import argparse
 import subprocess

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // The readback refresh (PR 430) in a parallel replay's submission: the production memory_rb_refresh and its bookkeeping,
 // texture_begin_recording / texture_uploads_recorded, the write-back note at the end of gpu_buffer_bind and vk_draw.cpp's
 // storage-descriptor binding, included from rb_actual.inc (tests/test_parallel_rb_refresh.py cuts them from the source).
@@ -17,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <set>
 
 struct FakeBuf {
     const char* name;
@@ -98,6 +101,14 @@ void mirror_sync(Pool& p) {   // (model: no CPU page is dirty here)
 VkDeviceAddress buffer_address(VkBuffer) { return 0; }
 bool scatter_add(VkDeviceAddress, VkDeviceAddress, const std::vector<VkBufferCopy>&) { return false; }
 bool scatter_flush(VkCommandBuffer, const char*) { return false; }
+// (READB2: the refresh asks each read's class whether its pages are refreshed. HL_RB_R2/R3 and their checks are unset
+// in the model, so every class keeps today's refresh: mode 0, no check.)
+int rbclass_of(uint64_t size) { return size == 0x40 ? 2 : size == 0x2000 ? 3 : 0; }
+int rbclass_mode(int) { return 0; }
+bool rbclass_check(int) { return false; }
+// (STEP1, HL_RB_LAG: the readback ring stages no range in the model, so every written binding queues its write-back)
+bool rbring_stage_bind(uint64_t, uint64_t, VkBuffer, uint64_t) { return false; }
+void rbck_record(VkCommandBuffer, int, const std::map<Pool*, std::vector<VkBufferCopy>>&) {}   // (READB2 CHECK: off)
 #include "rb_refresh.inc"
 
 /// gpu_buffer_bind: the pool's mirror when it has one (model of its front), then its actual last lines
@@ -109,6 +120,7 @@ BufferRef gpu_buffer_bind(uint64_t gpu, uint64_t size, bool written) {
     if (gpu + size > p->hi) return {};
     const uint64_t off = gpu - p->lo;
     if (!mirror_upload || p->mstate != Pool::MIRROR_ON) return {p->buffer, off, size, 0};
+    const uint64_t guest = gpu;   // (the model's GPU addresses are guest addresses)
 #include "rb_bindtail.inc"
     return {p->mirror, off, size, 0};
 }
@@ -124,6 +136,7 @@ thread_local VkCommandBuffer trust_cmd = VK_NULL_HANDLE;   // (TICK-057: the bar
 thread_local VkCommandBuffer up_cmd = VK_NULL_HANDLE;
 uint64_t rec_value = 0;
 thread_local bool up_used = false;
+thread_local uint64_t up_astc_texels = 0;   // (vk_texture.cpp: texture_begin_recording resets it)
 thread_local uint64_t tl_seg = 0;
 uint32_t epoch = 0;
 #include "rb_texture.inc"

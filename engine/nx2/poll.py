@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen, Sync 10: upstream moved the polls to the loop back-edges, a64_poll_cur(); measured here that is -3 fps standing and
 -2 walking at the Market, so the loop-header polls stay. See docs/tickets/SPRINT-4.md.)
 Interrupt polls in lifted code: `A64_POLL(c);` at every loop header (the target of a backward branch).

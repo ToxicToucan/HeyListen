@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: the memory module's C surface for the OS layer (engine/host/hl_mem.c). The policy that decides
    which units of pages leave the process's working set (hl/mem/ColdPages.h), one for each kind of memory (the GPU pools,
    the game's heaps), each with its own counters; the OS layer measures and acts. */

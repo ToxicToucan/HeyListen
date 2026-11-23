@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(stream C1) RX_VK_EARLY_GPU: a big command buffer's work goes to the GPU as it is recorded, in the queue's order.
 
 replay_handle_early's submit rule (the submit_ready lambda of gpu/vk/vk_replay.cpp) is cut out and compiled with stub segments
@@ -59,7 +61,7 @@ def main():
 
     e = function(rp, "const uint8_t* replay_handle_early(")
     need("const int egpu = early ? early_gpu_mode() : 0;" in e, "early submits outside the path with segments")
-    on = e[e.index("if (egpu) {"):e.index("bool init_lost = false;")]
+    on = e[e.index("if (egpu) {"):e.index("// the dry pass, handing segments out")]
     i_dry = e.index("jt_mark(13, 0);")
     need(e.index("if (egpu) {") < i_dry, "the early submit is not before the dry pass")
     for step in ("submit_recording(r, false);", "rd = &begin_recording(rec_cur_value);", "rec_cur = rd;", "cmd = rd->cmd;",
@@ -71,25 +73,25 @@ def main():
     need(after.index("if (egpu) texture_upload_watch(nullptr);") < after.index("const size_t used = open + 1;"),
          "the upload watch outlives the dry pass")
 
-    rj = e[e.index("const auto record_job = "):e.index("// the dry pass, handing segments out")]
-    need(rj.index("j->done = true;") < rj.index("std::lock_guard sl(sub_mu);") < rj.index("submit_ready();"),
+    rj = function(rp, "void early_record_job(EarlyGroup& G, EarlyJob* j)")
+    need(rj.index("j->done = true;") < rj.index("std::lock_guard sl(G.sub_mu);") < rj.index("early_submit_ready(G);"),
          "a worker submits before its segment is done, or without sub_mu")
     cut = e[e.index("*cut = true;"):]
     on_end = cut[cut.index("if (egpu) {"):cut.index("} else {")]
-    need(on_end.index("std::lock_guard sl(sub_mu);") < on_end.index("submit_recording(*rd, false);") < on_end.index("sub_after_rd = true;")
-         < on_end.index("submit_ready();"), "rd is not submitted under sub_mu before the held segments")
-    need(cut.index("submit_recording(*rd, false);") < cut.index("record_job(last);"), "rd goes after the last segment is recorded")
+    need(on_end.index("std::lock_guard sl(G.sub_mu);") < on_end.index("submit_recording(*rd, false);") < on_end.index("G.sub_after_rd = true;")
+         < on_end.index("early_submit_ready(G);"), "rd is not submitted under sub_mu before the held segments")
+    need(cut.index("submit_recording(*rd, false);") < cut.index("early_record_job(G, last);"), "rd goes after the last segment is recorded")
     off_end = cut[cut.index("} else {"):cut.index("jt_mark(20, 0);")]
     need("submit_recording(r, false);" in off_end, "off: rec_cur is not submitted after the dry pass as before")
-    loop = cut[cut.index("record_job(last);"):cut.index("par_pool.done.wait(")]
-    need("submit_job(j);" in loop and "submit_ready();" in loop, "the replay thread's own submits are not in order")
-    sj = function(e, "const auto submit_job = [&init_lost](Job* j)")
+    loop = function(rp, "void early_join(EarlyGroup& G)")
+    need("early_submit_job(G, j);" in loop and "early_submit_ready(G);" in loop, "the replay thread's own submits are not in order")
+    sj = function(rp, "void early_submit_job(EarlyGroup& G, EarlyJob* j)")
     need("vkQueueSubmit2(dev.queue, 1, &si, j->r->fence)" in sj and sj.index("queue_flush_locked();") < sj.index("vkQueueSubmit2("),
          "submit_job: the held recordings (rec_cur among them) do not go first")
 
-    sr = e[e.index("const auto submit_ready = [&] {"):]
-    sr = sr[:sr.index("};") + 2]
+    sr = function(rp, "void early_submit_ready(EarlyGroup& G)")
     body = sr[sr.index("{") + 1:sr.rindex("}")]
+    body = body.replace("early_submit_job(G, ", "submit_job(").replace("G.", "")
 
     fixture = r'''
 #include <algorithm>

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Compile and run the rule for which pages a remade pool's mirror takes from a retired one (gpu/vk/mirror_inherit.h; no game/GPU)."""
 import argparse
 import subprocess

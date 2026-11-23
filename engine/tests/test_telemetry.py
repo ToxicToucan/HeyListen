@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The opt-in reports' rules (host/hos_telemetry.h, host/hos_perf_send.h, the sender in host/hos_crash_dialog.c), with no game.
 
 - The address: empty by default (nx2/addresses.ini), so nothing can be sent; https only; HL_TELEMETRY_URL for a test; the one

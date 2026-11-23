@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """make_game.py's last step, hookshot --prepare-shaders, run against stub games: its stage and progress lines go on to the builder,
 its own @@done and @@error don't (the builders read those as the build's end or failure), a failure or a silent hang leaves the work
 to the first start (never a failed build), and the game runs in its own environment, as the builders' Play starts it.

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The native engine (engine/native): compiled and run with no game and no GPU. Each engine/native/tests/*_test.cpp is a
 program of its own, built with every source of the tree. Also holds the tree to its rule: its own headers and the
 standard library only, nothing of the lifted code or of the OS layer.

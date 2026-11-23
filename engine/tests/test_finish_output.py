@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """Exercise actual production stage-all/copy/swap statements with authored temporary files.
 
 python -I -B tests/test_finish_output.py

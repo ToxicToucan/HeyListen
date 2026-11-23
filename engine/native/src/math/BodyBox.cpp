@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the per-body box update of the last substep (hl/math/BodyBox.h). Each line is one guest
 // operation of 0x817d9d80 (and of 0x80168130, 0x8173e2ac it calls), in the guest's order; lanes the function computes
 // but never uses are left out (their values reach nothing the game reads, so they need not be exact).

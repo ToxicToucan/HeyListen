@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* HeyListen native engine: the math kernels' C surface for the OS layer (engine/host/hl_math.c; hl/math/Bounds.h,
    hl/bridge/MathBridge.h). Every pointer is a host pointer to the guest's memory (or to scratch memory laid out the same).
    Each function writes its 32-byte box to out and returns 1, or returns 0 having written nothing when the inputs are

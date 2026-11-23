@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A texel buffer view is only made of a format the device supports as a (uniform or storage) texel buffer
 (gpu/vk/vk_texture.cpp texel_buffer_view); where it does not, no view or, without nullDescriptor, a dummy one. Longshot #1244; the
 check reads the source. No GPU or game."""

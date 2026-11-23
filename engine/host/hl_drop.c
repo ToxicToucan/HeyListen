@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* (HeyListen native engine) The OS layer's side of the drop module (engine/native, hl/c/hl_drop.h;
    docs/native-engine/memory-boundary.md section 14): a decoded resource's memory given back to the system for good, and
    made again from its file when anything touches it.

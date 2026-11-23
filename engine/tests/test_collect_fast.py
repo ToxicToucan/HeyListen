@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-061, C2) RX_VK_COLLECT_FAST: the write-mark scan with unaligned block loads takes the same pages as collect_in.
 
 host/rx_backend.c's collect_in (the old walk: blocks only from aligned page numbers) and collect_in_fast are cut out of the

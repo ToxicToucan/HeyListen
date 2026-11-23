@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """The detailed performance profile (gpu/vk/profile_report.h, gpu/vk/profile_run.cpp, perf_report.cpp profile_queue, the sender in host/hos_crash_dialog.c), no game, no GPU.
 
 - tests/test_profile_report.cpp: the module classifier on fake ranges, the thread roles, the hitch tagging of samples, the tables'

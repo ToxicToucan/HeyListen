@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the stream module's path choice, counters and provenance table, run with no game
 // (tests/test_native_engine.py).
 #include <cstdio>

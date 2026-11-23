@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* The parallel replay's segments (vk_replay.cpp replay_handle): how many segments a large command buffer is cut into.
    TICK-050: with more segments than recording threads the last ones ran in a second round, one thread recording while
    the others idled; the cap can be the number of recorders instead, so that every segment is recorded at once. */
@@ -23,6 +25,13 @@ inline int segment_count(int64_t total, int64_t per, int recorders, int cap, boo
     int bound = cap;
     if (one_round && recorders > 0) bound = std::min(bound, recorders);
     return (int)std::clamp<int64_t>(total / per, 1, bound);
+}
+
+/// (stream SMALL1, RX_VK_MID_SEG=<work>, 0: off) A command buffer of at least `mid_min` draws and dispatches that the rule above leaves in one
+/// segment (it has under two segments' worth) is cut in two, when the cap allows two: its recording goes to two threads instead of the replay
+/// thread's alone. More than one segment already: as it was.
+inline int with_mid(int n, int64_t total, int cap, int64_t mid_min) {
+    return (n < 2 && mid_min > 0 && total >= mid_min && cap >= 2) ? 2 : n;
 }
 
 /// The rounds n segments take on r recorders (a diagnosis: more than one is a round where some recorders idle)
@@ -61,17 +70,21 @@ inline void profile_add(Profile& p, const double* from, const double* to, const 
 }
 
 /// The n-1 boundaries (in draws and dispatches, out[0..n-2]) that cut the profile's time into n equal parts; even counts when
-/// the profile has nothing yet
-inline void balanced_targets(const Profile& p, int n, int64_t total, int64_t* out) {
+/// the profile has nothing yet. `tail` (stream ORDER2, RX_VK_SEG_TAIL): the last part's share against the others' 1.0 (0.5: half as
+/// long as each of them): it is the replay thread's own, recorded once the dry pass is over, and the others start earlier
+inline void balanced_targets(const Profile& p, int n, int64_t total, int64_t* out, double tail = 1.0) {
     if (n < 2) return;
+    if (!(tail > 0.05)) tail = 0.05;
+    if (tail > 1.0) tail = 1.0;
+    const double parts = (double)(n - 1) + tail;
     double sum = 0;
     for (int i = 0; i < kBins; i++) sum += p.valid && p.ms[i] > 0 ? p.ms[i] : 0;
     for (int k = 1; k < n; k++) {
         if (sum <= 0) {
-            out[k - 1] = total * k / n;
+            out[k - 1] = tail >= 1.0 ? total * k / n : (int64_t)((double)total * k / parts + 0.5);
             continue;
         }
-        const double want = sum * k / n;
+        const double want = sum * k / parts;
         double cum = 0, pos = 1;
         for (int i = 0; i < kBins; i++) {
             const double d = p.ms[i] > 0 ? p.ms[i] : 0;

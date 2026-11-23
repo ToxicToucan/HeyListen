@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Which renderer the rx_* calls go to (gpu/vk/vk_api.h): the WebGPU one in the executable (gpu/render, its
    functions renamed wgr_* by rx_wgpu_names.h) or, with RX_BACKEND=vulkan, the Vulkan one in mkw_vk.dll beside the
    executable. Decided at rx_start, before any other rx_* call; a DLL that is missing or finds no usable Vulkan
@@ -384,14 +386,21 @@ static void flush_early(void) {
 
 /* (TICK-015) the back end's second export: a game pool's NVN flags (which pools the CPU may read back) */
 static void (*vk_pool_flags)(uint64_t gpu, uint64_t size, uint32_t flags);
+static int pool_call_gives_core(void);   /* (below) */
 void rx_nvn_pool_flags(uint64_t gpu, uint64_t size, uint32_t flags) {
-    if (vk && vk_pool_flags) vk_pool_flags(gpu, size, flags);
+    if (!vk || !vk_pool_flags) return;
+    const int away = pool_call_gives_core() ? hos_vcore_away() : 0;
+    vk_pool_flags(gpu, size, flags);
+    if (away) hos_vcore_back();
 }
 /* (HeyListen, RX_VK_POOL_FINALIZE) and a live pool's finalize (only a pool object still live: nvn_native.c checks its magic), so the
    back end can retire the import chunks no live pool is left in */
 static void (*vk_pool_finalized)(uint64_t gpu, uint64_t size);
 void rx_nvn_pool_finalized(uint64_t gpu, uint64_t size) {
-    if (vk && vk_pool_finalized) vk_pool_finalized(gpu, size);
+    if (!vk || !vk_pool_finalized) return;
+    const int away = pool_call_gives_core() ? hos_vcore_away() : 0;
+    vk_pool_finalized(gpu, size);
+    if (away) hos_vcore_back();
 }
 
 /* dll: mkw_vk.dll (our Vulkan back end) or mkw_eden.dll (Eden's renderer driven natively, gpu/eden): one export */
@@ -445,6 +454,13 @@ int rx_start(void *hwnd) {
             return 1;
         }
         if (r) hos_log("rx: the Vulkan back end could not start on the window: WebGPU");
+        /* (v0.4.2 and v0.4.3: three players whose vkCreateInstance failed fell through to the WebGPU renderer, which panicked
+           inside wgpu_native.dll (an uncaught C++ exception, KERNELBASE 0xe06d7363) and ended as a crash report. That renderer was
+           never made for this game: a PC with no usable Vulkan driver is told so, and the log keeps the reason the back end gave.
+           RX_BACKEND=webgpu (or any other value) still reaches it) */
+        if (!eden && !getenv("HOS_VK_FALLBACK_WEBGPU"))
+            hos_fatal(NULL, "no usable Vulkan driver: HeyListen needs a GPU driver with Vulkan 1.3 (update your graphics driver; the log "
+                            "has the Vulkan back end's reason, \"vk: vkCreateInstance failed\" or the device lines before it)");
     }
     const int ok = wgr_start(hwnd);
     flush_early();
@@ -559,13 +575,42 @@ void rx_nvn_set_texture_pool_size(int n) {
     }
     vk ? vk->nvn_set_texture_pool_size(n) : wgr_nvn_set_texture_pool_size(n);
 }
+/* (1 when the variable is set to anything but "" or "0") */
+static int env_on(const char *name) {
+    const char *e = getenv(name);
+    return e && e[0] && e[0] != '0';
+}
+/* (Longshot 1780fbe0c by SadTransGirl, #1827, by hand: the give-up itself came earlier, Mooseca's 77bd2f86d; this adds its off
+   switch) A texture's texels read or written by the CPU wait in the Vulkan back end for the GPU to finish everything submitted
+   before, and that work can itself wait for a signal the game's main thread makes later. The thread gives its virtual core up
+   for the call (a worker on that core waited ~1 s behind it at an area change). HOS_TEXELS_KEEP_CORE=1: kept through the wait,
+   as before */
+static int texels_keep_core(void) {
+    static int keep = -1;
+    if (keep < 0) keep = env_on("HOS_TEXELS_KEEP_CORE");
+    return keep;
+}
+/* (HeyListen, v0.4.4, RX_VK_RELEASE_HINT / HOS_RELEASE_KEEP_CORE) A texture's or a program's release, with the replay not
+   asynchronous, drains the stopped queues under the order lock and takes the replay's lock: behind a whole submission being
+   replayed, 2 s with an RX 580's pipeline compiles (OptimizeChangeBanc held core 4 for 2.0-2.5 s inside hookshot_vk.dll,
+   issue 67), and every game thread allowed on that core waited for it. The thread gives its core up for the call when the
+   back end says the call would wait (nvn_release_may_wait: a lock held now); releases are thousands a load, so a call
+   with the locks free keeps the core and pays nothing. HOS_RELEASE_KEEP_CORE=1: kept always, as before */
+static int release_gives_core(void) {
+    static int off = -1;
+    if (off < 0) off = env_on("HOS_RELEASE_KEEP_CORE");
+    if (off || !vk) return 0;
+    return !vk->nvn_release_may_wait || vk->nvn_release_may_wait();
+}
 void rx_nvn_texture_released(const nvn_tex *t) {
     if (!started && t) {
         early_call c = {3, 0};
         c.t = *t;
         if (keep_early(&c)) return;
     }
+    const int away = release_gives_core() ? hos_vcore_away() : 0;
     vk ? vk->nvn_texture_released(t) : wgr_nvn_texture_released(t);
+    if (away) hos_vcore_back();
 }
 void rx_nvn_texture_created(const nvn_tex *t) {
     if (!started && t) {
@@ -575,12 +620,16 @@ void rx_nvn_texture_created(const nvn_tex *t) {
     }
     if (vk && vk->nvn_texture_created) vk->nvn_texture_created(t);
 }
-void rx_nvn_program_released(const nvn_prog *p) { vk ? vk->nvn_program_released(p) : wgr_nvn_program_released(p); }
+void rx_nvn_program_released(const nvn_prog *p) {
+    const int away = release_gives_core() ? hos_vcore_away() : 0;   /* (the replay may be translating it: as texture releases) */
+    vk ? vk->nvn_program_released(p) : wgr_nvn_program_released(p);
+    if (away) hos_vcore_back();
+}
 void rx_nvn_read_texels(const nvn_tex *t, unsigned level, unsigned layer0, const NVNcopyRegion *r, uint8_t *dst,
                         size_t row, size_t img) {
     /* (the back end's texel copies take replay_mu, which the replay holds through a whole submission: hundreds of ms while
        pipelines compile at boot or a zone's load. No virtual core held meanwhile, as rx_nvn_invalidate) */
-    const int away = hos_vcore_away();
+    const int away = texels_keep_core() ? 0 : hos_vcore_away();
     vk ? vk->nvn_read_texels(t, level, layer0, r, dst, row, img) : wgr_nvn_read_texels(t, level, layer0, r, dst, row, img);
     if (away) hos_vcore_back();
 }
@@ -604,7 +653,7 @@ void rx_nvn_write_texels(const nvn_tex *t, unsigned level, unsigned layer0, cons
             }
         }
     }
-    const int away = hos_vcore_away();   /* (replay_mu: as rx_nvn_read_texels) */
+    const int away = texels_keep_core() ? 0 : hos_vcore_away();   /* (replay_mu: as rx_nvn_read_texels) */
     vk ? vk->nvn_write_texels(t, level, layer0, r, src, row, img)
        : wgr_nvn_write_texels(t, level, layer0, r, src, row, img);
     if (away) hos_vcore_back();
@@ -636,6 +685,18 @@ void rx_nvn_vmap_changing(uint64_t gpu, uint64_t size) {
     if (vk && vk->nvn_vmap_changing) vk->nvn_vmap_changing(gpu, size);
     if (away) hos_vcore_back();
 }
+/* (HeyListen, v0.4.4) The memory pool calls (a pool made, its flags, its finalize: a few hundred a boot, none in the frames) take the
+   back end's pool locks, which an import or a replay in progress holds: BootupBackgroundWorkThread sat in a futex inside the renderer
+   for 165 s holding core 2 at the start of an Arc B580's boot on Linux (issue 88; every other game thread "ran without a core after
+   2000 ms"). The core is given up for them. HOS_RELEASE_KEEP_CORE=1: kept, as before */
+static int pool_call_gives_core(void) {
+    static int off = -1;
+    if (off < 0) off = env_on("HOS_RELEASE_KEEP_CORE");
+    return !off;
+}
 void rx_nvn_pool_created(uint64_t gpu, uint64_t size) {
-    if (vk && vk->nvn_pool_created) vk->nvn_pool_created(gpu, size);
+    if (!vk || !vk->nvn_pool_created) return;
+    const int away = pool_call_gives_core() ? hos_vcore_away() : 0;
+    vk->nvn_pool_created(gpu, size);
+    if (away) hos_vcore_back();
 }

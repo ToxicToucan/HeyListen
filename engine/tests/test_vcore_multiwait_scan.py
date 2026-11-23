@@ -92,12 +92,15 @@ static Obj *obj_lookup(uint64_t key, int kind) {
     o->key = key, o->kind = kind;
     return o;
 }
-/* an event's wait (try_only: consumes an auto-clear signal) */
-static int event_wait(Obj *e, int64_t timeout_ns, int try_only) {
-    (void)timeout_ns, (void)try_only;
+/* an event's peek (consumes an auto-clear signal: WaitAny's scan, nn_os_sync.c event_peek) */
+static int event_peek(Obj *e) {
     const int got = e->signaled;
     if (got && e->autoclear) e->signaled = 0;
     return got;
+}
+static int event_wait(Obj *e, int64_t timeout_ns, int try_only) {
+    (void)timeout_ns, (void)try_only;
+    return event_peek(e);
 }
 static int signals;
 static void event_signal(Obj *e) { e->signaled = 1, signals++; }

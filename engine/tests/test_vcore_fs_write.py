@@ -50,6 +50,12 @@ static Handle *get_handle(Ctx *c, uint64_t id) { (void)c, (void)id; return &file
 static int hos_lazy_commit(void) { return 0; }
 static void hos_commit(uint64_t a, uint64_t n) { (void)a, (void)n; }
 static int held, takes, writes, writes_with_core, flushes, flushes_with_core;
+static int64_t hos_now_ns(void) { return 0; }
+/* (hos_waitnote.h: the wait kinds the host times for the performance summary) */
+enum { HOS_WN_LOCK, HOS_WN_SLEEP, HOS_WN_VCORE, HOS_WN_FILE, HOS_WN_KINDS };
+static _Thread_local int64_t hos_wn_ns[HOS_WN_KINDS];
+static void hos_wn_add(int kind, int64_t ns) { if (ns > 0) hos_wn_ns[kind] += ns; }
+
 int hos_vcore_away(void) { if (!held) return 0; held = 0; return 1; }
 void hos_vcore_back(void) { if (!held) held = 1, takes++; }
 static BOOL WriteFile(HANDLE h, const void *p, DWORD n, DWORD *put, OVERLAPPED *ov) {

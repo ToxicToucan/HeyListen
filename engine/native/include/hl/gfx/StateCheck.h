@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the call-by-call check of a native function of the draw path against its translation
 // (docs/native-engine/gfx-record-job.md, section 8).
 //

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 /* Which GPU the renderer runs on (vk_main.cpp's pick_device): the Insert menu's GPU device row, RX_VK_DEVICE (which wins over
    the row there), and the software renderers (llvmpipe, lavapipe, SwiftShader: Vulkan device type CPU) that are never chosen
    while a real GPU is there. RX_VK_ALLOW_CPU=1 lets one be chosen (a developer's run). Plain C++, no Vulkan header: the

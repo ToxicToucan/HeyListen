@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(TICK-054) tools/bench/chainb.py: the frame's serial loop from a HOS_JOBTRACE file. A synthetic trace of three presents
 (the main thread's held submit, the held flush on a host thread with its capture, the Presentation Thread's submit with a dry
 pass, the parallel replay's setup points and a segment wait, then the present) must give two frames cut at the present's end

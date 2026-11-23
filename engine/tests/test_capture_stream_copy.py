@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """TICK-037: the capture's streaming copy (vk_memory.cpp stream_memcpy) writes the same bytes as memcpy: aligned runs of
 whole pages through the streaming stores, anything else (a destination not 32-byte aligned, a size not a multiple of 128)
 through memcpy; the copy_part loop fences the stores and uses it only when RX_VK_CAPTURE_STREAM allows.

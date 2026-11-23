@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Sacrappy
+
 // HeyListen native engine: the graphics front end writing the back end's command records itself
 // (docs/native-engine/direct-emission.md, sections 3.2 and 5, bricks A and B).
 //

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """A fault inside vkCreateShaderModule leaves that program out, on Windows.
 
 Extracts guarded_shader_module. The stand-in driver raises an access violation after writing a handle; the process

@@ -40,7 +40,7 @@ struct Texture {
     VkImageAspectFlags aspect=VK_IMAGE_ASPECT_COLOR_BIT;
     uint64_t gpu=0x1000;
     uint32_t width=64,height=32,depth=1,layers=4,levels=4,skip=0;
-    int nvn_format=1; bool bc=false,astc=false,sparse=false,gpu_written=false,released=false,only_cleared=false;
+    int nvn_format=1; bool bc=false,astc=false,sparse=false,gpu_written=false,released=false,only_cleared=false,no_attach=false;
 } tex;
 struct nvn_tex { uint64_t gpu=0x1000; };
 struct nvn_view { bool set_levels=false,set_layers=false; uint8_t base_level=0,nlevels=0; uint16_t min_layer=0,nlayers=0; };
@@ -52,7 +52,7 @@ enum class ViewUse { Attachment };
 unsigned selected_mip, expected_mip, first_layer, clear_count, whole_count, touched[4][4];
 void warn(int, const char*) {}
 template<typename... T> void logf(const char*,T...) {}
-Texture* texture_get(const nvn_tex*,bool) { return &tex; }
+Texture* texture_get(const nvn_tex*,bool,bool=false) { return &tex; }
 int view_nvn_format(const nvn_tex*,const nvn_view*) { return 1; }
 int nvn_block_size(int,int* w,int* h) { *w=*h=1; return 4; }
 void texture_resident(Texture*,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t) {}

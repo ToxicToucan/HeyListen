@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Sacrappy
+
 """(HeyListen TICK-063) A64_FPX_BLOCK=1 (a64_block.block_text / block_header), game-free: bit-exact with the default lowering.
 
 Synthetic AArch64 sequences (assembled by llvm-mingw's clang for aarch64, no game code) go through a64emit.translate,
