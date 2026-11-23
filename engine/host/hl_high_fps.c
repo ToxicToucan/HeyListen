@@ -223,6 +223,12 @@ void hos_oot_jump_speed(uint64_t vec) {
     __atomic_store_n(&jump_bits, *(const uint32_t *)GP(vec + 4), __ATOMIC_RELAXED);
     __atomic_add_fetch(&jump_count, 1, __ATOMIC_RELAXED);
     __atomic_store_n(&jump_ns, hos_now_ns(), __ATOMIC_RELEASE);
+    if (fps_log()) {
+        static volatile LONG seen;
+        if (InterlockedIncrement(&seen) <= 8)
+            hos_log("oot: a jump's takeoff speed: %.3f m/s up (takeoff %u)",
+                    oot_bits_float(*(const uint32_t *)GP(vec + 4)), __atomic_load_n(&jump_count, __ATOMIC_RELAXED));
+    }
 }
 
 /* The bodies handed a takeoff's speed on its update (under takeoff_lock: the physics' workers hand Havok the bodies' velocities):
@@ -247,6 +253,12 @@ void hos_oot_takeoff_velocity(uint64_t object, uint64_t velocity, uint64_t slot)
         __atomic_compare_exchange_n(&jump_ns, &when, 0, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
         return;
     }
+    if (fps_log()) {
+        static volatile LONG calls;
+        if (InterlockedIncrement(&calls) <= 4)
+            hos_log("oot: a body's update %.1f ms after a takeoff (frame timed %d, velocity %d, slot %d)", since / 1e6,
+                    frame_timed(), hos_guest_range(velocity, 12), hos_guest_range(slot, 8));
+    }
     if (!frame_timed() || !hos_guest_range(velocity, 12) || !hos_guest_range(slot, 8)) return;
     const uint64_t time_object = G64(slot);
     const uint64_t time = time_object && hos_guest_range(time_object, 8) ? G64(time_object) : 0;
@@ -256,6 +268,12 @@ void hos_oot_takeoff_velocity(uint64_t object, uint64_t velocity, uint64_t slot)
     const uint32_t count = __atomic_load_n(&jump_count, __ATOMIC_RELAXED);
     float vy0 = 0.0f, step0 = 0.0f;
     int next = 0;
+    if (fps_log()) {   /* (the first bodies' updates after a takeoff, matched or not) */
+        static volatile LONG shown;
+        if (InterlockedIncrement(&shown) <= 24)
+            hos_log("oot: after takeoff %u (%.1f ms): a body's update, %.3f m/s up (the jump's %.3f), step %.3f, match %d",
+                    count, since / 1e6, vy, jump, step, oot_takeoff_match(vy, jump, step));
+    }
     AcquireSRWLockExclusive(&takeoff_lock);
     OotTakeoffBody *seen = NULL;
     for (unsigned k = 0; k < sizeof takeoff_bodies / sizeof takeoff_bodies[0]; k++)
