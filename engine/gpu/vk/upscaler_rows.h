@@ -4,6 +4,8 @@
    Upscaler, and the names it shows for DLSS's (and FSR 3.1's and FSR 4's) modes. No Vulkan, no menu: tests/test_upscaler_rows.cpp checks them. */
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 namespace mkwvk::upscaler_rows {
@@ -45,6 +47,23 @@ inline int engine(int mode) { return mode == DLAA ? DLSS : mode == FSR4_AA ? FSR
 /// FSR 3.1 and FSR 4 scale from a smaller 3D at the shares DLSS's modes use: Quality 1.5x (67%), Balanced 1.7x (58%),
 /// Performance 2x (50%) and Ultra Performance 3x (33%) per axis, AMD's own ratios too
 inline bool scales_by_mode(int upscaler) { return upscaler == DLSS || upscaler == FSR3 || upscaler == FSR4; }
+
+/// (HeyListen fork; adapted from Longshot's upscale_lod_bias_for, GPL-3.0-or-later) The texture LOD bias an upscaler adds to the
+/// game's world materials (the samplers it biases below 0: -0.5, tuned for the game's own 3/4 share, about log2(0.75)).
+/// share: the render size in 1/10000 of the output, 0 at Auto (3/4 in play). offset: DLSS's extra step (default -1).
+///  - DLSS and DLAA: NVIDIA's DLSS guide, log2(render / output) - 1 on top of the bias at native size: on the game's -0.5 that is
+///    log2(share / 0.75) + offset (67 %: -1.17, 58 %: -1.37, DLAA -0.58, Auto -1). Without it DLSS got the render size's own
+///    texture detail and upscaled soft textures
+///  - FSR 3.1 and FSR 4: log2(share / 0.75) below 75 %, 0 at Auto and above
+///  - the game's own network, Off and the native AAs of FSR 4: 0
+inline float upscale_lod_bias_for(int upscaler, int share, float offset) {
+    if (is_dlss(upscaler)) {
+        const float r = upscaler == DLAA ? 1.0f : share > 0 ? (float)share / 10000.0f : 0.75f;
+        return std::min(0.0f, std::log2(r / 0.75f) + offset);
+    }
+    if (!scales_by_mode(upscaler) || share <= 0) return 0.0f;
+    return std::min(0.0f, std::log2((float)share / 7500.0f));
+}
 
 /// opts.resolution: 0 Auto (the game's dynamic resolution), else a share of the output in percent. 1 to 4 are the values from
 /// before (100, 75, 67, 50: saved options keep their meaning); 5 and 6 came with DLSS's Balanced and Ultra Performance. Each

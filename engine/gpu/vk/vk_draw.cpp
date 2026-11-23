@@ -49,6 +49,7 @@
 #include "hidden_mesh.h"      // (longshot 29c0f5ea6, #1370: a hidden mesh's depth draws left out, hidden_depth_draw)
 #include "vk_temporal.h"
 #include "vk_fsr3.h"          // (AMD FSR 3.1 in the gameplay upscale's place)
+#include "upscaler_rows.h"    // (upscale_lod_bias_for: the upscalers' texture LOD bias)
 #include "vk_fsr3_inputs.h"
 #include "vk_dump.h"
 #include "vk_gprof.h"
@@ -2607,6 +2608,29 @@ uint32_t aniso_override() {
     static const uint32_t n = getenv("RX_VK_ANISO") ? (uint32_t)std::clamp(atoi(getenv("RX_VK_ANISO")), 0, 16) : 0u;
     return n;
 }
+// (HeyListen fork; adapted from Longshot's upscale_lod_bias, GPL-3.0-or-later) The upscaler's texture LOD bias, added to the samplers
+// the game biases below 0 (its world materials): upscaler_rows.h upscale_lod_bias_for. RX_VK_UPSCALE_LOD_BIAS=0: off (the game's
+// bias alone, as before). RX_VK_DLSS_LOD_OFFSET=<steps>: DLSS's extra -1 for a run (-3..0). Part of every sampler's key. A sampler
+// already made keeps its bias until its registration changes: a change of Upscaler or Render resolution in the menu reaches the
+// samplers the game registers after it (all of them after a restart)
+float upscale_lod_bias() {
+    static const bool off = getenv("RX_VK_UPSCALE_LOD_BIAS") && atoi(getenv("RX_VK_UPSCALE_LOD_BIAS")) == 0;
+    if (off) return 0.0f;
+    static const float offset = [] {
+        const char* e = getenv("RX_VK_DLSS_LOD_OFFSET");
+        const float v = e && *e ? (float)atof(e) : -1.0f;
+        return std::isfinite(v) ? std::clamp(v, -3.0f, 0.0f) : -1.0f;
+    }();
+    const int up = fsr3_wanted() ? (int)upscaler_rows::FSR3 : temporal_mode();
+    const float bias = upscaler_rows::upscale_lod_bias_for(up, resolution_scale(), offset);
+    static std::atomic<uint32_t> said{0xFFFFFFFFu};
+    uint32_t bits;
+    std::memcpy(&bits, &bias, sizeof bits);
+    if (said.exchange(bits) != bits)
+        logf("vk: upscaler texture LOD bias %+.2f on the game's biased materials (upscaler %d, render share %d/10000; "
+             "RX_VK_UPSCALE_LOD_BIAS=0: off)", (double)bias, up, resolution_scale());
+    return bias;
+}
 /// compare: the shader reads depth with a reference (a sampler without one cannot compare)
 VkSampler sampler_make(int id, bool compare);
 // (each texture of each draw found its sampler through reg_mu, a copy of the registration, a hash of it and a map lookup:
@@ -2640,7 +2664,10 @@ VkSampler sampler_make(int id, bool compare) {
     } else
         known = sampler_of(id, &p);
     if (!known) p.minf = NVN_MIN_FILTER_LINEAR, p.magf = NVN_MAG_FILTER_LINEAR, p.lod_max = 1000.0f;
-    uint64_t key = mix(compare ? 0xC0 : 0xAB, aniso_override());
+    const float up_bias = p.lod_bias < 0.0f ? upscale_lod_bias() : 0.0f;   // (the game's upscaled materials only)
+    uint32_t up_bits;
+    std::memcpy(&up_bits, &up_bias, sizeof up_bits);
+    uint64_t key = mix(mix(compare ? 0xC0 : 0xAB, aniso_override()), up_bits);
     const uint8_t* b = reinterpret_cast<const uint8_t*>(&p);
     for (size_t i = 0; i < sizeof p; i += 8) {
         uint64_t w = 0;
@@ -2695,7 +2722,7 @@ VkSampler sampler_make(int id, bool compare) {
         }
     }
     ci.addressModeU = wrap(p.ws), ci.addressModeV = wrap(p.wt), ci.addressModeW = wrap(p.wr);
-    ci.mipLodBias = std::clamp(p.lod_bias, -dev.props.limits.maxSamplerLodBias, dev.props.limits.maxSamplerLodBias);
+    ci.mipLodBias = std::clamp(p.lod_bias + up_bias, -dev.props.limits.maxSamplerLodBias, dev.props.limits.maxSamplerLodBias);
     float aniso = p.aniso;
     {   // (RX_VK_ANISO: what the game asks for is told once for each value, 16 at most: what it sets is not known otherwise)
         static std::mutex am;
