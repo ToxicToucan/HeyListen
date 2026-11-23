@@ -184,6 +184,11 @@ def main():
         "static Obj *obj(uint64_t key, int kind);",
         "static Obj *obj_any(uint64_t key, int kind);",
         "static Obj *obj_quiet(uint64_t key, int kind);" if "static Obj *obj_quiet(" in src else "",
+        # (fork, 2026-11-23: HL_LS_OBJ_CACHE's sized cache, Longshot 2210931cf, stubbed off: tests/test_obj_cache_size.py checks it)
+        "static Obj *obj_lookup(uint64_t key, int kind);\n"
+        "static int obj_cache_due; static void obj_cache_flush(void) {} static int obj_cache_switch(void) { return 0; }\n"
+        "static Obj *obj_lookup_cached(uint64_t key, int kind, int) { return obj_lookup(key, kind); }"
+        if "obj_lookup_cached(" in src else "",
     ))
     funcs = [block(src, "static Obj *obj(uint64_t key, int kind) {"),
              block(src, "static Obj *obj_any(uint64_t key, int kind) {")]

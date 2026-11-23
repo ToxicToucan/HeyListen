@@ -37,6 +37,7 @@ ARGS = {
     "tests/test_dead_targets_sweep.py": ["--cxx", "{cxx}"],
     "tests/test_hidden_mesh_depth.py": ["--cxx", "{cxx}"],   # (longshot 29c0f5ea6, ported)
     "tests/test_handle_table_count.py": ["--cxx", "{cxx}"],   # (longshot b9bd74a25, ported 2026-11-23)
+    "tests/test_obj_cache_size.py": ["--cc", "clang"],   # (longshot 2210931cf, ported 2026-11-23)
     "tests/test_precompile_save.py": ["--cxx", "{cxx}"],
     "tests/test_prepare_speed.py": ["--cxx", "{cxx}"],
     "tests/test_state_report.py": ["--cxx", "{cxx}"],
