@@ -593,30 +593,18 @@ int32_t hos_stick_axis(int16_t v, int zone) {
     return (a > t || a < -t) ? a : 0;
 }
 
-static volatile int xinput_pads_now;   /* (pads_read: the controllers XInput has, while it is polled) */
+static volatile int xinput_pads_now;   /* (xinput_poll: the controllers XInput has) */
 int hos_xinput_pads(void) { return xinput_pads_now; }   /* (host/prompts.c: Auto's face) */
 
-static void pads_read(uint64_t *buttons, int32_t stick[4]) {
-    static int64_t next_read, retry[XUSER_MAX_COUNT];
+/* XInput's controllers are read on a thread of their own (xinput_main), never on the game's. Adapted from Longshot
+   c5e1421d2 (git.magicbean.dev/MagicBeanDev/Longshot, GPL-3.0-or-later): XInputGetState on a slot with no controller
+   in it is slow (it looks for the device again, a millisecond or more, longer with Bluetooth or a virtual pad's driver
+   installed), and the game's input read asked all four empty slots each second, in one read: players on a keyboard
+   and mouse got that hitch every second. pads_read now takes the thread's last reading. */
+static void xinput_poll(int64_t now, uint64_t *out_raw, int32_t s[4]) {
+    static int64_t retry[XUSER_MAX_COUNT];
     static int was_connected[XUSER_MAX_COUNT];
-    static uint64_t cached_buttons;
-    static int32_t cached_stick[4];
-    const int64_t now = hos_now_ns();
-    if (now < next_read) {
-        *buttons |= cached_buttons;
-        stick_max(stick, cached_stick);
-        return;
-    }
-    next_read = now + 2000000;
-    uint64_t raw = 0;   /* (by position: 1 << HOS_PAD_*) */
-    int32_t s[4] = {0};
-    {   /* every controller SDL knows (DualSense, DualShock 4, Switch Pro, ...: hos/pad_sdl.c) */
-        int hos_sdl_pads(uint64_t *buttons, int32_t stick[4]);
-        static int was;
-        const int n = hos_sdl_pads(&raw, s);
-        if (n != was) hos_log("hid: %d controller%s through SDL", n, n == 1 ? "" : "s");
-        was = n;
-    }
+    uint64_t raw = 0;
 #ifdef __EMSCRIPTEN__
     xinput_get = XInputGetState;
 #endif
@@ -671,6 +659,74 @@ static void pads_read(uint64_t *buttons, int32_t stick[4]) {
         if (rx_option(17, 0)) v[3] = -v[3];
         stick_max(s, v);
     }
+    *out_raw |= raw;
+}
+
+static SRWLOCK xinput_lock = SRWLOCK_INIT;
+static uint64_t xinput_raw;   /* (xinput_main's last reading, by position: 1 << HOS_PAD_*) */
+static int32_t xinput_stick[4];
+
+/* every 2 ms while a controller is there (pads_read's own pace), every 100 ms while none is (an empty slot is asked
+   again each second) */
+static DWORD WINAPI xinput_main(void *arg) {
+    (void)arg;
+    void hos_host_thread_register_self(const char *name);   /* (mkw_glue.c: the thread's name) */
+    hos_host_thread_register_self("gamepads (XInput)");
+    for (;;) {
+        uint64_t raw = 0;
+        int32_t s[4] = {0};
+        xinput_poll(hos_now_ns(), &raw, s);
+        AcquireSRWLockExclusive(&xinput_lock);
+        xinput_raw = raw;
+        memcpy(xinput_stick, s, sizeof xinput_stick);
+        ReleaseSRWLockExclusive(&xinput_lock);
+        Sleep(xinput_pads_now ? 2 : 100);
+    }
+    return 0;
+}
+
+/* XInput's pads into raw and s: the thread's last reading (started at the first ask), or read here where there are
+   no threads */
+static void xinput_read(int64_t now, uint64_t *raw, int32_t s[4]) {
+#ifdef __EMSCRIPTEN__
+    xinput_poll(now, raw, s);
+#else
+    (void)now;
+    static volatile LONG started;
+    if (!started && !InterlockedExchange(&started, 1)) {
+        HANDLE h = CreateThread(NULL, 0, xinput_main, NULL, 0, NULL);
+        if (h) CloseHandle(h);
+    }
+    int32_t v[4];
+    AcquireSRWLockShared(&xinput_lock);
+    *raw |= xinput_raw;
+    memcpy(v, xinput_stick, sizeof v);
+    ReleaseSRWLockShared(&xinput_lock);
+    stick_max(s, v);
+#endif
+}
+
+static void pads_read(uint64_t *buttons, int32_t stick[4]) {
+    static int64_t next_read;
+    static uint64_t cached_buttons;
+    static int32_t cached_stick[4];
+    const int64_t now = hos_now_ns();
+    if (now < next_read) {
+        *buttons |= cached_buttons;
+        stick_max(stick, cached_stick);
+        return;
+    }
+    next_read = now + 2000000;
+    uint64_t raw = 0;   /* (by position: 1 << HOS_PAD_*) */
+    int32_t s[4] = {0};
+    {   /* every controller SDL knows (DualSense, DualShock 4, Switch Pro, ...: hos/pad_sdl.c) */
+        int hos_sdl_pads(uint64_t *buttons, int32_t stick[4]);
+        static int was;
+        const int n = hos_sdl_pads(&raw, s);
+        if (n != was) hos_log("hid: %d controller%s through SDL", n, n == 1 ? "" : "s");
+        was = n;
+    }
+    xinput_read(now, &raw, s);
     InterlockedExchange(&pad_raw_now, (LONG)raw);
     /* Back and Start together open the Insert menu (gpu/vk/vk_menu.cpp, for pads whose Home button the system
        keeps): they reach the game only one at a time */
