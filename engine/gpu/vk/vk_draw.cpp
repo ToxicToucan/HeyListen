@@ -3902,7 +3902,7 @@ void build_descriptors(const NvnState& s, const Program& p) {
             // are read once
             static thread_local std::vector<uint32_t> table;
             const bool is_table = d.handle_program != ~0U && d.count > 1;
-            if (is_table) table.resize(d.count), stage_handles(s, st, d.handle_program, d.count, table.data());
+            if (is_table) table.resize(d.count), stage_handles(s, st, d.handle_program, d.count, table.data(), p.key);
             for (uint32_t k = 0; k < d.count; k++) {
                 // (Fritchii d603d98bb) A handle word where a storage buffer of the same program keeps its address is not a
                 // handle: OoT's water samples each light's texture with a handle loaded per pixel from the light buffer, and

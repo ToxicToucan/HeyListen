@@ -66,6 +66,11 @@ def main():
         block(shader, 'uint64_t stage_storage_base('),
         block(shader, 'uint32_t stage_storage_word('),
         block(shader, 'uint32_t stage_handle(const NvnState& s, const Stage& st, uint32_t program, uint32_t element)'),
+        # (fork, 2026-11-23, Longshot b9bd74a25 port: HL_LS_HANDLE_COUNT's two functions and stage_handles' key, where the
+        # source has them; this check runs with the switch off, as tests/test_handle_table_count.py checks it on)
+        *[block(shader, sig) for sig in ('uint32_t handle_table_live(', 'bool handle_table_count_on()') if sig in shader],
+        *(['void stage_handles(const NvnState& s, const Stage& st, uint32_t program, uint32_t count, uint32_t* out, uint64_t key = 0);']
+          if 'uint64_t key)' in block(shader, 'void stage_handles(').split('{', 1)[0] else []),
         block(shader, 'void stage_handles('),
     ])
     prelude = r'''
@@ -75,6 +80,7 @@ def main():
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <vector>
@@ -97,9 +103,11 @@ uint32_t stage_cbuf_word(const NvnState&, const Stage&, uint32_t index, uint32_t
  ++cbuf_reads; return index == 3 && offset / 4 < 64 ? bank[offset / 4] : 0;
 }
 bool env_on(const char*) { return false; }
-void ub_read(uint64_t addr, void* out, size_t n) {
+bool ub_read(uint64_t addr, void* out, size_t n) {
  ++memory_reads; uint32_t v = addr >= 0x10000 && addr < 0x10000 + 4096 ? memory[(addr - 0x10000) / 4] : 0; std::memcpy(out, &v, n);
+ return true;
 }
+void logf(const char*, ...) {}
 struct Host { void gpu_read(uint64_t addr, void* out, size_t n) { ub_read(addr, out, n); } } host_object;
 Host* host = &host_object;
 uint32_t stage_handle(const NvnState& s, const Stage& st, uint32_t program, uint32_t element = 0);   // (vk_shader.h's)
@@ -209,7 +217,7 @@ int main() {
     require(stamp, 'if (!handle_tables_on()) {', 'programs translated without handle tables must not share the cache')
     pointer = block(draw, 'bool handle_is_storage_pointer(')
     require(pointer, 'if (d.handle_is_pointer_word) return true;', 'a pointer word binds no texture')
-    require(draw, 'stage_handles(s, st, d.handle_program, d.count, table.data());', 'the draw binds every entry of a handle table')
+    require(draw, 'stage_handles(s, st, d.handle_program, d.count, table.data(), p.key);', 'the draw binds every entry of a handle table')
     require(draw, 'is_table && view && tex && d.is_depth && !is_depth_format(tex->format)',
             'a table entry naming a colour texture for a depth comparison binds nothing')
     require(draw, 'if (is_table && k + 1 == d.count && view) {',

@@ -817,7 +817,35 @@ uint32_t stage_handle(const NvnState& s, const Stage& st, uint32_t program, uint
         .value_or(0U);
 }
 
-void stage_handles(const NvnState& s, const Stage& st, uint32_t program, uint32_t count, uint32_t* out) {
+/// (fork, 2026-11-23, from Longshot b9bd74a25, Veix, GPL-3.0) A handle table's array has HANDLE_TABLE_SIZE elements, the
+/// game's table as many records as the frame needs (OoT's light table: 3 in Kokiri Forest, about 20 in Castle Town by day,
+/// 40 by night). The records behind them are leftovers of earlier frames, whose handles name slots the game has released
+/// and given to other textures since (a 3840x2160 target, a 4096x4096 depth). No pixel asks for them, but the draw fetched
+/// every element's texture, and a fetch uploads it again when a GPU buffer write has marked it: storms of GB-sized
+/// re-uploads, easiest to see after closing the pause menu. With HL_LS_HANDLE_COUNT=1 the elements at and behind the
+/// table's own count name nothing. The count is taken only from a table that says it is one: records of one size from
+/// byte 16, element k's handle inside record k, word 0 the number of records and word 2 the capacity, which must be the
+/// storage buffer's size in whole records past the header, rounded down. Anything else: every element, as before.
+/// Off by default (HeyListen's behaviour: every element).
+/// off0, off1: the storage offsets elements 0 and 1 read their handles at; size: the storage buffer's; n, cap: its words 0 and 2
+uint32_t handle_table_live(uint32_t count, uint32_t off0, uint32_t off1, uint64_t size, uint32_t n, uint32_t cap) {
+    if (off1 <= off0) return count;
+    const uint64_t record = off1 - off0;
+    if (record < 4 || off0 < 16 || off0 - 16 >= record) return count;   // (the handle is not a word of record 0)
+    if (!cap || size < 16 || (size - 16) / record != cap || n > cap) return count;   // (not that header, or not that buffer)
+    return std::min(count, n);
+}
+bool handle_table_count_on() {
+    static const bool on = [] {
+        const char* e = getenv("HL_LS_HANDLE_COUNT");
+        const bool v = e && atoi(e) != 0;
+        if (v) logf("vk: HL_LS_HANDLE_COUNT=1: handle table elements behind the game's own count name no texture (Longshot b9bd74a25)");
+        return v;
+    }();
+    return on;
+}
+
+void stage_handles(const NvnState& s, const Stage& st, uint32_t program, uint32_t count, uint32_t* out, uint64_t key) {
     if (program >= st.info.handle_programs.size()) {
         std::fill(out, out + count, 0u);
         return;
@@ -836,13 +864,73 @@ void stage_handles(const NvnState& s, const Stage& st, uint32_t program, uint32_
     static_assert(Shader::Info::MAX_SSBOS <= 64, "one bit a binding");
     std::array<uint64_t, Shader::Info::MAX_SSBOS> bases;
     uint64_t known = 0;
-    const auto read_storage = [&](u32 binding, u32 offset) -> u32 {
-        if (binding >= bases.size()) return 0U;
+    const auto storage_base = [&](u32 binding) -> uint64_t {
         if (!(known >> binding & 1)) bases[binding] = stage_storage_base(s, st, binding), known |= uint64_t{1} << binding;
-        return stage_storage_word(bases[binding], offset);
+        return bases[binding];
+    };
+    const auto read_storage = [&](u32 binding, u32 offset) -> u32 {
+        return binding < bases.size() ? stage_storage_word(storage_base(binding), offset) : 0U;
     };
     const auto& code = st.info.handle_programs[program];
-    for (uint32_t k = 0; k < count; k++) out[k] = Shader::EvaluateHandleProgram(code, read_cbuf, read_storage, k).value_or(0U);
+    // (fork, 2026-11-23, from Longshot b9bd74a25, Veix, GPL-3.0) HL_LS_HANDLE_COUNT=1: the elements behind the game's own
+    // count of its table name nothing (handle_table_live). The count first, so that only the game's elements are computed
+    uint32_t capacity = 0;
+    const uint32_t live = [&]() -> uint32_t {
+        if (count < 2 || !handle_table_count_on()) return count;
+        // (RX_VK_HANDLES_LIVE, a diagnostic that reads handles from memory now: the header is read as submitted, so not cut)
+        static const bool handles_live = getenv("RX_VK_HANDLES_LIVE") != nullptr;
+        if (handles_live) return count;
+        // (the layout: the program run with each storage read's offset for its word, so no memory is read. One storage read
+        // in each run (the program has no branches: a nested read shows as two); elements 0 and 1 give the record's size,
+        // element 2 and the last must lie on the same line, so a masked or clamped index ((k & 7) * 96 + 16, min(k, 39) * 96
+        // + 16), which would name live records from elements behind the count, is bound whole)
+        u32 table = ~0U, reads = 0;
+        const auto read_offset = [&](u32 binding, u32 offset) -> u32 {
+            table = binding, ++reads;
+            return offset;
+        };
+        const auto offset_of = [&](u32 k) -> std::optional<u32> {
+            reads = 0;
+            const auto off = Shader::EvaluateHandleProgram(code, read_cbuf, read_offset, k);
+            return reads == 1 ? off : std::nullopt;
+        };
+        const auto first = offset_of(0), second = offset_of(1);
+        if (!first || !second || *second <= *first) return count;
+        const u32 off0 = *first, off1 = *second;
+        for (const u32 k : {2U, count - 1}) {
+            if (k < 2 || k >= count) continue;
+            const auto off = offset_of(k);
+            if (!off || *off != off0 + k * (off1 - off0)) return count;
+        }
+        if (table >= st.info.storage_buffers_descriptors.size() || table >= bases.size()) return count;
+        // (the layout first, as handle_table_live asks it: for a table of another shape nothing more is read)
+        if (off0 < 16 || off0 - 16 >= off1 - off0) return count;
+        const uint64_t base = storage_base(table);
+        if (!base || (base & 15)) return count;   // (the offsets are from the address rounded down to 16)
+        const auto& d = st.info.storage_buffers_descriptors[table];
+        // (HeyListen keeps the descriptor's constant-bank offset as is: the size word follows the 8-byte address)
+        const uint64_t size = read_cbuf(d.cbuf_index, d.cbuf_offset + 8);
+        // (words 0 to 2 in one read, and only from a read that succeeded: a failed one gives zeros, which would pass for an
+        // empty table and leave every element unbound)
+        uint32_t header[3]{};
+        if (!ub_read(base, header, sizeof header)) return count;
+        capacity = header[2];
+        return handle_table_live(count, off0, off1, size, header[0], capacity);
+    }();
+    for (uint32_t k = 0; k < live; k++) out[k] = Shader::EvaluateHandleProgram(code, read_cbuf, read_storage, k).value_or(0U);
+    if (live >= count) return;
+    std::fill(out + live, out + count, 0u);
+    // (once a program: which programs the count cuts, for a tester's log)
+    static thread_local uint64_t last_told = ~0ULL;
+    if (key == last_told) return;
+    last_told = key;
+    static std::mutex told_mu;
+    static std::vector<uint64_t> told;
+    std::lock_guard lk(told_mu);
+    if (told.size() >= 64 || std::find(told.begin(), told.end(), key) != told.end()) return;
+    told.push_back(key);
+    logf("vk: handle table: program %016llx: %u of its %u elements are the game's (its table's count; capacity %u): the others "
+         "name nothing (HL_LS_HANDLE_COUNT=1)", (unsigned long long)key, live, count, capacity);
 }
 
 namespace {
@@ -1520,6 +1608,7 @@ bool disk_compact(const std::string& path, const std::string& idx_path, uint64_t
 }
 
 void disk_init() {
+    handle_table_count_on();   // (fork, 2026-11-23: HL_LS_HANDLE_COUNT's one startup line, not at the first table draw)
     static std::once_flag once;
     std::call_once(once, [] {
         if (getenv("RX_VK_NO_PROGRAM_CACHE")) return;
