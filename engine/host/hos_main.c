@@ -1864,6 +1864,19 @@ void hos_oot_lift_player(Ctx *c, uint64_t actor) {
     void hos_oot_note_link(uint64_t components);   /* host/hl_high_fps.c: his driven body's target above 60 fps (Longshot d30b9479;
                                                       here, in the debug tools' block, as the player's other hooks: built on both) */
     hos_oot_note_link(components);
+    {   /* (fork, after Longshot 971f77f52) an input recording's marks, and a replay held to them: Link's position (+0x31c)
+           after his update (host/hl_input_movie.c); nothing read with nothing recorded or played */
+        int hos_input_movie_active(void);
+        void hos_input_movie_link(const float pos[3]);
+        if (hos_input_movie_active()) {
+            float pos[3];
+            for (int i = 0; i < 3; i++) {
+                const uint32_t bits = (uint32_t)recomp_load32(c, actor + 0x31c + 4 * (uint64_t)i);
+                memcpy(&pos[i], &bits, 4);
+            }
+            hos_input_movie_link(pos);
+        }
+    }
 
     // Link can be updated by different guest workers on successive frames.
     static SRWLOCK cheats_lock = SRWLOCK_INIT;

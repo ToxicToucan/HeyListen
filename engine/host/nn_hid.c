@@ -38,6 +38,7 @@
 #include "../gpu/vk/vk_api.h"   /* (the controls' names: HOS_SW_*, HOS_PAD_*) */
 #include "../gpu/vk/vk_opt_ids.h"   /* (HL_OPT_SPRINT; fork: HL_OPT_FIRST_PERSON; HL_OPT_SCREENSHOT, HL_OPT_CLIP for the live file's !shot and !clip) */
 #include "hos_motion.h"
+#include "hl_input_movie.h"   /* (MoviePad: input recordings for A/B runs) */
 #include "hos_atomic_file.h"   /* (the sensitivity is written whole or not at all) */
 
 enum { B_A = 0, B_B, B_X, B_Y, B_LS, B_RS, B_L, B_R, B_ZL, B_ZR, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN };
@@ -934,11 +935,14 @@ static void npad_states(Ctx *c) {
                     (unsigned long long)c->x[30]);
         }
     }
-    if (connected) {
+    /* (fork, after Longshot 971f77f52) HOS_INPUT_PLAY: a recording's read is the recording's alone (host/hl_input_movie.c):
+       none of the merge below runs. HOS_INPUT_RECORD: a game frame has one pad, its first read's */
+    MoviePad given;
+    const int played = connected && hos_input_movie_begin(&given);
+    uint64_t axes = 0, flight = 0;
+    int height = 0;
+    if (connected && !played) {
         read_input(&buttons, stick);
-        uint64_t axes = 0;
-        uint64_t flight = 0;
-        int height = 0;
         const int menu_open = rx_option(1, 0);
         const int free_camera = rx_option(HOS_OPT_CHEAT_CAMERA, 0);
         const int first_person = !free_camera && rx_option(HL_OPT_FIRST_PERSON, 0);
@@ -968,9 +972,19 @@ static void npad_states(Ctx *c) {
         __atomic_store_n(&free_camera_height, height, __ATOMIC_RELAXED);
     }
     uint64_t hos_title_input(uint64_t buttons);   /* totk_title.c: the title menu's credits entries */
-    if (connected) buttons = hos_title_input(buttons);
+    if (connected && !played) buttons = hos_title_input(buttons);
     uint64_t hos_frame_step_buttons(uint64_t buttons);   /* nn_vi.c: the frame step of the wheel and quick menus */
-    if (connected) buttons = hos_frame_step_buttons(buttons);
+    if (connected && !played) buttons = hos_frame_step_buttons(buttons);
+    if (played) {   /* (the frame's pad, with the free camera's, first person's and flight's inputs as it had them) */
+        buttons = given.bits;
+        memcpy(stick, given.stick, sizeof given.stick);
+        __atomic_store_n(&flight_input, given.flight, __ATOMIC_RELAXED);
+        __atomic_store_n(&free_camera_axes, given.axes, __ATOMIC_RELAXED);
+        __atomic_store_n(&free_camera_height, given.height, __ATOMIC_RELAXED);
+    } else if (connected) {
+        const MoviePad pad = {buttons, {stick[0], stick[1], stick[2], stick[3]}, flight, axes, height};
+        hos_input_movie_end(&pad);   /* (recording: the frame's pad) */
+    }
     int64_t s = ++sampling;
     for (int i = 0; i < count; i++) {
         uint64_t e = out + (uint64_t)i * STATE_SIZE;
