@@ -29,7 +29,9 @@ HL_FLOOR_HOOK(8015d490, "923be46f8950ebcd", "L_8015dad4");    /* Temple's barge:
 HL_FLOOR_HOOK(838baa40, "a40b3f20377e9b73", "L_838baf24");
 HL_SOLVER_HOOK(838ceb80, "c4203f2465e06081");   /* the solver's step count, the two places the game sets it */
 HL_SOLVER_HOOK(838cfc10, "228fd7a71a1ca0f0");
-HL_DRIVE_HOOK(804f5030, "c502d681942b9169");    /* a rigid body's update before the physics step: Link's driven body's target (Longshot d30b9479) */
+HL_DRIVE_HOOK(804f5030, "c502d681942b9169", "takeoff");   /* a rigid body's update before the physics step: Link's driven body's target
+                                                             (Longshot d30b9479), and a jump's takeoff velocity (4c8210e7c) */
+HL_JUMP_HOOK(80b97d10, "827a2a405ce814b8", "c->x[19]");   /* a jump's takeoff speed (a backflip above 60 fps: Longshot 4c8210e7c) */
 HL_SONG_HOOK(832b2af0, "46558136b433148c");     /* the song just played, and the ocarina's other melody playback: the note flag */
 HL_SONG_HOOK(832b2dc0, "828538cb182b748e");     /* (Longshot 10010630) */
 
@@ -208,6 +210,78 @@ int hos_oot_floor_carry_slow(uint32_t inv_dt_bits, uint64_t slot) {
                     (long long)k, (long long)n, oot_bits_float(inv_dt_bits), oot_bits_float(frame));
     }
     return slow;
+}
+
+/* A jump's takeoff above a 60 cap (host/oot_high_fps.h oot_takeoff_rest_speed; adapted from Longshot 4c8210e7c by SadTransGirl,
+   GPL-3.0-or-later). f_80b97d10's end hands the velocity it wrote (vec: x, y, z): its vertical part, when (host time) and which
+   takeoff it is are kept for the bodies' velocities in the next 50 ms */
+static volatile uint32_t jump_bits;
+static volatile int64_t jump_ns;       /* (0: none waiting) */
+static volatile uint32_t jump_count;   /* (the takeoffs so far: a body is watched once a takeoff) */
+void hos_oot_jump_speed(uint64_t vec) {
+    if (!vec || !hos_guest_range(vec, 12)) return;
+    __atomic_store_n(&jump_bits, *(const uint32_t *)GP(vec + 4), __ATOMIC_RELAXED);
+    __atomic_add_fetch(&jump_count, 1, __ATOMIC_RELAXED);
+    __atomic_store_n(&jump_ns, hos_now_ns(), __ATOMIC_RELEASE);
+}
+
+/* The bodies handed a takeoff's speed on its update (under takeoff_lock: the physics' workers hand Havok the bodies' velocities):
+   the speed and that frame's step, and whether the next update is still to come */
+typedef struct { uint64_t object; uint32_t count; float vy0, step0; int waiting; } OotTakeoffBody;
+static OotTakeoffBody takeoff_bodies[8];
+static unsigned takeoff_next;
+static SRWLOCK takeoff_lock = SRWLOCK_INIT;
+
+/* f_804f5030, before its set-velocity call for a body (the world's vtable +0x190): object (the body's object, x19), velocity
+   (the guest address of the linear velocity the call reads: x, y, z), slot (the guest address of the pointer to the game's time
+   object, its +0x10 the frame's step). A body handed the takeoff's speed in the takeoff's own update (within half that frame of
+   f_80b97d10) is kept; on its next call, the vertical speed oot_takeoff_rest_speed gives. It returns at once while no takeoff
+   is waiting. HOS_FPS_TAKEOFF=0: the game's speed */
+void hos_oot_takeoff_velocity(uint64_t object, uint64_t velocity, uint64_t slot) {
+    int64_t when = __atomic_load_n(&jump_ns, __ATOMIC_ACQUIRE);
+    if (!when) return;
+    static int on = -1;
+    if (!switched(&on, "HOS_FPS_TAKEOFF")) return;
+    const int64_t since = hos_now_ns() - when;
+    if (since > 50000000) {   /* (that takeoff is over: the calls return at once again) */
+        __atomic_compare_exchange_n(&jump_ns, &when, 0, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+        return;
+    }
+    if (!frame_timed() || !hos_guest_range(velocity, 12) || !hos_guest_range(slot, 8)) return;
+    const uint64_t time_object = G64(slot);
+    const uint64_t time = time_object && hos_guest_range(time_object, 8) ? G64(time_object) : 0;
+    const float step = time && hos_guest_range(time + 0x10, 4) ? oot_bits_float(*(const uint32_t *)GP(time + 0x10)) : 0.0f;
+    const float vy = oot_bits_float(*(const uint32_t *)GP(velocity + 4));
+    const float jump = oot_bits_float(__atomic_load_n(&jump_bits, __ATOMIC_RELAXED));
+    const uint32_t count = __atomic_load_n(&jump_count, __ATOMIC_RELAXED);
+    float vy0 = 0.0f, step0 = 0.0f;
+    int next = 0;
+    AcquireSRWLockExclusive(&takeoff_lock);
+    OotTakeoffBody *seen = NULL;
+    for (unsigned k = 0; k < sizeof takeoff_bodies / sizeof takeoff_bodies[0]; k++)
+        if (takeoff_bodies[k].object == object && takeoff_bodies[k].count == count) seen = &takeoff_bodies[k];
+    if (!seen) {
+        /* (the takeoff's own update: a 60 fps frame is 16.7 ms, this one step times that; a body handed the speed later follows
+           Link's a step behind) */
+        if (oot_takeoff_match(vy, jump, step) && (double)since < step * (1e9 / 120.0))
+            takeoff_bodies[takeoff_next++ % (sizeof takeoff_bodies / sizeof takeoff_bodies[0])] =
+                (OotTakeoffBody){object, count, vy, step, 1};
+    } else if (seen->waiting && (double)since >= seen->step0 * (1e9 / 120.0)) {   /* (its next update) */
+        seen->waiting = 0;
+        vy0 = seen->vy0, step0 = seen->step0, next = 1;
+    }
+    ReleaseSRWLockExclusive(&takeoff_lock);
+    if (!next) return;
+    const float speed = oot_takeoff_rest_speed(vy, vy0, step0, step);
+    if (speed == vy) return;   /* (still rising: a side hop) */
+    memcpy(GP(velocity + 4), &speed, 4);
+    if (fps_log()) {
+        static volatile LONG64 lifts;
+        const LONG64 n = InterlockedIncrement64(&lifts);
+        if (n % 20 == 1)
+            hos_log("oot: a jump's takeoff: a body rises %.1f cm more on the update after it (%.3f m/s, the game's %.3f; steps "
+                    "%.3f, %.3f; %lld lifts)", 100.0 * (speed - vy) * step / 60.0, speed, vy, step0, step, (long long)n);
+    }
 }
 
 /* Link's driven body's target (f_804f5030 on its path for a body driven to a target: host/oot_high_fps.h has why; Longshot

@@ -178,6 +178,9 @@ def movie_site(s, addr, off):
 #   body's update before the physics step, on its path for a body driven to a target, in the function twice (the body loaded into
 #   x23 or x24 from the controller's +240): a call hos_oot_drive_target(controller x20, body, the time object's slot) between the
 #   body's load and the reads of the target (+0x3c), which may carry last update's shortfall into it (host/hl_high_fps.c).
+# - HL_JUMP_HOOK(80b97d10, "<hash>", "c->x[19]"): (Longshot 4c8210e7c, SadTransGirl; a backflip above 60 fps) a jump's
+#   takeoff speed: hos_oot_jump_speed(the vector) after its last store. HL_DRIVE_HOOK(804f5030, "<hash>", "takeoff") adds
+#   hos_oot_takeoff_velocity(object x19, velocity x2, the time object's slot) before f_804f5030's set-velocity call.
 # - HL_LOOP_HOOK(802cfca0, "<hash>"): (Longshot 6aa5d653 / Hookshot f02132ec, cuecuemoar; the frozen Zoras) an animation entry's
 #   clock (x20: flags +0, time +4, speed +12, start +16, end +20): its two advances multiply the step (vreg 8) by the entry's
 #   speed; a line before each puts hos_loop_step's step (whole frames for a loop of one frame or less) in vreg 8 and a line after
@@ -197,7 +200,7 @@ def movie_site(s, addr, off):
 #   goes through hos_oot_ocb_pick (host/hl_ocb_hold.c) before the update tests it. A line after the label, once.
 # Each goes in only where its function's text hashes as recorded, both lines of a kind or none. The marker is the address
 # plus one, as a step hook's (one hook a function), so a tree that does not ask for it takes it out as a stale gate.
-WANT_LIFT = re.compile(r'^HL_(SOUND|SOLVER|WHOLE|HEAP|BGM|TURN|HORSE|FLOOR|DRIVE|LOOP|POSE|SONG|CLOTHTIME|CLOTHSOLVE|OCB)_HOOK\(\s*([0-9a-f]{8})\s*,\s*"([0-9a-f]*)"((?:\s*,\s*(?:\d+|"[^"\n]*"))*)\s*\)',
+WANT_LIFT = re.compile(r'^HL_(SOUND|SOLVER|WHOLE|HEAP|BGM|TURN|HORSE|FLOOR|DRIVE|JUMP|LOOP|POSE|SONG|CLOTHTIME|CLOTHSOLVE|OCB)_HOOK\(\s*([0-9a-f]{8})\s*,\s*"([0-9a-f]*)"((?:\s*,\s*(?:\d+|"[^"\n]*"))*)\s*\)',
                        re.M)
 CUT = "    c->x[%d]=recomp_fp_to_int(c->vreg[0][0]&UINT64_C(0xffffffff),32,32,1,3,c->fpcr,&c->fpsr);\n"
 SOUND_SLOT = "g_module_base + 0x80435000ULL + (int64_t)75927552"   # (the page of the step's pointer, whose +2192 holds it)
@@ -237,6 +240,11 @@ DRIVE_READ = ("    c->x[%d]=recomp_load64(c,c->x[20] + 240);\n"
               "    { uint64_t _b=c->x[20]; int64_t _o=60; { uint64_t _p0,_p1; recomp_ldp32(c,(_b+_o),&_p0,&_p1); "
               "a64_vset64(c->vreg[2],_p0); a64_vset64(c->vreg[1],_p1); }}\n"
               "    { { uint64_t _v=recomp_load32(c,(c->x[20]+68ULL)); a64_vset64(c->vreg[0],_v); } }\n")
+# (a jump's takeoff, Longshot 4c8210e7c: f_80b97d10's store of the takeoff vector's last part, the vector in x19 (the jump
+# hook's argument names it: c->x[19], or x19_ in a lift with register locals), then f_804f5030's set-velocity call (its vtable
+# +0x190: x2 the linear velocity, x19 the body's object) for HL_DRIVE_HOOK's "takeoff")
+TAKEOFF_STORE = "    {{ {{ uint64_t _v=0; memcpy(&_v,&c->vreg[2][0],4); recomp_store32{sp}(c,({x}+8ULL),_v); }} }}\n"   # (sp: "_sp" where the lift knows x19 is on the stack)
+TAKEOFF_VELOCITY_SITE = "{ uint64_t _t = c->x[8]; c->x[30] = 0x804f6698ULL; A64_ICALL(c, _t); }\n"
 # (the clocks of an animation entry: the branch past its flags test, then the multiply of the step (vreg 8) by the speed in vreg <r>)
 LOOP_SITES = (("if (((c->x[9] >> 3) & 1)) { goto L_802d077c; }\n", 1),
               ("if (((c->x[9] >> 3) & 1)) { goto L_802d07f4; }\n", 0))
@@ -303,8 +311,14 @@ def lift_lines(kind, addr, args):
         return ["    { extern uint32_t hos_frame_whole(uint64_t, uint32_t, uint32_t); c->x[%d] = hos_frame_whole(%s, "
                 "(uint32_t)c->vreg[0][0], (uint32_t)c->x[%d]); }%s" % (reg, key, reg, mark)]
     if kind == "drive":
-        return ["    { extern void hos_oot_drive_target(uint64_t, uint64_t, uint64_t); "
+        out = ["    { extern void hos_oot_drive_target(uint64_t, uint64_t, uint64_t); "
                 "hos_oot_drive_target(c->x[20], c->x[%d], " % reg + SOUND_SLOT + " + 2192); }" + mark for reg in DRIVE_REGS]
+        if "takeoff" in args:
+            out.append("    { extern void hos_oot_takeoff_velocity(uint64_t, uint64_t, uint64_t); "
+                       "hos_oot_takeoff_velocity(c->x[19], c->x[2], " + SOUND_SLOT + " + 2192); }" + mark)
+        return out
+    if kind == "jump":
+        return ["    { extern void hos_oot_jump_speed(uint64_t); hos_oot_jump_speed(%s); }" % args[0] + mark]
     if kind == "loop":
         out = []
         for n in range(len(LOOP_SITES)):
@@ -408,7 +422,12 @@ def lift_places(body, addr, kind, args):
             if body.count(read) != 1:
                 return None
             places.append(body.index(read) + len(read.split("\n", 1)[0]) + 1)   # (after the body's load, before the target's reads)
+        if "takeoff" in args and body.count(TAKEOFF_VELOCITY_SITE) == 1:   # (not there: the ledge's lines alone, the
+            places.append(body.index(TAKEOFF_VELOCITY_SITE))                   # takeoff's left out by apply_lift's zip)
         return places
+    if kind == "jump":
+        found = [st for st in (TAKEOFF_STORE.format(x=args[0], sp=sp) for sp in ("", "_sp")) if body.count(st) == 1]
+        return [body.index(found[0]) + len(found[0])] if len(found) == 1 else None
     if kind == "loop":
         places = []
         for before, reg in LOOP_SITES:

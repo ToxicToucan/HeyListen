@@ -71,10 +71,13 @@ void hl_answer(uint64_t guest, A64Fn fn, HlOn on, const char *what);
    lift hooks (nx2/hl_gates.py) for four more places that break above a 60 cap: Link's pull-up onto a ledge (Longshot d30b9479),
    the frozen Zoras (6aa5d653: the clock of a loop of one frame, and the time its skeleton is drawn at) and a song's notes on the
    ocarina (10010630). host/hl_high_fps.c and host/hl_step.c have the host side. Nothing in C. */
-#define HL_DRIVE_HOOK(addr, hash)     __attribute__((constructor)) static void hl_drive_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_drive_hook_##addr
+#define HL_DRIVE_HOOK(addr, hash, ...)     __attribute__((constructor)) static void hl_drive_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_drive_hook_##addr
 #define HL_LOOP_HOOK(addr, hash)     __attribute__((constructor)) static void hl_loop_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_loop_hook_##addr
 #define HL_POSE_HOOK(addr, hash)     __attribute__((constructor)) static void hl_pose_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_pose_hook_##addr
 #define HL_SONG_HOOK(addr, hash)     __attribute__((constructor)) static void hl_song_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_song_hook_##addr
+/* HL_DRIVE_HOOK(..., "takeoff"): also a jump's takeoff velocity before f_804f5030's set-velocity call; HL_JUMP_HOOK(80b97d10,
+   "<hash>"): a jump's takeoff speed to the host (Longshot 4c8210e7c; host/hl_high_fps.c) */
+#define HL_JUMP_HOOK(addr, hash)     __attribute__((constructor)) static void hl_jump_decl_##addr(void) { hl_gate_declared(0x##addr##ULL); }     extern const int hl_jump_hook_##addr
 
 /* HL_OCB_HOOK(832b9880, "<hash>"): a lift hook (nx2/hl_gates.py) in the OptimizeChangeBank preload manager's update: its choice of
    the neighbouring map to preload goes through hos_oot_ocb_pick (host/hl_ocb_hold.c, Longshot c88f70440), which keeps the map

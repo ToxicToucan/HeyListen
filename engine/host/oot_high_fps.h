@@ -216,3 +216,32 @@ static inline int oot_song_cue(OotSongCue *s, int set, long long runs, int timed
     s->runs = runs;
     return set && !again;
 }
+
+
+/* A jump's takeoff above a 60 cap (adapted from Longshot 4c8210e7c by SadTransGirl, git.magicbean.dev/MagicBeanDev/Longshot,
+   GPL-3.0-or-later; HL_JUMP_HOOK and HL_DRIVE_HOOK's "takeoff" in host/hl_high_fps.c). f_80b97d10 computes a jump's takeoff
+   speed (sqrt(2 g h) - g dt / 2 along the character's up) and f_804f5030 hands Havok Link's body that speed on the takeoff's
+   update with the world's set-velocity call (its vtable +0x190). On a side hop the next updates hand the takeoff speed less each
+   step's gravity, so the variable step already raises the body as at 60. On a backflip the next update hands no vertical speed,
+   so the body hops by one step of the takeoff speed: 6.4 cm at 60 fps, 4.2 cm at 94. Lower, it met a slope about 0.1 s into a
+   backflip above 60 fps, landed and took off a second time, about 24% farther (Longshot's measurements in Hyrule Field). Above a
+   cap of 60, on a frame shorter than a 60 fps one, a body handed an upward speed within 2% of the takeoff speed in the takeoff's
+   own update is watched for one update: when the game then asks it for no vertical speed (at most 10% of the takeoff speed
+   either way), that update gets the rest of a 60 fps step's rise. A body still rising (a side hop) is left as it is.
+   HOS_FPS_TAKEOFF=0: the game's speed. */
+
+/* Whether a body's vertical speed on a jump's takeoff update is the takeoff's: vy (handed to Havok for this update), jump (the
+   takeoff speed f_80b97d10 computed just before), step (this frame's) */
+static inline int oot_takeoff_match(float vy, float jump, float step) {
+    if (!(step > 0.0f && step < 1.0f) || !(jump > 0.5f && jump < 1000.0f) || !(vy > 0.0f)) return 0;
+    return fabsf(vy - jump) <= 0.02f * jump;
+}
+
+/* A body's vertical speed on the update after a jump's takeoff: vy (now), vy0 and step0 (the takeoff update's speed and step),
+   step (this frame's). When the game asks for no vertical speed now, the rest of the takeoff's 60 fps step, vy0 (1 - step0) / 60 m,
+   over this frame's time, step / 60 s, added; otherwise vy */
+static inline float oot_takeoff_rest_speed(float vy, float vy0, float step0, float step) {
+    if (!(step0 > 0.0f && step0 < 1.0f) || !(step > 0.0f && step < 4.0f) || !(vy0 > 0.5f && vy0 < 1000.0f)) return vy;
+    if (!(fabsf(vy) <= 0.1f * vy0)) return vy;
+    return vy + vy0 * (1.0f - step0) / step;
+}
