@@ -838,8 +838,10 @@ uint32_t handle_table_live(uint32_t count, uint32_t off0, uint32_t off1, uint64_
 bool handle_table_count_on() {
     static const bool on = [] {
         const char* e = getenv("HL_LS_HANDLE_COUNT");
-        const bool v = e && atoi(e) != 0;
-        if (v) logf("vk: HL_LS_HANDLE_COUNT=1: handle table elements behind the game's own count name no texture (Longshot b9bd74a25)");
+        // (fork, 2026-11-23: on by default after the Market A/B, 2+2 runs and a checks run: speed even, 0 flashes, the picture
+        // unchanged; HL_LS_HANDLE_COUNT=0 turns it off)
+        const bool v = !(e && *e && atoi(e) == 0);
+        if (v) logf("vk: HL_LS_HANDLE_COUNT (on; =0: off): handle table elements behind the game's own count name no texture (Longshot b9bd74a25)");
         return v;
     }();
     return on;

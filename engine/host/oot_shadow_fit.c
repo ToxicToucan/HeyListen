@@ -67,7 +67,7 @@ static float stored[2][4];      /* rows 0 and 1 with their origins, as the basis
 static int stored_any;
 static uint32_t size_was;       /* the map's size at cascade 0's last fit, steady or not; 0 before the first */
 
-/* HL_LS_SHADOW_STABLE: 0 (unset) off, the hooks inert; 1 the steady fit on Shadow resolution Ultra (3072) only;
+/* HL_LS_SHADOW_STABLE: 0 off, the hooks inert; 1 (unset: the default) the steady fit on Shadow resolution Ultra (3072) only;
    2 the steady fit at every size. Read once, the first time a hook runs; the one log line when it is on. */
 static volatile int fit_env = -1;
 
@@ -77,7 +77,8 @@ static int fit_mode(void) {
     AcquireSRWLockExclusive(&fit_lock);
     if ((mode = fit_env) < 0) {
         const char *e = getenv("HL_LS_SHADOW_STABLE");
-        mode = e && !strcmp(e, "1") ? 1 : e && !strcmp(e, "2") ? 2 : 0;
+        /* (fork, 2026-11-23: 1, Longshot's default, unless set: the Market A/B had it even on speed with 0 flashes) */
+        mode = !e || !*e ? 1 : !strcmp(e, "1") ? 1 : !strcmp(e, "2") ? 2 : 0;
         if (mode)
             hos_log("shadow: HL_LS_SHADOW_STABLE=%d: the sun's nearest cascade is kept steady %s (Longshot 3df5c13ed)",
                     mode, mode == 2 ? "at every Shadow resolution" : "on Shadow resolution Ultra (3072 texels)");

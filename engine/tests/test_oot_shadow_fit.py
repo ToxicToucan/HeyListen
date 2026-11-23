@@ -4,7 +4,7 @@ HL_LS_SHADOW_STABLE=1 the steady fit on Shadow resolution Ultra's 3072 texels on
 lift the box hook keeping the ldp before it and the fsubs after it out of one TICK-063 FP block.
 
 (fork, 2026-11-23, from Longshot 3df5c13ed, Lucas Lebbrecht, GPL-3.0) Longshot's tests/test_oot_shadow_fit.py with the
-fork's switch: HL_LS_SHADOW_STABLE unset or 0 off (Longshot's default was on), 1 Longshot's default, 2 Longshot's =1.
+fork's switch: HL_LS_SHADOW_STABLE 0 off, unset or 1 Longshot's default (on since 2026-11-23), 2 Longshot's =1.
 
 The host helper is compiled with the lifter's injected calls against authored game objects: a camera turning and walking
 over a slice like Hyrule Field's (0.1 to about 10 m, an ultrawide view). No dump, lifted code or game assets are needed.
@@ -229,7 +229,7 @@ int main(void) {
     const double pos[3] = {113.0, 160.0, 185.0};
     float b[4], game[4];
 
-    if (getenv("FIXTURE_OFF")) {   /* (fork) HL_LS_SHADOW_STABLE unset or 0: nothing read or written, the game's bounds */
+    if (getenv("FIXTURE_OFF")) {   /* (fork) HL_LS_SHADOW_STABLE=0: nothing read or written, the game's bounds */
         setup(CASCADES, 0.3, pos, 10.8, pos); writes = 0; reads = 0;
         { Ctx c; memset(&c, 0, sizeof c); c.x[19] = CASCADES; basis_site(&c); CHECK(reads == 0); }
         run(CASCADES, b, game);
@@ -402,7 +402,7 @@ def main():
         bare = {k: v for k, v in os.environ.items() if k != "HL_LS_SHADOW_STABLE"}
         subprocess.run([str(executable)], check=True, env=dict(bare, HL_LS_SHADOW_STABLE="2"))
         subprocess.run([str(executable)], check=True, env=dict(bare, HL_LS_SHADOW_STABLE="1", FIXTURE_GATE="1"))
-        subprocess.run([str(executable)], check=True, env=dict(bare, FIXTURE_OFF="1"))   # (fork) unset: off
+        subprocess.run([str(executable)], check=True, env=dict(bare, FIXTURE_GATE="1"))   # (fork, 2026-11-23) unset: 1, the default
         subprocess.run([str(executable)], check=True, env=dict(bare, HL_LS_SHADOW_STABLE="0", FIXTURE_OFF="1"))
 
 

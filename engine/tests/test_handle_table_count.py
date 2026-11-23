@@ -197,7 +197,7 @@ def main():
         src.write_text(PRELUDE + extracted + CHECKS, encoding='utf-8')
         subprocess.run([a.cxx, '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function', str(src), '-o', str(exe)],
                        check=True, timeout=180)
-        for value, expect in ((None, 'off'), ('1', 'on'), ('0', 'off')):   # (unset is off: HeyListen's way; =1 cuts)
+        for value, expect in ((None, 'on'), ('1', 'on'), ('0', 'off')):   # (fork, 2026-11-23: unset is on; =0: every element)
             env = dict(os.environ)
             env.pop('HL_LS_HANDLE_COUNT', None)
             env.pop('RX_VK_HANDLES_LIVE', None)
@@ -206,7 +206,7 @@ def main():
             r = subprocess.run([str(exe), expect], capture_output=True, text=True, timeout=20, env=env)
             if r.returncode != 0 or r.stdout.strip() != 'handle table count checks passed':
                 raise SystemExit('FAIL (HL_LS_HANDLE_COUNT %s):\n%s%s' % ('unset' if value is None else '=' + value, r.stdout, r.stderr))
-    print('handle table count checks passed (the switch unset, =1 and =0)')
+    print('handle table count checks passed (the switch unset (on), =1 and =0)')
 
 
 if __name__ == '__main__':
