@@ -2,8 +2,8 @@
 
 ## State
 
-- Part A (branch fix/fold-pseudo): step 1 done, the fold had three wrong cases (below). Fix and test written. Steps 2 and 3 (pictures, cost) waiting for a build lease.
-- Part B (branch fix/amd-igpu-astc): done, tests pass on that branch (policy header + test, switch lists regenerated). No AMD hardware here.
+- Part A (branch fix/fold-pseudo): step 1 found three wrong cases, fixed, test kept, fold stays ON. Step 2 done (no black leaves on the RTX 5070, driver 617.42, fold on, off, and the unfixed build). Step 3: the fps A/B was not run on this PC (coordinator: it goes to the PC 3050 from build fix1fold); first-start numbers below come from the picture runs.
+- Part B (branch fix/amd-igpu-astc): done, tests pass on that branch. No AMD hardware here.
 
 ## Part A, step 1: the fold against the SPIR-V semantics
 
@@ -28,7 +28,17 @@ After: 3 010 341 defined cases, 0 differ, 0 throw.
 
 ## Part A, steps 2 and 3
 
-(to fill in)
+Market save, kokiri-idle, "!cheat 1002" at 12 s through HOS_INPUT_LIVE (Kakariko's entrance), RX_VK_SHOTS every 300 presents.
+Fold on (fix1fold), fold off (RX_VK_FOLD_PSEUDO=0) and the unfixed fold on (gpuov2: main's translator): the ivy and bushes at the
+village gate are green in all three; no black leaves on the RTX 5070. (Shots stay in E:\OOT\scratch-fix1\shots-*, not in the repo.)
+
+First start (build/s5/pf-on, pf-off, pu-on game_log.txt): the fold changes the translation of 15% of 81 sampled programs ("update:" line of pf-off).
+Fold off on a cache made with it on: the shaders are prepared before the game, "prepare: 81 s, 91508 of 95955 steps; translation 953 s"
+of work, play began 213.26 s after the process started; fold on (cache current): 63.09 s; unfixed on: 71.56 s. These are not equal-cache
+comparisons (the off start also predicted pipelines), only the cost of a stamp change.
+
+Decision: the fold was wrong in three cases (step 1), so it is fixed and stays on. Whether the fix cures #97 on NVIDIA is not shown here
+(no such card); RX_VK_FOLD_PSEUDO=0 stays the player's workaround.
 
 ## Part B: ASTC on AMD integrated GPUs
 
