@@ -1510,6 +1510,11 @@ uint64_t disk_stamp() {
     // (c4e8e2ea: and a GPU whose 32-lane subgroups cannot cover the largest guest workgroup, 1024 invocations: its larger compute
     // programs are not pinned, pins_32. Only then, so other GPUs keep their caches)
     if (dev.sg32_stages && 32ull * dev.max_workgroup_subgroups < 1024) add(&dev.max_workgroup_subgroups, sizeof dev.max_workgroup_subgroups);
+    {   // (fork, 2026-11-24: RX_VK_FOLD_PSEUDO off by default, ir_opt/pseudo_fold.h, HeyListen #97's black leaves: with no switch set
+        // the programs differ from the ones cached under the old default, so the stamp changes with it)
+        static const char fold_default[] = "fork: RX_VK_FOLD_PSEUDO off by default";
+        add(fold_default, sizeof fold_default - 1);
+    }
     for (char** e = _environ; e && *e; e++)
         for (const char* pre : {"RX_VK_OOT", "RX_VK_MMA", "RX_VK_NATIVE", "RX_VK_NAN", "RX_VK_TASK_CAP", "RX_VK_NETWORK", "RX_VK_GP", "RX_VK_FOLLOW", "RX_VK_NO_FOLLOW", "RX_VK_NO_F16", "RX_VK_SHARED", "RX_VK_MESH", "RX_VK_LOCAL", "RX_VK_FOLD", "RX_VK_NO_INVARIANT", "RX_VK_NO_NAN_GUARD", "RX_VK_MARKERS", "EDEN_"})
             if (!strncmp(*e, pre, strlen(pre))) add(*e, strlen(*e));
