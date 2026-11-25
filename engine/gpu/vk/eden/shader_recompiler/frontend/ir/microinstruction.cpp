@@ -76,6 +76,18 @@ bool Inst::MayHaveSideEffects() const noexcept {
     case Opcode::DemoteToHelperInvocation:
     case Opcode::Barrier:
     case Opcode::SubgroupBarrier:
+    // (hookshot, #97) the warp-wide operations are convergence points of the guest program: they run even when nothing reads their
+    // result. The pseudo-operation fold turns the old-value arm of R2P's Select (VOTE.ANY P6; R2P P6, mask 0x40) into an unused
+    // value, and dead code elimination then dropped the vote; on NVIDIA the ballot/shuffle that follows then saw fewer lanes
+    // (the black leaves of issue 97). tests/test_dce_convergent_ops.py
+    case Opcode::VoteAll:
+    case Opcode::VoteAny:
+    case Opcode::VoteEqual:
+    case Opcode::SubgroupBallot:
+    case Opcode::ShuffleIndex:
+    case Opcode::ShuffleUp:
+    case Opcode::ShuffleDown:
+    case Opcode::ShuffleButterfly:
     case Opcode::WorkgroupMemoryBarrier:
     case Opcode::DeviceMemoryBarrier:
     case Opcode::EmitVertex:
