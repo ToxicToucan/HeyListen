@@ -130,6 +130,7 @@ const char* tx_fps_limit(int v) {
 const char* tx_shadow_res(int v) {   // (longshot 9f8958a5c, ported)
     static const char* t[] = {"Game (1600)", "High (2200)", "Ultra (3072)"};
     return t[v < 0 || v > 2 ? 0 : v];
+}
 const char* tx_fps_base(int v) {
     static const char* t[fgr::kBases] = {"Off", "30", "40", "45", "48", "50", "60", "72", "75", "90", "120"};
     return t[v < 0 || v >= fgr::kBases ? 0 : v];
