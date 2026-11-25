@@ -622,7 +622,12 @@ uint64_t hos_reserved_cpus(void);   /* hos_thread.c */
    RX_VK_ORDER_THREAD=0 in hookshot_env.txt or the environment: off, =1: on anywhere. After hookshot_env.txt (its
    HOS_RESERVE_CORE=0 counts, and hos_reserved_cpus keeps its first answer); the host's readers of the switch (nvn_native.c) and
    the renderer's read the same variable later, so they agree */
+/* (fork, 2026-11-25) Off by default in the fork: on the owner's PC (13900K, RTX, 1440p 3D with DLSS to 4K) the Market's 1% low fell
+   from 59.3/58.4 to 51.6/51.7 with it on and fps went 80.3/80.0 -> 79.9/79.2 (interleaved, warm; stock upstream the same way:
+   58-59 -> 51-53). RX_VK_ORDER_THREAD=1: on */
+#define FORK_ORDER_THREAD_OFF 1
 static void order_thread_default(void) {
+    if (FORK_ORDER_THREAD_OFF) return;   /* (fork: off unless RX_VK_ORDER_THREAD=1, which the readers take as it is) */
     if (getenv("RX_VK_ORDER_THREAD") || !hos_reserved_cpus()) return;
 #ifdef _WIN32
     _putenv("RX_VK_ORDER_THREAD=1");
