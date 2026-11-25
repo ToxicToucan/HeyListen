@@ -38,6 +38,16 @@ int framegen_engine(int* mult, bool* automatic);
 bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t sh, const int crop[4], bool native_pq);
 /// The first frame the last framegen_record made (null when it made none), w x h, GENERAL
 VkImage framegen_made_image(uint32_t* w, uint32_t* h);
+/// (ported from Longshot 597c5a4e0, #1464; Longshot 310e7c9df, ed96031ac) The gameplay upscale's picture (its output, at level), recorded
+/// right after the upscale wrote it, before the game draws its HUD into it: copied while AMD FSR 3.1's frame interpolation is asked
+/// for and RX_VK_FSR_FG_HUDLESS is on, so that frame generation has the picture without the HUD. Anything else (null, another
+/// format or shape) is left alone
+struct Texture;
+void framegen_hud_before(VkCommandBuffer cmd, Texture* picture, uint32_t level);
+/// Whether the picture from before the HUD is wanted this present: frame generation is on and either AMD FSR 3.1's frame interpolation
+/// is asked for with RX_VK_FSR_FG_HUDLESS, or the built-in interpolation has RX_VK_FG_HUDLESS (vk_draw.cpp: the dispatch copies the
+/// picture only then)
+bool framegen_hud_wanted();
 /// After that recording's submit (value): the display thread shows its frames. held: the storm hold withheld this
 /// frame's present (storm_hold.h) — its frames are not shown, even if the hold lifts before the display thread gets there
 void framegen_queue(uint64_t value, bool held = false);

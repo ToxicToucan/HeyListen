@@ -240,7 +240,7 @@ they apply at once, with no new translation.
 | | Render resolution | Auto (the game's own dynamic resolution), 100%, 75%, 67%, 50% (each with its size). With DLSS, FSR 3.1 or FSR 4: Auto, Quality (67%), Balanced (58%), Performance (50%), Ultra Performance (33%). With DLSS also **DLAA (native)** and with FSR 4 **Native AA (FSR 4)**, after Auto: the 3D at 100% with the upscaler's anti-aliasing (saved as `resolution=7`; they were Upscaler choices before, and an options file that saved them as the Upscaler is read as DLSS or FSR 4 with this) | Auto |
 | | DLSS model | DLSS 4 (Transformer, preset K), DLSS 4.5 (Transformer 2, preset M), DLSS 4.5 (Transformer 2, preset L), NVIDIA default, DLSS 3 (CNN, preset E) (builds with DLSS; used by DLSS, DLAA included) | first run only, by GPU: DLSS 3 under 7 GB of video memory, else DLSS 4 on RTX 20 and 30, DLSS 4.5 (M) on RTX 40 and 50 |
 | | DLAA before the bloom | Off, On: where NVIDIA DLAA smooths the picture, after the game's bloom and tone map or before them, so the glow is made from a smooth picture (shown with NVIDIA DLSS; changeable with Render resolution Native (DLAA) only; changes at once; `RX_VK_DLSS_PRE_BLOOM` over it for one run) | Off |
-| | Frame generation by | Built-in / AMD FSR 3.1 (the renderer's own interpolation, and AMD FSR 3.1's at 2x where it runs), NVIDIA DLSS FG (RTX 40 and newer, with a temporal Upscaler and NVIDIA's runtime), AMD FSR 3.1 FG (shown in a build with DLSS, or where AMD FSR 3.1's frame interpolation runs; saved as `frame_generation_by`: 0, 1, 2) | Built-in / AMD FSR 3.1 |
+| | Frame generation by | Built-in / AMD FSR 3.1 (the renderer's own interpolation, and AMD FSR 3.1's at 2x where it runs), NVIDIA DLSS FG (RTX 40 and newer, with a temporal Upscaler and NVIDIA's runtime), AMD FSR 3.1 FG (shown in a build with DLSS, or where AMD FSR 3.1's frame interpolation runs), AMD FSR 4 FG (2x, a Radeon RX 9000 with AMD's runtime `amd_fidelityfx_framegeneration_vk.dll` beside the loader; a stop of the row only where AMD's own query says it runs; **not tested on real hardware yet**; a frame it refuses is made by the others); saved as `frame_generation_by`: 0, 1, 2, 3 | Built-in / AMD FSR 3.1 |
 | | Frame generation | Off, Auto, 2x to 8x, but only what Frame generation by makes: NVIDIA DLSS FG 2x up to its runtime's most (6x on an RTX 50, 2x on an RTX 40) and no Auto, AMD FSR 3.1 FG 2x, Built-in Auto and 2x to 8x. Right under Frame generation by; changing the mode keeps the multiplier within the new mode's | Off |
 | | Frame pacing | Off, On | Off |
 | | HDR contrast | 50% to 200% around mid grey, in steps of 5, as the RenoDX HDR mods grade it (while HDR is on; with Native the game's own HDR picture too; hidden with PsychoV35, which has its own Contrast) | 100% |
@@ -257,6 +257,7 @@ they apply at once, with no new translation.
 | | PsychoV35 reset all | Puts every PsychoV35 row back to RenoDX's defaults | |
 | | NVIDIA Reflex | Off, On, On + Boost (NVIDIA GPUs with `VK_NV_low_latency2`) | Off |
 | | Frame rate limit | 60, 90, 120, 144, 165, 240, Unlimited (saved as `frame_rate_limit` 0 to 6). The rate shown, the game's frames and the made ones: with a fixed Frame generation multiplier the game runs at the limit over it (120 at 3x: the game at 40; the multiplier is lowered where that would leave the game under 20 frames a second). Above 60 needs Game speed on Real time | 60 |
+| | Base frame rate limit | Off, 30, 40, 45, 48, 50, 60, 72, 75, 90, 120 (saved as `base_frame_rate_limit` 0 to 10). The game's OWN frame rate, before frame generation makes more: with it on the game runs at that rate whatever the Frame rate limit says, the frames shown are it times the multiplier (60 at 2x: 120; 48 at 3x: 144), Auto fills up to the display's refresh from it, and the Frame rate limit holds nothing back (the VRR row's cap still holds the shown rate under the refresh). All three generators get an even base rate. With Frame generation Off it is the limit itself. Needs Game speed on Real time | Off |
 | | Output resolution | 1920x1080, 2048x1152, 2560x1440, 3840x2160, 5120x1440 (after a restart) | 2048x1152 |
 | | Window scaling filter | Off, Catmull-Rom, Lanczos | Off |
 | | Sharpness | 0 to 100%, in steps of 10 | 0% |
@@ -272,6 +273,8 @@ they apply at once, with no new translation.
 | | Skip title screen | Off, On (after a restart) | Off |
 | | Microphone | Off, Default, or each microphone by name | Default |
 | Controls | Controller in background | Off, On | Off |
+| | Sprint with L3 | Off, On | Off |
+| | Touchpad opens menu | Off, On | On |
 | | Mouse camera | As the stick, Native | As the stick |
 | | Mouse sensitivity | 0.10 to 5.00 | 1.00 |
 | | Invert mouse vertical | Off, On | Off |
@@ -347,6 +350,19 @@ they apply at once, with no new translation.
   (Settings, Privacy & security, Microphone). `HOS_MIC_LOG=1` logs what the game reads, a line a second.
 - **Controller in background:** On keeps the controller working while another window has the focus. The keyboard and
   mouse still need the game's window.
+- **Sprint with L3:** On makes the left stick's press run Link with the game's own fast run, the one that follows a roll while A
+  stays held, without the roll: it goes on until he stops, rolls, targets (ZL) or a cutscene takes over. The speed, animation
+  and camera are the game's, not a multiplier. Off (the default) leaves the press as the game's LS button. How it works with the
+  game's input: the left stick's press is the game's LS button (whatever pad input or key is bound to LS: L3 and the keyboard's
+  LS key by default), and with the row on the game no longer gets it as LS, since it is Sprint's. A press that begins in a
+  conversation or a cutscene, or while Link is not being updated, goes to the game as LS as before (it hides the text box) and
+  starts no sprint. A is never touched: tapping it while sprinting rolls. A DualSense or any other pad is the same, as L3 is the
+  left stick's press on every pad; a scripted test run presses it with `LS`. Ported from Longshot's Sprint (llun's #1929 and
+  kendowashere's #2038, after thegrandao's #196), held only, without its Toggle or its own binding.
+- **Touchpad opens menu:** On (the default): the click of a DualSense or DualShock 4 touchpad opens and closes this menu, as
+  before. Off: the click does nothing, so it cannot open the menu in the middle of a fight (issue 120). Nothing else changes: the
+  menu opens with <kbd>Insert</kbd> or <kbd>F1</kbd>, Home, Select and Start together (every pad has those two buttons), and the
+  **Open menu** control. Saved as `touchpad_opens_menu`, next to `sprint_with_l3`, in `hookshot_options.ini`.
 - **Mouse camera:** Native turns the camera with the mouse one to one, as in a PC game. As the stick uses the mouse in
   place of the right stick. The <kbd>-</kbd> and <kbd>=</kbd> keys change the sensitivity in game too.
 - **Stick dead zone:** how far a stick moves before it counts, on each axis. Default is XInput's (about 24%); lower suits

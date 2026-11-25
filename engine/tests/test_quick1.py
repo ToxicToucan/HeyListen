@@ -73,7 +73,9 @@ need("nv_shader_cache" in nv, "2: the folder beside the game")
 need(nv.index('if (getenv("__GL_SHADER_DISK_CACHE_PATH"))') < nv.index("hos_game_path_a"), "2: a path the environment sets is kept")
 for m in re.finditer(r"\n(?:int main|static int game_main)\(int argc, char \*\*argv\) \{", main):
     body = main[m.end():m.end() + 2500]
-    need("load_hookshot_env();\n    nv_cache_env();" in body, "2: both mains set the cache right after hookshot_env.txt")
+    # (the order thread's default, DECOUPLE, may sit between: it only decides RX_VK_ORDER_THREAD, nothing the cache reads)
+    need("load_hookshot_env();\n    nv_cache_env();" in body or "load_hookshot_env();\n    order_thread_default();\n    nv_cache_env();" in body,
+         "2: both mains set the cache right after hookshot_env.txt (and the order thread's default)")
 need(main.index("static void nv_cache_env") < main.index("static void load_hookshot_env(void)"), "2: defined before use")
 
 shadow = src("host/shadow_slot.h")

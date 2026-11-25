@@ -25,10 +25,12 @@
 #include "vk_draw.h"
 #include "vk_framegen.h"
 #include "vk_internal.h"
+#include "thread_prio.h"
 #include "gpu_choice.h"
 #include "present_mode.h"
 #include "sparse_queue.h"
 #include "vk_menu.h"
+#include "upscaler_rows.h"
 #include "perf_report.h"
 #include "report_info.h"
 #include "vk_dlss.h"
@@ -39,6 +41,7 @@
 #include "mesh_mode.h"
 #include "vk_tl_clock.h"   // (RX_VK_TL: the timeline's host time domain)
 #include "vk_push_fix.h"
+#include "vk_vrs.h"
 
 namespace vkx {
 #define VKX_DEFINE(f) PFN_##f f;
@@ -450,6 +453,7 @@ bool create_device() {
     optional(VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME, dev.stencil_export);
     optional(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, dev.memory_budget);
     optional(VK_EXT_IMAGE_2D_VIEW_OF_3D_EXTENSION_NAME, dev.view_2d_of_3d);
+    if (vrs::wanted()) optional(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, dev.frag_shading_rate);   // (RX_VK_VRS: off by default, nothing asked of the driver)
     dev.pci_bus_info = has_extension(exts, VK_EXT_PCI_BUS_INFO_EXTENSION_NAME);   // (properties only: nothing to enable)
     // (hookshot) on by default: with a marker before each draw and dispatch the device has not been lost (five
     // runs); without them it was, every run, shortly after OoT's first gameplay frames (nvlddmkm event 153; the
@@ -599,7 +603,9 @@ bool create_device() {
     VkPhysicalDeviceConditionalRenderingFeaturesEXT cond{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT};
     VkPhysicalDeviceProvokingVertexFeaturesEXT pv{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT};
     VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT gpl{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_FEATURES_EXT};
+    VkPhysicalDeviceFragmentShadingRateFeaturesKHR fsr_feat{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR};
     void** tail = &f13.pNext;
+    if (dev.frag_shading_rate) *tail = &fsr_feat, tail = &fsr_feat.pNext;
     if (dev.mesh_shader) *tail = &mesh, tail = &mesh.pNext;
     if (dev.null_descriptor) *tail = &robust2, tail = &robust2.pNext;
     if (dev.index_uint8) *tail = &u8, tail = &u8.pNext;
@@ -624,6 +630,22 @@ bool create_device() {
     reflex_device_features(tail);   // (present ids, when NVIDIA Reflex's extensions are there)
     vkGetPhysicalDeviceFeatures2(dev.physical, &f);
     descriptor_buffer.descriptorBufferCaptureReplay = VK_FALSE;
+    if (dev.frag_shading_rate) {   // (the pipeline rate alone; the attachment and primitive rates stay off, and 2x2 must be one of the device's rates)
+        fsr_feat.attachmentFragmentShadingRate = VK_FALSE, fsr_feat.primitiveFragmentShadingRate = VK_FALSE;
+        bool two = false;
+        if (fsr_feat.pipelineFragmentShadingRate) {
+            const auto get = (PFN_vkGetPhysicalDeviceFragmentShadingRatesKHR)instance_proc()(
+                dev.instance, "vkGetPhysicalDeviceFragmentShadingRatesKHR");
+            uint32_t rn = 0;
+            if (get && get(dev.physical, &rn, nullptr) == VK_SUCCESS) {
+                std::vector<VkPhysicalDeviceFragmentShadingRateKHR> rates(rn, {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
+                get(dev.physical, &rn, rates.data());
+                for (const auto& r : rates) two |= r.fragmentSize.width == 2 && r.fragmentSize.height == 2 && (r.sampleCounts & VK_SAMPLE_COUNT_1_BIT);
+            }
+        }
+        dev.frag_shading_rate = fsr_feat.pipelineFragmentShadingRate && two;
+        logf("vk: fragment shading rate (RX_VK_VRS): %s", dev.frag_shading_rate ? "pipeline rate 2x2 usable" : "not usable here (feature or 2x2 missing)");
+    }
     dev.view_2d_of_3d = dev.view_2d_of_3d && v2d3d.sampler2DViewOf3D;
     coop.cooperativeMatrixRobustBufferAccess = VK_FALSE;
     dev.coop_matrix = dev.coop_matrix && coop.cooperativeMatrix &&
@@ -751,6 +773,8 @@ bool create_device() {
     // that write their vertices to buffers, drawn through an ordinary graphics pipeline. It needs buffer device addresses.
     dev.mesh_fallback = !dev.mesh_shader && f12.bufferDeviceAddress && !getenv("RX_VK_NO_MESH_FALLBACK");
     if (dev.mesh_fallback) logf("vk: no mesh shaders: task and mesh programs run as compute shaders (issue 640 fallback)");
+    // (HeyListen) an integrated GPU without mesh shaders: the Minimum preset and the fog off, once (lowend_rule.h; HL_LOWEND)
+    menu_first_run_lowend(dev.props.vendorID, dev.props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, dev.mesh_shader);
     // (hookshot, issue 996 and HeyListen issue 57; Hookshot d1d6caa7) a GPU with mesh shaders whose draws with a task stage run as
     // compute: the default on AMD's Windows driver for RDNA 2 (Navi 21 to 23, mesh_mode.h's device list; the RX 6700 XT drew the Market
     // dog as a flat pale silhouette), RX_VK_TASK_MESH_FALLBACK=0/1 decides over it, and Native (RX_VK_MESH_SHADERS=native) turns the
@@ -1413,6 +1437,27 @@ bool shaders_preparing() { return prep_running.load(std::memory_order_relaxed); 
 // (hookshot) The window is being closed (host/display.c, host/posix/display_sdl.c, before they end the process): while the
 // shaders are prepared, their workers are stopped and what they made is kept first (10 s at most: a driver can take longer on one
 // pipeline). Looked up by name, so an executable and a back end of different versions still close
+namespace mkwvk {
+// (RX_VK_THREAD_PRIO, thread_prio.h) the compile threads' processors and the lift's thread handles, and the start line
+void thread_prio_init() {
+#ifdef _WIN32
+    if (prio::mode() > 0) {
+        prio::Hooks& hk = prio::hooks();
+        DWORD_PTR proc = 0, sys = 0;
+        GetProcessAffinityMask(GetCurrentProcess(), &proc, &sys);
+        const uint64_t reserved = host->reserved_cpus ? host->reserved_cpus() : 0;
+        static uint64_t mask;
+        mask = prio::compile_mask((uint64_t)proc, reserved);
+        if (reserved && mask != (uint64_t)proc) {
+            hk.pinned_off = (uint64_t)proc & reserved;
+            hk.pin_compile = [] { SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR)mask); };
+        }
+    }
+#endif
+    logf("vk: thread priorities: %s", prio::describe().c_str());
+}
+} // namespace mkwvk
+
 extern "C"
 #ifdef _WIN32
 __declspec(dllexport)
@@ -1438,6 +1483,7 @@ const MkwVkRenderer* mkwvk_init(const MkwVkHost* h) {
     using namespace mkwvk;
     if (!h || h->version != MKWVK_API_VERSION) return nullptr;
     host = h;
+    thread_prio_init();
     if (h->out_of_memory) std::set_new_handler(new_refused);   // (the renderer's C++ allocations at the commit limit: new_refused)
     if (!load_global()) {
         logf("vk: vulkan-1.dll not found");
@@ -1462,6 +1508,10 @@ const MkwVkRenderer* mkwvk_init(const MkwVkHost* h) {
          dev.props.driverVersion, dev.mesh_shader ? "yes" : "no", dev.external_memory_host ? "yes" : "no",
          dev.graphics_pipeline_library ? "yes" : "no");
     mkwvk::report_info::log_lines();   // (the crash report's facts: host/hos_crash_dialog.h reads "vk: driver:" and "report:" lines)
+    // (what this build has of the upscalers that come from the Builder's boxes: a menu without DLSS, and nothing in the log of why, was
+    // issue 130)
+    logf("%s", mkwvk::upscaler_rows::dlss_build_line(dlss_built()));
+    logf("%s", mkwvk::upscaler_rows::fsr4_build_line(fsr4_built()));
     if (!dev.mesh_shader && !dev.mesh_fallback && !getenv("RX_VK_NO_MESH_WARNING")) {
         // (the game draws its foliage, grass and many effects with mesh shaders: without them those draws are left out and the
         // picture is broken (an RX 580's "static"-like scenes, 2026-11-08). Said once, on its own thread, and the game goes on.)

@@ -469,6 +469,8 @@ void fsr4_probe() {
     load();
 }
 
+std::vector<std::string> fsr_library_dirs() { return library_dirs(); }
+
 bool fsr4_wants_descriptor_buffer() {
 #ifdef _WIN32
     return false;
@@ -485,6 +487,7 @@ bool fsr4_wants_descriptor_buffer() {
 bool fsr4_built() { return false; }
 const TemporalEngine* fsr4_engine() { return nullptr; }
 void fsr4_probe() {}
+std::vector<std::string> fsr_library_dirs() { return {}; }
 bool fsr4_wants_descriptor_buffer() { return false; }
 
 #endif

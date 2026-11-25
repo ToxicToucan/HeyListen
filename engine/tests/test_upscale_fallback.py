@@ -136,6 +136,7 @@ namespace fsr3_inputs { bool wanted() { return false; } }   // (FSR 3.1, off her
 static bool temporal_rejected_network(VkCommandBuffer, uint64_t, Texture *, const nvn_tex *, Texture *, const nvn_tex *) {
     return false;
 }
+thread_local Texture *stub_picture = nullptr;   // (vk_draw.cpp: the output upscale_stub notes for frame generation's HUD-less capture)
 void full_barrier(VkCommandBuffer) {}
 bool dump_on() { return false; }
 void logf(const char *, ...) {}

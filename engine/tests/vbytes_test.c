@@ -1,8 +1,6 @@
-/* tests/test_vbytes.py's driver: TBL (one table register), EXT, the Q loads and DUP as nx2/fastvec.py rewrites them
-   (HL_FASTVEC=1: a64_tbl1, A64_EXT16, A64_EXT8, a64_vld16, a64_vdup) against the same guest words as the kit writes them
-   (A64_NO_VBYTES=1 A64_NO_VMOVES=1). Each case starts both from one random Ctx and all 32 vector registers and the general
-   ones must match after.
-   (From Longshot deb08f36f's tests/vbytes_test.c, MagicBeanDev/Longshot #1576, Veix and HumanBean, GPL-3.0-or-later.)
+/* tests/test_vbytes.py's driver: TBL (one table register) and EXT as a64_lift.py lifts them now (a64_tbl1, A64_EXT16,
+   A64_EXT8) against the same guest words lifted as before (byte loops, A64_NO_VBYTES=1). Each case starts both from one
+   random Ctx and all 32 vector registers must match after.
 
    vbytes_test random <n> <seed>   n random states per guest word; index bytes biased to the edges
    vbytes_test time                ns per guest instruction, now and before

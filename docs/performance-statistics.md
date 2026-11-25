@@ -100,7 +100,7 @@ time and it is removed. Performance summaries are never published per player: wh
 | `driver` | string |  | ≤ 60 characters | The GPU driver's version |
 | `first` | boolean |  |  | The session's first summary |
 | `fps_cap` | integer |  | ≥ 0 | The frame rate cap in effect |
-| `framegen` | string |  | ≤ 40 characters | What makes the extra frames: `off`, `builtin` (the renderer's own interpolation), `fsr3` (AMD FSR 3.1's frame interpolation, at 2x where it runs) or `dlssg` (NVIDIA DLSS FG, the Frame generation by row's choice where its runtime runs and a temporal Upscaler's inputs are there) |
+| `framegen` | string |  | ≤ 40 characters | What makes the extra frames: `off`, `builtin` (the renderer's own interpolation), `fsr3` (AMD FSR 3.1's frame interpolation, at 2x where it runs), `dlssg` (NVIDIA DLSS FG, the Frame generation by row's choice where its runtime runs and a temporal Upscaler's inputs are there) or `fsr4` (AMD FSR 4 frame generation, 2x, the row's fourth choice where AMD's runtime offers it) |
 | `framegen_auto` | boolean |  |  | The Frame generation row is Auto (a frame for each of the display's refreshes): `framegen_x` is then the most frames it gives a game frame |
 | `framegen_x` | integer |  | 1 to 8 | The frames shown for each of the game's: 1 with `framegen` `off`, 2 to 8 for a fixed multiplier, 2 to 4 with `framegen_auto` |
 | `gpu` | string |  | ≤ 120 characters | The GPU |

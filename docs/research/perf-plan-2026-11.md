@@ -67,3 +67,58 @@ The owner's order (22 Nov, evening): keep going until fps rises by **30% or more
 | MEMO1 cross-frame repetition | running | – |
 | SMALL1 small command buffers | A/B running | – |
 | WBL1 lazy write-back for slow PCIe | build queued | – |
+
+## 23 Nov
+
+| Item | State | Note |
+|---|---|---|
+| LIFT2 native FP, FPX_EASY, local vregs | on by default on local main 1434a3edd, not pushed | 5070 Market +10-12%; =0 gives the exact path back. Of run_all's 4 failures, test_cmpflags is fixed (its standalone driver runs with the options off); test_nup_paths (no symlink privilege), test_nup_read_name (no zstandard) and test_renderer_new_handler (MSVC clang: no oldnames.lib) come from this PC's setup, not LIFT2 |
+| 3050 GPU cost at 1440p 100% | profiled (Task 28) | passes 9.1-12.9 ms, compute 3.4-4.5 ms, write-backs 0.8-1.4 ms, barriers and copies about 0.9 ms |
+| FP16 instead of FP32 | dropped | Ampere consumer GPUs (GA10x) run non-tensor FP16 at the FP32 rate; the game's TAAU network already uses the tensor cores. Only register and bandwidth savings would remain, at a precision risk |
+| BC7C ASTC→BC7 disk cache | NO-GO (perf/bc7c cda7c43fb) | what stays RGBA8 is negligible (Kokiri 14 MB sampled); warm disk cache no better than off at zone entries (0.7-7 s of frames over 33 ms per zone either way): the hitches are not the BC transcode (~1 ms GPU a zone); disk arms 78 fps vs 112 off (cause not hunted). RX_VK_BC_DISK stays off, unmerged. The zone-entry stalls go to ZONE2 (log analysis by cause) |
+| SPEC1 shader specialisation on constant-buffer values | NO-GO (perf/spec1 ea923c53e) | the costly programs (d8e59341, 739acd67, d905f52b) have no branch on cbuf words, only constant math; the foldable ones (43ec86f3, 918adef1 mesh/task) cost ~0.1 ms. Hand-specialised 43ec86f3: 0.103-0.109 -> 0.092 ms (-0.012 ms a frame), 1a7482c0 unchanged. A real implementation is ~7 days for 0.1-0.5% of GPU time, plus variant compiles (stutters) and correctness risk. Notes in the branch |
+| ASYNC1 async compute | CLOSED | 3050 stamps: of 2.5-2.9 ms of compute a frame, 0.02-0.08 ms runs beside graphics; every compute run depends on the graphics before it. Only a cross-frame overlap (PIPE1 frame-overlap refactor) could use the second queue |
+| PASS1 pass map on the 3050 | map done; LOAD_CLEAR and SHADOW_SHIFT on the 3050 A/B (pictures = off); VRS slows the 5070 2x (cause open) | owner's go 23 Nov for VRS, quality options and load/store; 3050: 18-21 ms a frame at 100%, 12.6-15 at 50%: ~6 ms scale with resolution; 1a7482c0 ~1 ms is the VRS candidate | per pass and dispatch: what it draws (intermediate captures), ms at 100% and 50%, bound type. Then VRS 2x2 on low-frequency passes (VK_KHR_fragment_shading_rate), quality options (12288² shadow map, grass, volumetric fog), load/store ops, barrier cuts and merging the 1x1x1 (0.2 ms) and 47-per-frame dispatches |
+
+## 24 November
+
+| Item | State | Note |
+|---|---|---|
+| CUM1 main (b6d20c1ae) against integ4b on the 3050 | measured | default settings + vsync off (render Auto): castle +4.8%, Market +5.8%, Kokiri +4.2%, Hyrule +2.5%; 1440p native: +2.0%, +3.2%, +4.4%, +3.7% (median of 3, fps from play + 10 s; every new run above every old one). p99 unchanged; frames over 50 ms in Hyrule at native stay 53-61 for three runs: the gains are on the mean, not on the stutters |
+| CUM2 same builds, DLSS fixed 67% at 1440p | measured | castle +1%, Market +8%, Kokiri +3%, Hyrule +6% |
+| Sum against v0.4.3 at Market on the 3050 | not measured as one | integ4 +12.6% (earlier), main over integ4b +3 to +8%, order thread +5% (unmerged): about +23% if they add up. Target +30% |
+| PIPE4 order thread to shippable | running | perf/pipe2 merged with main; wait and present let-go logging for the 2 dark frames |
+| GPUOV2 barriers with no hazard (RX_VK_BARRIER_HAZARD, off) | done on the 5070, 3050 run routed | =3 folds 78 of 142 game barriers a frame and leaves out 17 of 145 pass starts at Kokiri; barrier time 0.37 -> 0.25 ms; fps unchanged on the 5070 (not GPU-bound); pictures and meter clean. Owner's rule 24 Nov: work-reducing changes without fps gain are kept if they produce no bug, so it merges after the 3050 run |
+| FIX1 fold of bit-field extracts | merged 88eee8a9c | three wrong constant folds fixed, test over 3 M immediates. Does NOT cure #97: the owner still sees black leaves at Kakariko with it; cause search resumed from his save |
+| FIX1 CPU ASTC decode on AMD integrated GPUs (#127) | merged 5e0d70a19 | default on Windows for AMD integrated GPUs except the Vega-generation APUs (24 Nov, laptop 5700U: CPU decode 1.3 fps turning vs 14.2 with the GPU decode, no reset); RX_VK_ASTC_CPU=0 opts out |
+| LIFTSPLIT one writer in the lifted C's folder | merged f7c71c18b + 5a5662a5b | OS lock on gen.lock, count check, edits that miss name their place. The first merge broke the gates step under python -I; fixed with a test |
+| FG1 frame generation study | done, docs/fg1 | three generators exist already (own 2x-8x, FSR 3.1 2x, DLSS-G on RTX 40/50); the gap is the HUD inside the interpolated picture |
+| HUD1 HUD-less frame generation | running | port of Longshot's chain, 4 steps, all off by default |
+| FG3050 what frame generation gives on the 3050 | running on the 3050 | off / FSR 3.1 2x / own 3x, Market and Hyrule |
+| CRASH2 module-job crash family | done, see the crash family row below | Crater runs with child Link are invalid (he burns); the adult save came from a friend of the owner |
+| LOCK1 lock-on triangles (#89) | done: cause narrowed, see LOCK2 below | docs/research/lock1-lockon-triangles.md on fix/lockon-89 |
+| Crash family (module jobs, Crater, #126 #129) | fixed on main (RX_VK_WB_GUESS_CHECKED, default 1) | write-back watch on the friend's adult save: fix off, 42254 and 17448 write-backs into live heap blocks in the Crater; fix on, 0. The owner's 22 min by hand on a quiet machine: no crash, no stutter. GPU cost of the fix 0.1-0.5 ms |
+| DECOUPLE order thread (perf/decouple de82506b9) | freeze FIXED (cc753074e: the timeline went back behind a held present); in integ/night1, on by default from 8 logical processors | 3050 matrix100: 20 of 20 starts clean (5 of 20 froze before); order thread +9.8% Kokiri, +7.9% Hyrule, +4.2% Market (3/3 each). Inline SUB_OVERLAP loses 2-6%, off. After the release: lanes across submissions (3-5 days), fewer submissions a frame (1-2 days) |
+| Cold shader cache at the first start | measured on the 3050 | 51.7 vs 59.4 fps (-13%) with 3 background shader threads at ~95%: what a player sees right after an update |
+| LIFT3 game code speed (perf/lift3 938cce426) | done: L1 native FP in cold functions +1.5%, L2 hot list +400 with fresh PGO +1.25%, both +3.2% on the 3050 (3/3); to finalise (picture and physics check, profile with castle-move) | 3050 Market: the critical path is the Presentation Thread (18.08 of 19.45 ms; driver and system 10.23 ms under queue submits, renderer 6.89). Game threads 68 ms of CPU a frame, cold functions 25.4% of guest time. A64_NATIVE_FP_COLD +1.5% (52.15/52.68/52.24 vs 51.59/51.82/51.27); HOS_SHORT_SLEEP_TIMER nothing. Next: +400 Market functions in the hot list with fresh PGO (lift3m1) |
+| GPU11 the GPU cost that does not scale with resolution (perf/gpu11 46cdb2674) | done; only lever: volumetric fog off, +2.7 to +5.2% on the 3050 (one run a cell), becomes a menu option (LAPTOP1) | 3050 1440p GPU ms at 100% / 50%: Kokiri 17.39 / 11.90 (fixed part 10.1), Hyrule 16.99 / 12.20 (10.6), Market 18.90 / 13.55 (11.7). Kokiri fixed part: passes 5.22, dispatches 3.21, barriers 0.48, upload buffer 0.47, write-back 0.39, mesh conversion 0.12. Top: foliage mesh pass d8e59341 1.5 ms (81% in the mesh stage, foliage drawn twice), grass 4f0c0b40 1.08, fog ee7764a6 + 27ee9883 0.7-0.8. Fog at half rate is impossible (ping-pong images by frame parity), only fog off is clean. RX_VK_MESH_DIRECT ~1%; a 3584 mesh pad lost the device |
+| TEXCACHE disk cache of decoded textures (perf/texcache 68366a529 = texcache6) | done, in integ/night1: on by default under 10 GB of VRAM and on integrated GPUs with GPU ASTC, 4 GB rolling cap | 3050: texcache5 warm +6.3% hyrule-walk, +2.2% castle-move; texcache6 default against off +3.4% hyrule-walk (3/3), +1% Market (noise); laptop +30-67% turning; no gain on the 5070 (off there) |
+| VAR1 run-to-run variance on the main PC | done (perf/var1, notes var1-run-variance.md) | the variable is other work on the machine: quiet runs spread 4% (112.7-117.1 fps), a build or a second game beside the run halves it (111.8 -> 55-57) with GPU time flat and the gap between recordings 2.3 -> 10-14 ms. Recipe: speed lease, clean at start and end, warm cache, scene frames, 3 runs, real above 6% |
+| LOCK2 lock-on ring (#89, fix/lockon-89 b22220748) | NEGATIVE, unmerged | RX_VK_WB_SHADOW_SYNC keeps the ring page known at the write-back (log) but the ring census stays E-E- in 155 of 155 samples, as with it off: the write-back refill is not the cause. Next: guest-side write watch on the pool page |
+| PRIO1 background compile threads off the replay's core (perf/worker-priority c81f500c8) | measured, to merge | 3050 matrix102: cold shader cache (first start after an update) +5.7% (3/3); warm equal (58.64 against 58.74). The first form (prio1a) also pinned the jobs workers and lost 1% warm |
+| LAPTOP1 low-end machines (perf/lowend b8479aa7d) | done, in integ/night1 | laptop 5700U: 6-8 fps turning -> 14.2 on the rule's first start -> ~16 after; goal 25-30 not reached: the no-mesh fallback's mesh stages (~11 ms) need two meshlets a 64-thread workgroup (2-3 days, after the release). Volumetric fog row (off: +2.7 to +5.2% on the 3050, one run a cell), Render resolution 33%, first-start low-end rule |
+| AMD2 retired imports bounded on AMD and Intel (issues 131, 121) | merged 8d35f672d | issue 131 reproduced on the laptop by a stress hook (414 retired imports, 6.7 GB, the driver refuses, 0 draws) and gone with the bound (about 1000 give-backs, 0 refusals). The RX 6750 XT device loss stays unexplained |
+| INPUT1 Sprint with L3, Touchpad opens menu | merged 8d35f672d | both off / unchanged by default |
+| FG2 Base frame rate limit, AMD FSR 4 FG (feat/fg-fsr4-cap 269843d7a) | to merge | base 48 at 3x = 48.0 and 144.4 fps shown on the 5070; FSR 4 FG untested on real hardware |
+
+## 25 November: v0.4.3 against tonight's integration (RTX 3050, camera turning)
+
+Scene market-spin with three saves, each build at its own defaults, 3 interleaved rounds, fps from play (matrix104).
+
+| Zone | v0.4.3 | night1b (order thread on) | night1b, order thread off |
+|---|---|---|---|
+| Market | 44.28 (44.98 43.99 43.86) | 55.75 (+25.9%) | 52.86 (+19.4%) |
+| Hyrule Field | 53.30 (53.61 53.79 52.50) | 64.08 (+20.2%) | 60.33 (+13.2%) |
+| Kokiri Forest | 54.42 (54.56 54.88 53.82) | 73.68 (+35.4%) | 66.70 (+22.6%) |
+
+Every night1b run is above every v0.4.3 run. Frames over 16.7 ms: Market 94% -> 48%, Hyrule 65% -> 11-15%, Kokiri 51% -> 15-16%. 1% low: Market ~10 -> 14-16 fps, Hyrule 6-8 -> 10-13, Kokiri 7-8 -> 12-14. Target +30%: reached in Kokiri, not in the Market (+26%) nor Hyrule Field (+20%). Not in night1b yet: the black-leaves fix, the compile threads off the replay's core (+5.7% on a cold start), LIFT3's L1 + L2 (+3.2%). Open on the order thread: brightness spikes of one or two frames seen by the owner on the 5070 (FLASH1).

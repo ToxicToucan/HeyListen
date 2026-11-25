@@ -44,7 +44,7 @@ def main():
     need('getenv("RX_VK_SEG_EARLY") && atoi(getenv("RX_VK_SEG_EARLY")) != 0' in on, "RX_VK_SEG_EARLY is not off by default")
 
     rg = function(rp, "struct UbReadGuard")
-    need("rmode == Mode::Worker && ub_growing.load(std::memory_order_acquire)" in rg, "a read guard locks outside a worker or growth")
+    need("rmode == Mode::Worker &&" in rg and "ub_growing.load(std::memory_order_acquire) || ub_group_pending.load(std::memory_order_acquire)" in rg, "a read guard locks outside a worker or growth")
     need("ub_read_depth++ == 0" in rg, "a nested read takes the shared lock again")
     need("std::unique_lock<std::shared_mutex>(ub_grow_mu)" in function(rp, "struct UbGrowGuard"), "the growth guard is not exclusive")
     need("UbReadGuard ug;" in function(rp, "uint64_t ub_overlay("), "ub_overlay reads the list unguarded")
@@ -56,16 +56,16 @@ def main():
     i = rep.index("par_conds.push_back(cr);")
     need("UbGrowGuard ug;" in rep[i - 200:i] and "par_conds.size() == par_conds.capacity()" in rep[i - 200:i],
          "the dry pass moves par_conds' buffer unguarded")
-    i = rep.index("if (cond_at < par_conds_n.load(std::memory_order_acquire)) {")
+    i = rep.index("if (cond_at < cl.n.load(std::memory_order_acquire)) {")   # (DECOUPLE: the worker's group's list, conds_r())
     need("UbReadGuard ug;" in rep[i - 200:i], "a worker reads a render condition unguarded")
-    i = rep.index("par_points.push_back({p + h.size, s, ub_updates.size(), par_conds.size(), dry_work});")
+    i = rep.index("par_points.push_back({p + h.size, s, ub_end(), par_conds.size(), dry_work});")
     need("if (seg_early_hook) seg_early_hook->on_point(par_points.back());" in rep[i:i + 300], "the hook is not called after a point")
     need("seg_early_hook && dry_wanted_only() && !seg_early_hook->wants(dry_work, p + h.size)" in rep[i - 400:i],
          "the dry pass copies the state at points no boundary takes (RX_VK_DRY_WANTED)")
 
     e = function(rp, "const uint8_t* replay_handle_early(")
     i_dry = e.index("jt_mark(13, 0);")
-    for before in ("memory_sync_mirrors_before_segments();", "texture_rb_refresh_now();", "texture_segments_begin(inits.data(), inits.size());",
+    for before in ("memory_sync_mirrors_before_segments();", "texture_rb_refresh_now();", "G.seg_table = texture_segments_begin(inits.data(), inits.size());",
                    "par_active = true;", "ub_growing.store(true", "seg_early_hook = &hook;", "memory_rb_segments_begin(base, (uint64_t)nplan + P);"):
         need(e.index(before) < i_dry, "not before the dry pass: " + before)
     after = e[e.index("jt_mark(14, 0);"):]
@@ -82,9 +82,9 @@ def main():
     need("vkQueueSubmit2(dev.queue, 1, &si, j->r->fence)" in sj, "a segment's submit is not submit_job's")
     tail = function(rp, "void early_join(EarlyGroup& G)")
     need("early_submit_job(G, j);" in tail and tail.index("early_submit_job(G, j);") < tail.index("par_pool.done.wait("), "the segments' submits are out of place")
-    need(tail.index("par_pool.done.wait(lk, [] { return par_pool.pending == 0; });") < tail.index("par_active = false;\n    texture_segments_begin(nullptr, 0);"),
+    need(tail.index("par_pool.done.wait(lk, [] { return par_pool.pending == 0; });") < tail.index("par_active = false;"),
          "par_active goes off before every segment is done")
-    need("defer_join_now();" in e[:e.index("jt_mark(13, 0);")] and "early_join(G);" in e and "defer_group = group;" in e,
+    need("defer_join_now(" in e[:e.index("jt_mark(13, 0);")] and "early_join(G);" in e and "defer_group = group;" in e,
          "the join is not made at the start of the next big command buffer, or not by early_join")
     whole = e[e.index("if (used < 2 + P || !early) {"):e.index("*cut = true;")]
     need("par_active = false;" in whole and "record_segment(cmd, whole);" in whole, "no boundary reached: not recorded whole, serially")

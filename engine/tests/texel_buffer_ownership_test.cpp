@@ -44,6 +44,10 @@ struct FormatProps { VkFormatFeatureFlags bufferFeatures = ~0u; };   // (every f
 FormatProps format_props(VkFormat) { return {}; }
 VkBufferView dummy_texel_view(VkFormat) { return VK_NULL_HANDLE; }
 uint64_t frame_no = 1, mem_rec_value = 1, mem_completed = 0, mapping = 0x1000;
+uint64_t mirror_epoch = 0;   // (retired_bound.h: a free waits for it; DeadImport::not_before stays 0 here)
+uint64_t rec_value_of() { return mem_rec_value; }   // (REC1: a segment's worker reads its own recording's; one thread here)
+uint64_t rec_epoch() { return mirror_epoch; }
+void pinned_sub(uint64_t) {}   // (the test switch RX_VK_IMPORT_REFUSE_MB's count of pinned bytes)
 bool mapped = true;
 std::atomic<unsigned> lookups{0};
 unsigned creates = 0, destroyed_views = 0, destroyed_buffers = 0, writes = 0;

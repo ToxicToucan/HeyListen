@@ -132,7 +132,9 @@ def main():
                  "last_pass_end_cmd = VK_NULL_HANDLE;", "full_barrier(cmd);"):
         need(part in flush, "upload_chunk_flush: " + part)
     need("up_astc_texels = 0;\n    memory_table_begin();" in tex, "texture_begin_recording does not reset the chunk's count")
-    need("v = vendor_id == 0x1002 && (device_id == 0x164E || device_id == 0x13C0);" in tex, "the Ryzen 7000/9000 CPU-decode rule is gone while the parallel replay cannot chunk")
+    pol = (ROOT / "gpu/vk/astc_cpu_policy.h").read_text(encoding="utf-8")
+    need("return integrated || device_id == 0x164E || device_id == 0x13C0;" in pol and "astc_cpu_policy::by_default(" in tex,
+         "the AMD integrated CPU-decode rule (Ryzen 7000/9000 and the larger iGPUs) is gone while the parallel replay cannot chunk")
 
     fl = block(rep, "bool replay_flush_upload(VkCommandBuffer cur) {")
     order = ["vkEndCommandBuffer(cur)", "vkQueueSubmit2(dev.queue, 1, &si, r->fence)", "vkWaitForFences(dev.device, 1, &r->fence",

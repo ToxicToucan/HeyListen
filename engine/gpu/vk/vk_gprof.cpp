@@ -321,15 +321,16 @@ void gprof_report(int frames) {
         logf("vk:     %c %-9s %7.3f ms %5.1f%%  %7.1f spans  %8.1f items  %7.2f MB  %7.1f us a span", c.k ? 'u' : 'm', c.name.c_str(),
              c.a.ns / f / 1e6, 100.0 * c.a.ns / std::max(active_ns[c.k], 1.0), c.a.n / f, c.a.items / f, c.a.bytes / f / mb,
              c.a.ns / std::max<int64_t>(c.a.n, 1) / 1e3);
-    logf("vk:   the 25 spans that took the most (ms a frame, spans a frame, us a span, items a frame, MB a frame):");
-    for (size_t i = 0; i < rows.size() && i < 25; i++) {
+    static const size_t top_spans = getenv("RX_VK_PASS_TIMING_TOP") ? (size_t)std::max(25, atoi(getenv("RX_VK_PASS_TIMING_TOP"))) : 25;   // (the pass map lists more)
+    logf("vk:   the %zu spans that took the most (ms a frame, spans a frame, us a span, items a frame, MB a frame):", top_spans);
+    for (size_t i = 0; i < rows.size() && i < top_spans; i++) {
         const Row& r = rows[i];
         logf("vk:   %c %7.3f ms  %6.1f x  %7.1f us  %8.1f items  %6.2f MB  %s", r.k ? 'u' : 'm', r.a.ns / f / 1e6, r.a.n / f,
              r.a.ns / std::max<int64_t>(r.a.n, 1) / 1e3, r.a.items / f, r.a.bytes / f / mb, r.name.c_str());
     }
     if (!progs.empty()) {
-        logf("vk:   the 20 programs whose runs of draws took the most (RX_VK_PASS_TIMING=2: a timestamp at each change of program):");
-        for (size_t i = 0; i < progs.size() && i < 20; i++) {
+        logf("vk:   the %zu programs whose runs of draws took the most (RX_VK_PASS_TIMING=2: a timestamp at each change of program):", top_spans > 25 ? top_spans : 20);
+        for (size_t i = 0; i < progs.size() && i < (top_spans > 25 ? top_spans : 20); i++) {
             const Row& r = progs[i];
             logf("vk:   %7.3f ms  %6.1f runs  %7.1f us a run  %8.1f draws  %6.2f us a draw  %s", r.a.ns / f / 1e6, r.a.n / f,
                  r.a.ns / std::max<int64_t>(r.a.n, 1) / 1e3, r.a.items / f, r.a.ns / std::max<int64_t>(r.a.items, 1) / 1e3,

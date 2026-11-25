@@ -21,7 +21,9 @@ in [USER_GUIDE.md](USER_GUIDE.md#install-with-recomplauncher).
 ## What the file says
 
 - `start`: the builder's own `--play <folder>`, like Longshot's (`HeyListenBuilder-Setup.exe` on Windows, `HeyListen.AppImage` on
-  Linux, args `--play {install}/HeyListen`), so a newer release is looked for before each launch. No `env` and no `requires`
+  Linux, args `--play {install}/HeyListen`), so a newer release is looked for before each launch. Under RecompLauncher that look is
+  skipped: the launcher sets `RECOMPLAUNCHER=1` for the program it starts and offers the update itself (its team, 24 Nov 2026), so
+  the player is not asked twice; the look remains for a `--play` started any other way. No `env` and no `requires`
   (the list added in 0.4.2 was not the cause of the developer page's 0 of 6 features, and was taken out).
   - **Windows**: the setup program (`engine/builder/setup/setup.c`, `play_folder`; the zip already holds it, in `HeyListenBuilder-Setup.exe`
     at its top, because it is part of the builder). It is the program to start, rather than the .NET `HeyListenBuilder.exe`, because it

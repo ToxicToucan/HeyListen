@@ -922,11 +922,14 @@ static int play_folder(const wchar_t *args) {
         static char ini[1 << 16], ver[1024];
         char have[128], skipped[128] = "";
         const char *off = getenv("HOOKSHOT_NO_UPDATE_CHECK");
+        /* (RecompLauncher sets RECOMPLAUNCHER=1 for the program its Play starts and offers a newer release itself, with its own
+           Update button: no second question here. Its team's answer of 24 Nov 2026) */
+        const char *launcher = getenv("RECOMPLAUNCHER");
         swprintf(path, MAX_PATH + 64, L"%ls\\hookshot_options.ini", folder);
         play_read(path, ini, sizeof ini);
         swprintf(path, MAX_PATH + 64, L"%ls\\hookshot_version.txt", folder);
         play_read(path, ver, sizeof ver);
-        if (!(off && strcmp(off, "0")) && !ini_update_off(ini) && play_value(ver, "version", have, sizeof have) && safe_tag(have)) {
+        if (!(off && strcmp(off, "0")) && !(launcher && strcmp(launcher, "0")) && !ini_update_off(ini) && play_value(ver, "version", have, sizeof have) && safe_tag(have)) {
             static PlayLook look;
             HANDLE t = CreateThread(NULL, 0, play_look, &look, 0, NULL);
             int got = 0;

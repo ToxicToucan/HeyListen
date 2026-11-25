@@ -17,7 +17,7 @@ def check_source():
                    "    diff_gpu_wrote(guest, size);\n    memory_stamp(guest, size);",
                    "diff_gpu_wrote(guest, size);   // (TICK-048: a bare entry's guessed range)",
                    "diff_gpu_wrote(guest, size);   // (TICK-048)\n    std::lock_guard lk(pools_mu);\n    rb_hazard_locked",
-                   "writebacks.push_back({p, off, std::min(off + size, p->hi - p->lo)});\n        diff_gpu_wrote(",
+                   "writebacks.push_back({p, off, std::min(off + size, p->hi - p->lo), tl_bind_guess && wb_guess_checked_on()});\n        diff_gpu_wrote(",
                    # (the readback refresh writes the mirror from guest memory)
                    "diff_gpu_wrote(pp->lo + r.dstOffset, r.size)",
                    # (a new mirror: other hashes)

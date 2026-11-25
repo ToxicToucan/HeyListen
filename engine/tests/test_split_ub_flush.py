@@ -88,14 +88,14 @@ def main():
     if code.count("flush_ub_updates(") != 1 or "if (part_flush) flush_ub_updates(cmd);" not in code:
         raise SystemExit("FAIL: split_part writes the uniform updates at a part's end without asking part_flush")
     if code.count("ub_first_of_recording =") != 1 or \
-            "if (part_flush) ub_first_of_recording = ub_updates.size();" not in code:
+            "if (part_flush) ub_first_of_recording = ub_end();" not in code:
         raise SystemExit("FAIL: split_part moves ub_first_of_recording when the part's end did not write the updates: "
                          "the last part would leave the earlier parts' updates unwritten")
     finish = block(src, "void finish_recording(uint64_t value) {")
     if "flush_ub_updates(r.cmd);" not in finish:
         raise SystemExit("FAIL: finish_recording no longer writes the submission's uniform updates")
     flush = block(src, "void flush_ub_updates(VkCommandBuffer cmd) {")
-    if "ub_disjoint_writes(ub_updates, ub_first_of_recording, ub_updates.size()," not in flush:   # (tests/test_ub_update_order.py)
+    if "ub_disjoint_writes(ub_updates, first - ub_base, ub_updates.size()," not in flush:   # (tests/test_ub_update_order.py)
         raise SystemExit("FAIL: flush_ub_updates no longer writes from ub_first_of_recording on: check what a part's "
                          "end has to keep")
     print("source: a part's end writes the updates and moves the window only under part_flush; the last part writes "

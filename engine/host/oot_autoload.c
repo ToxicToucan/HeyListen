@@ -214,7 +214,7 @@ void hos_oot_autoload_input(void) {
         active = 0;
         return;
     }
-    if (now - start_ms >= kGiveUpMs) {
+    if (now - start_ms >= (getenv("HL_SKIP_GIVEUP_S") ? (unsigned)atoi(getenv("HL_SKIP_GIVEUP_S")) * 1000u : (unsigned)kGiveUpMs)) {   /* (HL_SKIP_GIVEUP_S=<s>: the scripted title skip gives up after that many seconds; a start that re-translates the shaders needs more than 120) */
         hos_log("skip title: gave up after %.0f s", kGiveUpMs / 1000.0);
         active = 0;
         return;

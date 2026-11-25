@@ -44,7 +44,11 @@ struct Options {
     int fps_limit = 0;    // the rate presented, the game's frames and the made ones (Real time only): 0 60, 1 90, 2 120, 3 144, 4 165, 5 240, 6 Unlimited
                           // (framegen_rows.h; host/nn_vi.c; HOS_FPS_LIMIT)
     int shadow_res = 0;   // (longshot 9f8958a5c, ported) Shadow resolution, the sun's cascades: 0 the game's 1600, 1 2200, 2 3072 (host/oot_shadow.c; HL_OPT_SHADOW_RES)
+    int fps_base = 0;     // the Base frame rate limit: the game's OWN rate before frame generation (framegen_rows.h kBaseFps): 0 Off (the Frame rate limit
+                          // alone), 1 30, 2 40, 3 45, 4 48, 5 50, 6 60, 7 72, 8 75, 9 90, 10 120. On: the game runs at it, the frames shown are it times the
+                          // multiplier, and the Frame rate limit holds nothing back (menu_fps_limit). Saved as base_frame_rate_limit (host/nn_vi.c; HL_OPT_BASE_LIMIT)
     int realtime = 1;     // game time follows the clock (host/nn_vi.c); 0: per frame (slower frames, slower game)
+    int fog = 1;          // the volumetric fog: 1 on, 0 off (its programs left out: lowend_rule.h); read once, at the first dispatch. RX_VK_FOG over it
     int handheld = 0;     // the game's handheld profile: ~4 fps, softer; read once, at the start (host/nn_applet.c)
     int ultrawide = 0;    // the camera at the monitor's shape when it is wider than 16:9; read once, at the start (host/hos_main.c)
     int hud_layout = 0;   // on a screen that is not 16:9: 0 the HUD's corners at the screen's edges (the default), 1 in the middle 16:9 (HL_OPT_HUD_LAYOUT; host/hos_wide_ui.c)
@@ -61,6 +65,8 @@ struct Options {
     int vsync_mode = 1;   // V-Sync mode (present_mode.h), with V-Sync On: 0 FIFO (double buffering) (2 images: less delay, a missed refresh waits a whole one), 1 FIFO (triple buffering) (3: the default, today's On), 2 Mailbox (triple buffering) (MAILBOX, 3 or 4 with frame generation, where the surface lists it); saved as vsync_mode
     int vrr = 0;   // VRR (G-Sync / FreeSync): 0 Off (the default: nothing changes), 1 On, 2 Auto (On in fullscreen when the display lists a variable refresh range): FIFO, a borderless popup window that can flip, the frame rate limit at the refresh - 3 (present_mode.h vrr_resolve)
     int pad_background = 0;   // the controllers count while another window has the focus (host/nn_hid.c; HOS_INPUT_BACKGROUND)
+    int sprint = 0;   // (longshot #1929, #2038) "Sprint with L3": the left stick's press runs Link with the game's own dash input (host/oot_sprint.c); 0 off (the default)
+    int touchpad_menu = 1;   // (heylisten, issue 120) "Touchpad opens menu": 1 the DualSense / DualShock 4 touchpad click opens and closes this menu (the default), 0 it does not
     int mouse_native = 0; // the mouse turns the camera's own angles (host/mouse_native.c); 0: as the right stick
     int mouse_sens = 100; // the mouse's sensitivity in percent: 0.1 degrees a count at 100 with native look (host/nn_hid.c)
     int mouse_invert = 0; // the mouse's up and down swapped
@@ -119,6 +125,9 @@ bool menu_is_open();
 /// Unlimited; the row (HOS_FPS_LIMIT over it). -1 in Game speed Per frame: the game's steps are whole frames of 1/60 s there,
 /// so the limit does not apply (it needs Real time)
 int menu_fps_limit();
+/// The Base frame rate limit in frames a second: the game's own rate before frame generation, 0 for Off (the row; Game speed Per frame:
+/// none, as the Frame rate limit; HOS_FPS_LIMIT stands over it). With it on menu_fps_limit answers 0 (the shown rate is not held)
+int menu_base_fps();
 /// (HeyListen, after Longshot ddb156df) The game's scene tone mapped by PsychoV35: HDR set to Native on an HDR display, and the Tone
 /// mapper row so
 bool scene_tonemap_on();
@@ -129,6 +138,9 @@ bool hdr_forced();
 /// (after Longshot 79a34381) PsychoV35's grading as the menu has it now, in ir_opt/psychov35.h's bank order (kSetting*, kSettingCount floats)
 void psychov35_bank(float* out);
 bool resolution_auto();       // (the game's dynamic resolution: Resolution Auto)
+bool fog_runs();              // (the Volumetric fog row, RX_VK_FOG over it: lowend_rule.h; fixed at the first ask)
+void menu_first_run_lowend(uint32_t vendor_id, bool integrated, bool mesh_shader);
+bool lowend_mirror_not_wait();   // (lowend_rule.h mirror_not_wait for this device: set by menu_first_run_lowend)   // (the Minimum preset and the fog off on a low-end GPU: lowend_rule.h)
 int resolution_scale();       // (the fixed path's scale in 1/10000: the Resolution row's, as a twelfth of the output)
 void menu_option_set(int id, int value);   // (from the game's side: 7 the mouse's sensitivity, the - and = keys)
 int menu_heart_protection();

@@ -17,7 +17,9 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <vector>
 #include <utility>   // (std::exchange: framegen_idle)
 
 #include <cmath>
@@ -26,6 +28,7 @@
 #include "framegen_idle.h"   // (longshot 382a3d675: when its images are let go, framegen_idle)
 #include "framegen_rows.h"   // (the multiplier each Frame generation by makes, the limit's share)
 #include "vk_dlss.h"   // (NVIDIA DLSS Frame Generation: vk_dlss.cpp)
+#include "vk_fsr4fg.h"   // (AMD FSR 4 frame generation: vk_fsr4fg.cpp)
 #include "vk_temporal.h"   // (temporal_wanted: DLSS FG's inputs)
 #include "vk_fsr3_inputs.h"   // (AMD FSR 3.1 frame interpolation's depth and motion)
 #include "vk_fsr3fi.h"
@@ -36,6 +39,9 @@
 #include "shaders/fg_copy_comp_spv.h"
 #include "shaders/fg_copy_pq_comp_spv.h"    // (HeyListen: fg_copy.comp with FG_PQ, an RGB10A2 destination)
 #include "shaders/fg_flow_comp_spv.h"
+#include "shaders/fg_hud_comp_spv.h"   // (AMD FSR 3.1's HUD-less colour: hud_source)
+#include "shaders/fg_hud_composite_comp_spv.h"   // (the HUD over FSR 3.1's made frames: fsr3fi_frame)
+#include "shaders/fg_hud_layer_comp_spv.h"   // (how see-through the HUD is: hud_source)
 #include "shaders/fg_luma_comp_spv.h"
 #include "shaders/fg_median_comp_spv.h"
 #include "shaders/fg_scale_comp_spv.h"
@@ -541,6 +547,8 @@ int framegen_by_now() {
     // (DLSS FG makes the frames only where it is asked for and has a temporal Upscaler's inputs: else the renderer's own does,
     // as the Frame generation by row's line says)
     if (dlss_fg_wanted() && temporal_wanted()) return framegen_rows::BY_DLSS;
+    // (AMD FSR 4 frame generation: chosen, and AMD's own runtime says it runs on this GPU; anywhere else the choice is the renderer's own as before)
+    if (opts.framegen_by == framegen_rows::BY_FSR4 && fsr4fg_wanted()) return framegen_rows::BY_FSR4;
     return opts.framegen_by == framegen_rows::BY_FSR3 ? framegen_rows::BY_FSR3 : framegen_rows::BY_OWN;
 }
 int framegen_now() {
@@ -558,6 +566,8 @@ bool framegen_on() {
     static const int allow = !getenv("RX_VK_FRAMEGEN") || atoi(getenv("RX_VK_FRAMEGEN")) != 0;
     return framegen_wanted(opts.framegen, allow) && !dev.offscreen && !fg.failed;
 }
+
+namespace { void hud_release(); }   // (the HUD-less pictures' images let go: below, with the rest of the HUD state)
 
 // (longshot 70d22cf1f) This present gave FSR 3.1 a frame (fsr3fi_frames, right before fsr3fi::generate): its own images were in use, whatever
 // came of it and whichever made frames were shown. framegen_idle takes it, and clears it for the next present: both on the replay
@@ -584,6 +594,7 @@ void framegen_idle(bool recorded) {
     const uint64_t mb = ((uint64_t)fg.w * fg.h * 4 * (2 + 3 * (uint64_t)fg.mult)) >> 20;   // (the RGBA8 frames; lumas and flows are small)
     logf("vk: frame interpolation off: its images (%ux%u, %dx) let go, about %llu MB", fg.w, fg.h, fg.mult, (unsigned long long)mb);
     drop_size();
+    hud_release();
 }
 
 int framegen_engine(int* mult, bool* automatic) {
@@ -594,6 +605,7 @@ int framegen_engine(int* mult, bool* automatic) {
     // (the Frame generation by row's third engine, feat/fg-vendor-inputs: NVIDIA DLSS FG where it is chosen and has a temporal
     // Upscaler's inputs; the renderer's own makes the frames where it does not)
     if (framegen_by_now() == framegen_rows::BY_DLSS) return 3;
+    if (framegen_by_now() == framegen_rows::BY_FSR4 && !*automatic && *mult == 2) return 4;
     return !*automatic && *mult == 2 && fsr3fi::frames_wanted() ? 2 : 1;
 }
 
@@ -750,6 +762,256 @@ VkImage framegen_made_image(uint32_t* w, uint32_t* h) {
     return fg.recorded->frame[0].image;
 }
 
+// (ported from Longshot 597c5a4e0, #1464, by HumanBean; the code here is our own, by behaviour) The picture without the HUD, for AMD
+// FSR 3.1's frame interpolation (RX_VK_FSR_FG_HUDLESS, off by default). The game draws its HUD (hearts, minimap, button
+// prompts) into the same picture as the scene, after its gameplay upscale, and every generator is handed the picture as
+// presented, HUD and all: the HUD is moved with the scene when the camera turns. So the picture is copied right after the
+// upscale wrote it (framegen_hud_before, from vk_draw.cpp's dispatch of the upscale, whoever drew it: the game's own network, the
+// stand-ins, the stub), before the HUD is drawn into it. At the present (hud_source) the copy is taken as this present's
+// when it was made since the last present, still is the picture it was made from (texture_alive) and is the presented
+// picture's size; a present without one (a menu, a movie, a loading screen: no gameplay upscale) goes on as before, the
+// picture as presented.
+// (ported from Longshot 310e7c9df, #1487, and d664e3428, #1538, by HumanBean) Then the copy, cropped as the frame, is FSR 3.1's
+// HUD-less colour (shaders/fg_hud.comp: hud.hudless): it interpolates that, the HUD in neither frame, and lays this frame's HUD
+// over the made frame where the presented frame differs from it (vk_fsr3fi.h Inputs::present). The copy only where the HUD is:
+// elsewhere the presented frame's own pixels, or FSR 3.1 finds the two different everywhere (the copy is linear light, the
+// frame sRGB-encoded) and every made frame is the presented one.
+namespace {
+struct HudState {
+    std::mutex mu;   // (framegen_hud_before is called from the replay's workers)
+    bool init = false, failed = false;
+    Pipe mask;   // (shaders/fg_hud.comp)
+    // (the picture after the upscale, and as presented: its format and size; two of each, this frame's at k and the frame
+    // before's at k ^ 1)
+    Img before[2], after[2];
+    Img hudless[2];   // (the picture before the HUD, cropped as the frame, RGBA8: FSR 3.1's HUD-less colour. Two, as the pictures
+                      // are, at k: the built-in interpolation blends this frame's and the frame before's)
+    int hl = 0;       // (this present's, hudless[hl])
+    bool pair = false;   // (the frame before's HUD-less colour is there too, and the HUD layer: the built-in interpolation's pair)
+    uint32_t sw = 0, sh = 0;   // (the crop's size, hudless')
+    int k = 0;
+    bool prev = false;   // (the frame before's pictures, at k ^ 1, are the frame before this present's: the HUD layer's fit)
+    Pipe fit_pipe, over_pipe;
+    bool layer_failed = false;
+    Img fit;     // (the HUD layer's fit, kept from frame to frame: the crop's size, RGBA16F)
+    Img layer;   // (the HUD's colour and how see-through it is, the crop's size, RGBA16F: fg_hud_layer.comp)
+    bool layered = false;   // (this present's layer made: fsr3fi_frame lays the HUD over the made frame with it)
+    uint64_t layers = 0;    // (presents with it: the 600-present line)
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    uint32_t pw = 0, ph = 0;
+    VkImage picture = VK_NULL_HANDLE;   // (the picture copied: framegen_hud_before's, its image)
+    const Texture* tex = nullptr;       // (and its texture, at gpu: not read unless texture_alive finds it still there)
+    uint64_t gpu = 0;
+    bool fresh = false;                 // (copied since the last present)
+    bool ready = false;                 // (this present's HUD-less colour is made: fsr3fi_frame gives it)
+    struct Dead {
+        uint64_t frame, value;
+        Img img;
+    };
+    std::vector<Dead> dead;   // (images replaced, freed once the GPU is past them)
+    uint64_t captured = 0;    // (presents that had the picture: the 600-present line)
+} hud;
+
+void hud_retire(Img& i) {
+    if (i.image) hud.dead.push_back({texture_frame_no(), vk_retirement_value(), i});
+    i = {};
+}
+void hud_free_dead() {
+    const uint64_t now = texture_frame_no(), done = vk_timeline_completed();
+    for (size_t i = 0; i < hud.dead.size();) {
+        if (now - hud.dead[i].frame > 4 && hud.dead[i].value && done >= hud.dead[i].value) {
+            drop_img(hud.dead[i].img);
+            hud.dead[i] = hud.dead.back();
+            hud.dead.pop_back();
+        } else {
+            i++;
+        }
+    }
+}
+bool hud_image(VkCommandBuffer cmd, Img& i, uint32_t w, uint32_t h, VkFormat f, VkImageUsageFlags usage) {
+    if (i.image) return true;
+    if (!make_img(i, w, h, f, usage)) return false;
+    to_general(cmd, i.image);
+    return true;
+}
+
+/// RX_VK_FSR_FG_HUDLESS (read once; off by default): frame generation by AMD FSR 3.1 takes the picture from before the HUD
+bool hudless_wanted() {
+    static const bool on = [] {
+        const char* e = getenv("RX_VK_FSR_FG_HUDLESS");
+        return e && *e && atoi(e) != 0;
+    }();
+    return on;
+}
+
+/// Frame generation off for a while (framegen_idle, the queues idle): the HUD-less pictures, their copies, the fit and the layer let
+/// go, and the state as it was before the first frame
+void hud_release() {
+    std::lock_guard lk(hud.mu);
+    for (int i = 0; i < 2; i++) drop_img(hud.before[i]), drop_img(hud.after[i]), drop_img(hud.hudless[i]);
+    drop_img(hud.fit), drop_img(hud.layer);
+    for (HudState::Dead& d : hud.dead) drop_img(d.img);
+    hud.dead.clear();
+    drop_pipe(hud.fit_pipe), drop_pipe(hud.over_pipe), drop_pipe(hud.mask);
+    hud.init = hud.layer_failed = false;   // (a pipeline that failed is tried again, the images made again at the next use)
+    hud.fresh = hud.ready = hud.layered = hud.pair = hud.prev = false;
+    hud.format = VK_FORMAT_UNDEFINED, hud.pw = hud.ph = hud.sw = hud.sh = 0, hud.k = hud.hl = 0;
+    hud.picture = VK_NULL_HANDLE, hud.tex = nullptr, hud.gpu = 0;
+}
+
+/// RX_VK_FG_HUDLESS (read once; off by default): the built-in interpolation blends the pictures from before the HUD of two frames
+/// and lays this frame's HUD over each made frame (by the HUD layer: how see-through it is)
+bool fg_hudless_wanted() {
+    static const bool on = [] {
+        const char* e = getenv("RX_VK_FG_HUDLESS");
+        return e && *e && atoi(e) != 0;
+    }();
+    return on;
+}
+
+/// RX_VK_FSR_FG_HUD_LAYER (read once; off by default): with the HUD-less colour, the HUD is laid over each made frame by how
+/// see-through it is (hud.layer), not as the presented frame has it
+bool hud_layer_wanted() {
+    static const bool on = [] {
+        const char* e = getenv("RX_VK_FSR_FG_HUD_LAYER");
+        return e && *e && atoi(e) != 0;
+    }();
+    return on;
+}
+
+/// The HUD layer of this present (hud.layer, shaders/fg_hud_layer.comp), from this frame's pictures and the frame before's: how
+/// see-through the HUD is where it is known. False: none (the HUD laid over the made frame whole, as presented)
+bool hud_layer(VkCommandBuffer cmd, int x0, int y0, uint32_t w, uint32_t h) {
+    if (hud.layer_failed || !(hud_layer_wanted() || fg_hudless_wanted())) return false;
+    const VkDescriptorType S = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, I = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    if (!hud.fit_pipe.pipe &&
+        (!make_pipe(hud.fit_pipe, FG_HUD_LAYER_COMP_SPV, sizeof FG_HUD_LAYER_COMP_SPV, {S, S, S, S, I, I}, 20) ||
+         !make_pipe(hud.over_pipe, FG_HUD_COMPOSITE_COMP_SPV, sizeof FG_HUD_COMPOSITE_COMP_SPV, {I, S, S}, 8))) {
+        drop_pipe(hud.fit_pipe), drop_pipe(hud.over_pipe);
+        hud.layer_failed = true;
+        logf("vk: fsr3fi: the HUD layer's pipelines were not made: the HUD laid over the made frames as presented");
+        return false;
+    }
+    const VkImageUsageFlags rw = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    if (!hud_image(cmd, hud.fit, w, h, VK_FORMAT_R16G16B16A16_SFLOAT, rw) ||
+        !hud_image(cmd, hud.layer, w, h, VK_FORMAT_R16G16B16A16_SFLOAT, rw)) {
+        hud.layer_failed = true;
+        logf("vk: fsr3fi: the HUD layer's images (%ux%u) were not made: the HUD laid over the made frames as presented", w, h);
+        return false;
+    }
+    const int k = hud.k, j = hud.prev ? k ^ 1 : k;   // (no frame before: this frame's bound in its place, not read)
+    const int32_t pc[5] = {x0, y0, (int32_t)w, (int32_t)h, hud.prev ? 1 : 0};
+    pass(cmd, hud.fit_pipe,
+         {{hud.before[k].view, fg.nearest}, {hud.after[k].view, fg.nearest}, {hud.before[j].view, fg.nearest},
+          {hud.after[j].view, fg.nearest}, {hud.fit.view, VK_NULL_HANDLE}, {hud.layer.view, VK_NULL_HANDLE}},
+         w, h, pc, sizeof pc);
+    if (hud.layers++ == 0)
+        logf("vk: fsr3fi: the HUD laid over the made frames by how see-through it is, learned from frame to frame (%ux%u)", w, h);
+    return true;
+}
+
+/// This frame's HUD over a made frame (shaders/fg_hud_composite.comp, from the layer of this present): the made frame's own scene
+/// under it, the presented pixel where how see-through it is is not known
+void hud_composite(VkCommandBuffer cmd, VkImageView made, int cur, uint32_t w, uint32_t h) {
+    const int32_t pc[2] = {(int32_t)w, (int32_t)h};
+    pass(cmd, hud.over_pipe, {{made, VK_NULL_HANDLE}, {fg.frames[cur].view, fg.nearest}, {hud.layer.view, fg.nearest}}, w, h, pc,
+         sizeof pc);
+}
+
+/// This present's HUD-less colour (hud.hudless: the copy of the picture, cropped as the frame, equal to the frame wherever no HUD
+/// was drawn), from the game's frame cropped into fg.frames[cur] (at x0, y0 of the presented picture, sw x sh): when the picture
+/// was copied after its upscale this frame and is the presented picture's size. False: none, the present as it is
+bool hud_source(VkCommandBuffer cmd, int cur, uint32_t sw, uint32_t sh, int x0, int y0, uint32_t w, uint32_t h, bool pq) {
+    std::lock_guard lk(hud.mu);
+    hud_free_dead();
+    bool had_prev = hud.prev;   // (the frame before had its pictures and HUD-less colour, of the same sizes)
+    hud.ready = hud.layered = hud.pair = false;
+    const bool fresh = hud.fresh;
+    hud.fresh = false;
+    if (!fresh || hud.failed || pq || !hud.picture || hud.pw != sw || hud.ph != sh || !framegen_hud_wanted() ||
+        !texture_alive(hud.gpu, hud.tex, hud.picture))   // (the picture destroyed since, or moved: nothing to copy from)
+        return hud.prev = false;
+    if (!hud.init) {
+        hud.init = true;
+        const VkDescriptorType S = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, I = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        if (!make_pipe(hud.mask, FG_HUD_COMP_SPV, sizeof FG_HUD_COMP_SPV, {S, S, S, I}, 16)) {
+            hud.failed = true;
+            logf("vk: fsr3fi: the HUD-less pass's pipeline was not made: the picture as presented");
+            return hud.prev = false;
+        }
+    }
+    const int k = hud.k;
+    if (hud.sw != w || hud.sh != h) {   // (the layer's fit is the crop's: started again)
+        hud_retire(hud.hudless[0]), hud_retire(hud.hudless[1]), hud_retire(hud.fit), hud_retire(hud.layer);
+        hud.sw = w, hud.sh = h, hud.prev = had_prev = false;
+    }
+    if (!hud_image(cmd, hud.after[k], sw, sh, hud.format, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT) ||
+        !hud_image(cmd, hud.hudless[k], w, h, VK_FORMAT_R8G8B8A8_UNORM,
+                   VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+        hud.failed = true;
+        logf("vk: fsr3fi: the HUD-less images (%ux%u) were not made: the picture as presented", w, h);
+        return hud.prev = false;
+    }
+    full_barrier(cmd);   // (the picture's last writes and reads, and the last readers of the HUD-less colour)
+    const VkImageCopy c{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
+                        {sw, sh, 1}};
+    vkCmdCopyImage(cmd, hud.picture, VK_IMAGE_LAYOUT_GENERAL, hud.after[k].image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+    full_barrier(cmd);
+    const int32_t pc[4] = {x0, y0, (int32_t)w, (int32_t)h};
+    pass(cmd, hud.mask,
+         {{fg.frames[cur].view, fg.nearest}, {hud.before[k].view, fg.nearest}, {hud.after[k].view, fg.nearest},
+          {hud.hudless[k].view, VK_NULL_HANDLE}},
+         w, h, pc, sizeof pc);
+    static bool told = false;
+    if (!told) {
+        told = true;
+        logf("vk: fsr3fi: the picture from before the HUD is captured at the gameplay upscale, and made the HUD-less colour of the "
+             "frame (%ux%u, format %d)", sw, sh, (int)hud.format);
+    }
+    hud.layered = hud_layer(cmd, x0, y0, w, h);
+    hud.hl = k;
+    // (the built-in interpolation's pair: this frame's HUD-less colour and the frame before's, and the layer that lays the HUD)
+    hud.pair = fg_hudless_wanted() && had_prev && hud.layered && hud.hudless[k ^ 1].image;
+    hud.captured++;
+    // (this frame's pictures are the next one's frame before; the next copies go into the other pair)
+    hud.prev = true;
+    hud.k ^= 1;
+    return hud.ready = true;
+}
+} // namespace
+
+bool framegen_hud_wanted() {
+    return framegen_on() && ((hudless_wanted() && fsr3fi::frames_wanted()) || fg_hudless_wanted());
+}
+
+void framegen_hud_before(VkCommandBuffer cmd, Texture* picture, uint32_t level) {
+    // (the picture's own format only: the scene's B10G11R11, which is linear light; the RGBA16F one of PsychoV35 is another
+    // encoding than the frame's and is not copied: those presents go on as before)
+    if (!picture || level || !picture->image || picture->samples != VK_SAMPLE_COUNT_1_BIT || picture->levels != 1 ||
+        picture->layers != 1 || picture->type != VK_IMAGE_TYPE_2D || picture->format != VK_FORMAT_B10G11R11_UFLOAT_PACK32 ||
+        !framegen_hud_wanted())
+        return;
+    std::lock_guard lk(hud.mu);
+    if (hud.failed) return;
+    if (hud.format != picture->format || hud.pw != picture->width || hud.ph != picture->height) {
+        for (int i = 0; i < 2; i++) hud_retire(hud.before[i]), hud_retire(hud.after[i]);
+        hud.format = picture->format, hud.pw = picture->width, hud.ph = picture->height, hud.prev = false;
+    }
+    Img& before = hud.before[hud.k];
+    if (!hud_image(cmd, before, hud.pw, hud.ph, hud.format, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
+        hud.failed = true;
+        logf("vk: fsr3fi: the HUD-less copy (%ux%u) was not made: the picture as presented", hud.pw, hud.ph);
+        return;
+    }
+    full_barrier(cmd);   // (the upscale's writes; and the last presents' passes, which read this copy)
+    const VkImageCopy c{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
+                        {hud.pw, hud.ph, 1}};
+    vkCmdCopyImage(cmd, picture->image, VK_IMAGE_LAYOUT_GENERAL, before.image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+    full_barrier(cmd);   // (before the game draws its HUD into the picture)
+    hud.picture = picture->image, hud.tex = picture, hud.gpu = picture->gpu;
+    hud.fresh = true;
+}
+
 /// (hookshot) The made frame of a 2x set by AMD FSR 3.1's frame interpolation (vk_fsr3fi.h), from this frame's colour and
 /// the scene's depth and motion (vk_fsr3_inputs.h): 1 when it made it into set.frame[0], 0 when it did not (no inputs this
 /// present, a reset, anything not made), which leaves the set to the interpolation below. sequence: framegen_record's count
@@ -757,16 +1019,30 @@ VkImage framegen_made_image(uint32_t* w, uint32_t* h) {
 int fsr3fi_frame(VkCommandBuffer cmd, OutSet& set, int cur, uint32_t uw, uint32_t uh, uint64_t sequence,
                  const fsr3_inputs::Frame* taken, bool native_pq) {
     // (every 600 presents asked: how many FSR made, and how many it left to the interpolation below and why)
-    static uint64_t asked = 0, made = 0, no_inputs = 0;
-    if (++asked % 600 == 0)
-        logf("vk: fsr3fi: %llu of the last 600 made frames by FSR 3.1, %llu without its inputs (the renderer's own made them)",
-             (unsigned long long)made, (unsigned long long)no_inputs),
-            made = no_inputs = 0;
+    static uint64_t asked = 0, made = 0, no_inputs = 0, captured_before = 0, layers_before = 0;
+    if (++asked % 600 == 0) {
+        logf("vk: fsr3fi: %llu of the last 600 made frames by FSR 3.1, %llu without its inputs (the renderer's own made them); "
+             "%llu with the picture from before the HUD, %llu with its HUD layer", (unsigned long long)made,
+             (unsigned long long)no_inputs, (unsigned long long)(hud.captured - captured_before),
+             (unsigned long long)(hud.layers - layers_before));
+        made = no_inputs = 0, captured_before = hud.captured, layers_before = hud.layers;
+    }
     if (!taken) return no_inputs++, 0;
     const fsr3_inputs::Frame& f = *taken;
+    bool layered = false;
     fsr3fi::Inputs in;
     in.color = fg.frames[cur].view;
     in.color_image = fg.frames[cur].image;
+    {   // (RX_VK_FSR_FG_HUDLESS: the picture from before the HUD, interpolated; this frame, HUD and all, laid over it by FSR 3.1)
+        std::lock_guard lk(hud.mu);
+        if (hud.ready && hudless_wanted()) {
+            in.color = hud.hudless[hud.hl].view, in.color_image = hud.hudless[hud.hl].image;
+            // (the HUD layer: FSR 3.1 given the HUD-less colour as its present too, so it lays nothing over the made frame, and
+            // the HUD goes over it below by how see-through it is)
+            layered = hud.layered && hud_layer_wanted();
+            in.present = layered ? hud.hudless[hud.hl].view : fg.frames[cur].view;
+        }
+    }
     in.color_format = frame_format(fg.pq);   // (ensure_size, for fg.frames: RGB10A2 for Native HDR's PQ picture)
     in.native_pq = native_pq;
     in.max_luminance = native_pq ? (float)std::clamp(opts.hdr_peak, 400, 10000) : 1.0f;
@@ -783,6 +1059,10 @@ int fsr3fi_frame(VkCommandBuffer cmd, OutSet& set, int cur, uint32_t uw, uint32_
     const VkImageCopy c{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
                         {uw, uh, 1}};
     vkCmdCopyImage(cmd, fsr3fi::made_image(), VK_IMAGE_LAYOUT_GENERAL, set.frame[0].image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+    if (layered) {   // (this frame's HUD over the made frame's own scene: shaders/fg_hud_composite.comp)
+        full_barrier(cmd);
+        hud_composite(cmd, set.frame[0].view, cur, uw, uh);
+    }
     made++;
     static bool told = false;
     if (!told) {
@@ -832,6 +1112,26 @@ int dlssg_frames(VkCommandBuffer cmd, OutSet& set, int cur, uint32_t uw, uint32_
     return n;
 }
 
+/// (HeyListen) The one made frame of a set by AMD FSR 4 frame generation (vk_fsr4fg.cpp), from this frame's colour and the scene's depth, motion
+/// and camera (vk_fsr3_inputs.h): 1 when it made it into set.frame[0], 0 when it did not (no runtime, the game's HDR picture, a refusal: logged
+/// there in words), which leaves the set to the others, nothing written
+int fsr4_frame(VkCommandBuffer cmd, OutSet& set, int cur, uint32_t uw, uint32_t uh, uint64_t sequence, const fsr3_inputs::Frame& f, bool native_pq) {
+    if (!f.depth_image || !f.motion_image) return 0;
+    DlssFgInputs in;
+    in.depth = f.depth_image, in.depth_view = f.depth, in.depth_format = VK_FORMAT_R32_SFLOAT;
+    in.motion = f.motion_image, in.motion_view = f.motion, in.motion_format = VK_FORMAT_R16G16_SFLOAT;
+    in.render_w = f.width, in.render_h = f.height;
+    std::memcpy(in.projection, f.projection, sizeof in.projection);
+    std::memcpy(in.view_projection, f.view_projection, sizeof in.view_projection);
+    std::memcpy(in.prev_view_projection, f.prev_view_projection, sizeof in.prev_view_projection);
+    in.have_prev = f.have_prev;
+    in.jitter[0] = f.jitter[0], in.jitter[1] = f.jitter[1];
+    in.near_z = f.camera.near_plane, in.far_z = f.camera.far_plane, in.fov_y = f.camera.fov_y;
+    in.reset = f.reset;
+    in.frame_ms = f.frame_ms;
+    return fsr4fg_frames(cmd, fg.frames[cur].image, fg.frames[cur].view, uw, uh, set.frame[0].image, set.frame[0].view, in, sequence, native_pq);
+}
+
 bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t sh, const int crop[4], bool native_pq) {
     int x0 = 0, y0 = 0, w = (int)sw, h = (int)sh;
     if (crop && crop[2] > 0 && crop[3] > 0) x0 = crop[0], y0 = crop[1], w = crop[2], h = crop[3];
@@ -870,7 +1170,20 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
     full_barrier(cmd);
     const int32_t pc[4] = {x0, y0, w, h};
     pass(cmd, copy, {{src, fg.nearest}, {fg.frames[cur].view, VK_NULL_HANDLE}}, uw, uh, pc, sizeof pc);
-    pass(cmd, fg.luma, {{fg.frames[cur].view, fg.nearest}, {fg.lumas[cur].view, VK_NULL_HANDLE}}, qw, qh);
+    // (RX_VK_FSR_FG_HUDLESS, RX_VK_FG_HUDLESS: the picture from before the HUD, when this frame has one; read by fsr3fi_frame below.
+    // RX_VK_FG_HUDLESS: the built-in interpolation's pair (this frame's and the frame before's) and the HUD layer: its motion is
+    // found in the pictures without the HUD, which would hold the blocks it is over still, and its frames are blended from them)
+    const bool hud_pair = framegen_hud_wanted() && hud_source(cmd, cur, sw, sh, x0, y0, uw, uh, native_pq) && hud.pair;
+    const VkImageView view_now = hud_pair ? hud.hudless[hud.hl].view : fg.frames[cur].view;
+    const VkImageView view_before = hud_pair ? hud.hudless[hud.hl ^ 1].view : fg.frames[prev].view;
+    pass(cmd, fg.luma, {{view_now, fg.nearest}, {fg.lumas[cur].view, VK_NULL_HANDLE}}, qw, qh);
+    if (hud_pair) {
+        static uint64_t pairs = 0, asked_pairs = 0;
+        pairs++;
+        if (++asked_pairs % 600 == 0)
+            logf("vk: frame interpolation: of the last 600 presents %llu blended from the pictures before the HUD, its HUD laid over "
+                 "each made frame (RX_VK_FG_HUDLESS)", (unsigned long long)pairs), pairs = 0;
+    }
     set->made = 0;
     set->shown = -1;
     if (auto_rate) {   // (Auto: a frame for each of the display's refreshes, at its own time)
@@ -904,9 +1217,10 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
                                     {fg.flows[0].view, VK_NULL_HANDLE}}, cw, ch);
                 pass(cmd, fg.median, {{fg.flows[0].view, fg.nearest}, {fg.flows[1].view, VK_NULL_HANDLE}}, cw, ch);
             }
-            pass(cmd, synth, {{fg.frames[prev].view, fg.linear}, {fg.frames[cur].view, fg.linear},
+            pass(cmd, synth, {{view_before, fg.linear}, {view_now, fg.linear},
                                  {fg.flows[1].view, fg.nearest}, {set->frame[k].view, VK_NULL_HANDLE}},
                  uw, uh, &t[k], 4);
+            if (hud_pair) hud_composite(cmd, set->frame[k].view, cur, uw, uh);
         }
         set->shown = n;
         set->made = n > 0 && !set->game[n - 1] ? n : std::max(0, n - 1);   // (for framegen_made_image: any made)
@@ -922,8 +1236,14 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
     // (NVIDIA DLSS Frame Generation first where it is chosen, at any fixed multiplier it can make; the inputs are taken once)
     fsr3_inputs::Frame inputs;
     const bool dlssg = dlss_fg_wanted(), fsr_fi = m == 2 && fsr3fi::frames_wanted();
-    const bool have_inputs = blend && m >= 2 && (dlssg || fsr_fi) && fsr3_inputs::take(inputs);
+    // (AMD FSR 4 frame generation, 2x: tried first where it is chosen and offered; any refusal leaves the set to AMD FSR 3.1's interpolation
+    // where that runs, else the renderer's own, exactly as when it is not chosen)
+    const bool fsr4 = m == 2 && !dlssg && framegen_by_now() == framegen_rows::BY_FSR4;
+    const bool have_inputs = blend && m >= 2 && (dlssg || fsr_fi || fsr4) && fsr3_inputs::take(inputs);
     if (!dlssg) dlss_fg_idle();   // (the row left at the renderer's own: its feature and memory given back)
+    if (!fsr4) fsr4fg_idle();     // (the row left AMD FSR 4: its context and memory given back)
+    if (blend && fsr4 && have_inputs)
+        set->made = fsr4_frame(cmd, *set, cur, uw, uh, sequence, inputs, native_pq);
     if (blend && m >= 2 && dlssg) set->made = dlssg_frames(cmd, *set, cur, uw, uh, m - 1, sequence, have_inputs ? &inputs : nullptr);
     if (set->made == 0 && blend && fsr_fi) set->made = fsr3fi_frame(cmd, *set, cur, uw, uh, sequence, have_inputs ? &inputs : nullptr, native_pq);
     if (set->made == 0 && blend && m > 1) {
@@ -932,9 +1252,10 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
         pass(cmd, fg.median, {{fg.flows[0].view, fg.nearest}, {fg.flows[1].view, VK_NULL_HANDLE}}, cw, ch);
         for (int k = 1; k < m; k++) {
             const float t = (float)k / (float)m;
-            pass(cmd, synth, {{fg.frames[prev].view, fg.linear}, {fg.frames[cur].view, fg.linear},
+            pass(cmd, synth, {{view_before, fg.linear}, {view_now, fg.linear},
                                  {fg.flows[1].view, fg.nearest}, {set->frame[k - 1].view, VK_NULL_HANDLE}},
                  uw, uh, &t, 4);
+            if (hud_pair) hud_composite(cmd, set->frame[k - 1].view, cur, uw, uh);
         }
         set->made = m - 1;
     }

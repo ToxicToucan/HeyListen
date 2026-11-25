@@ -163,6 +163,11 @@ uint64_t hos_thread_mask(HosThread *t);
 int hos_thread_priority(HosThread *t, int set, int value);
 int hos_thread_core(HosThread *t);
 int hos_cores(void);
+/* (ProjectReLink, pixl27) MXCSR's FTZ and DAZ follow the guest's FPCR.FZ once a lift with A64_NATIVE_FP asked
+   (hos_fpcr_follow, from its constructor): after its MSR FPCR (hos_fpcr_sync) and at a thread's and a fiber's start */
+void hos_fpcr_follow(void);
+void hos_fpcr_sync(Ctx *c);
+void hos_fpcr_start(const Ctx *c);
 /* virtual cores (hos_thread.c, HOS_VCORES=1): a guest thread gives its core up for a block (hos_vcore_away: 1 if it
    held one, or ran without one since an escape) and takes one again after it (hos_vcore_back); checkpoints hand it to a
    better waiter that asked */

@@ -40,6 +40,7 @@ static void *at(uint64_t address) { CHECK(address <= 512 - 8); return memory + a
 #define ARG(n) (c->x[n])
 #define RET(value) (c->x[0] = (uint64_t)(value))
 
+uint64_t hos_sprint_input(uint64_t buttons, int on, int blocked) { (void)on; (void)blocked; return buttons; }   /* (host/oot_sprint.c: Sprint with L3 off) */
 int rx_option(int id, int otherwise) { return id == 4 ? menu_background : id == 1 ? 0 : otherwise; }
 int64_t hos_now_ns(void) { return now_ns; }
 void hos_log(const char *format, ...) {

@@ -58,6 +58,21 @@ typedef struct {
 enum { GPU_RECORDS = 1 << 18 };
 static GpuRecord *gpu;
 static _Atomic uint64_t gpu_head, gpu_done;
+/* the write-back watch's targets: by guest page (open addressing), up to WB_PER ranges written back in each */
+typedef struct {
+    uint64_t lo, hi, first, last, value;   /* the range, its first and last write-back (ticks), the last one's submission */
+    uint64_t count;                        /* write-backs of it */
+    HlTraceRecord blk;                     /* a heap block live over it, allocated while it was written back (addr 0: none) */
+    uint32_t what, told[3];                /* told: lines written of each kind (into live, allocated over, freed under) */
+} WbTarget;
+enum { WB_PAGES = 1 << 15, WB_PER = 4, WB_PROBE = 32, WB_MAX = 16 << 10 };
+typedef struct {
+    uint64_t page;   /* page number + 1 (0: empty) */
+    WbTarget t[WB_PER];
+} WbPage;
+static WbPage *wbp;
+static atomic_flag wb_lock = ATOMIC_FLAG_INIT;
+static _Atomic uint64_t wb_n[5];   /* into live, allocated over, freed under, targets, targets hit */
 
 uint64_t hl_trace_now(void) {
 #if defined(__x86_64__) || defined(_M_X64)
@@ -88,6 +103,7 @@ int hl_trace_start(uint32_t mask, const HlTraceConfig *config) {
     freed = calloc(nfreed, sizeof *freed);
     gpu = calloc(GPU_RECORDS, sizeof *gpu);
     if (!freed || !gpu) return 0;
+    if (cfg.wb_watch && !(wbp = calloc(WB_PAGES, sizeof *wbp))) cfg.wb_watch = 0;
     for (int s = 0; s < STRIPES; s++) {
         atomic_flag_clear(&stripes[s].lock);
         stripes[s].slot = calloc(stripe_slots, sizeof(HlTraceRecord));
@@ -135,6 +151,10 @@ void hl_trace_event(uint32_t kind, uint64_t a, uint64_t b, uint32_t c) {
 
 static uint32_t hash(uint64_t a) { return (uint32_t)((a >> 4) * 0x9E3779B97F4A7C15ull >> 32); }
 
+/* the write-back watch (hl_trace.h hl_trace_wb_counts; below) */
+static void wb_block(uint64_t block, uint64_t size, int freed, const HlTraceRecord *r);
+static void wb_write(uint32_t what, uint64_t guest, uint64_t size, uint64_t value);
+
 static void lock(Stripe *s) {
     while (atomic_flag_test_and_set_explicit(&s->lock, memory_order_acquire)) {}
 }
@@ -169,7 +189,9 @@ void hl_trace_alloc(uint64_t block, uint64_t size, uint64_t heap, const uint32_t
         s->used++;
     }
     record(&s->slot[i], block, size, heap, chain);
+    const HlTraceRecord rec = s->slot[i];
     unlock(s);
+    if (cfg.wb_watch) wb_block(block, size, 0, &rec);
 }
 
 void hl_trace_free(uint64_t block, uint64_t heap, const uint32_t *chain) {
@@ -209,6 +231,7 @@ void hl_trace_free(uint64_t block, uint64_t heap, const uint32_t *chain) {
     hl_trace_event(HL_EV_FREE, block, f.freed.size, chain ? chain[0] : 0);
     const uint64_t at = atomic_fetch_add_explicit(&freed_head, 1, memory_order_relaxed);
     freed[at & freed_mask] = f;
+    if (cfg.wb_watch) wb_block(block, f.freed.size, 1, &f.freed);
 }
 
 void hl_trace_gpu_record(uint32_t what, uint64_t guest, uint64_t size, uint64_t pool, uint64_t value, uint64_t done) {
@@ -219,6 +242,7 @@ void hl_trace_gpu_record(uint32_t what, uint64_t guest, uint64_t size, uint64_t 
     gpu[at & (GPU_RECORDS - 1)] = (GpuRecord){guest, size, pool, value, done, hl_trace_now(), what, r ? r->tid : 0xffffffffu};
     uint64_t d = atomic_load_explicit(&gpu_done, memory_order_relaxed);
     while (done > d && !atomic_compare_exchange_weak(&gpu_done, &d, done)) {}
+    if (cfg.wb_watch && (what == 1 || what == 2)) wb_write(what, guest, size, value);
 }
 
 int hl_trace_lookup(uint64_t addr, HlTraceRecord *live, HlTraceFree *fr) {
@@ -264,6 +288,152 @@ void hl_trace_live_each(void (*fn)(const HlTraceRecord *, void *), void *user) {
             if (s->slot[i].addr) fn(&s->slot[i], user);
         unlock(s);
     }
+}
+
+/* ---- (CRASH3) the write-back watch: GPU words copied back over memory the game's heap gave to the CPU ---- */
+
+static void wb_lock_take(void) {
+    while (atomic_flag_test_and_set_explicit(&wb_lock, memory_order_acquire)) {}
+}
+static void wb_lock_drop(void) { atomic_flag_clear_explicit(&wb_lock, memory_order_release); }
+
+/* (wb_lock held) page's entry; make: a new one (in an empty slot, else over the probed entry written back the longest ago) */
+static WbPage *wb_page(uint64_t page, int make) {
+    const uint32_t h = hash(page << 12) & (WB_PAGES - 1);
+    WbPage *oldest = NULL;
+    uint64_t oldest_last = ~0ull;
+    for (int k = 0; k < WB_PROBE; k++) {
+        WbPage *p = &wbp[(h + (uint32_t)k) & (WB_PAGES - 1)];
+        if (p->page == page + 1) return p;
+        if (!p->page) {
+            if (!make) return NULL;
+            memset(p, 0, sizeof *p);
+            p->page = page + 1;
+            return p;
+        }
+        uint64_t last = 0;
+        for (int j = 0; j < WB_PER; j++) last = p->t[j].last > last ? p->t[j].last : last;
+        if (last < oldest_last) oldest_last = last, oldest = p;
+    }
+    if (!make || !oldest) return NULL;
+    memset(oldest, 0, sizeof *oldest);
+    oldest->page = page + 1;
+    return oldest;
+}
+
+typedef struct {
+    char text[4][512];
+    int n;
+} WbLines;
+static void wb_line(WbLines *l, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void wb_line(WbLines *l, const char *fmt, ...) {
+    if (l->n >= 4) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(l->text[l->n++], sizeof l->text[0], fmt, ap);
+    va_end(ap);
+}
+static void wb_flush(const WbLines *l) {
+    for (int k = 0; k < l->n; k++)
+        if (cfg.out) cfg.out(l->text[k]);
+}
+static int wb_tell(uint32_t *told) {   /* the first 3 of a kind for a target, then every 1000th */
+    const uint32_t n = (*told)++;
+    return n < 3 || n % 1000 == 999;
+}
+static const char *gpu_what(uint32_t w);
+static double ms_ago(uint64_t stamp, uint64_t now);
+static const char *ring_name(uint32_t tid);
+static void chain_text(char *out, size_t cap, const uint32_t *chain);
+
+static void wb_write(uint32_t what, uint64_t guest, uint64_t size, uint64_t value) {
+    if (!size || size > WB_MAX || !wbp) return;
+    const uint64_t now = hl_trace_now(), hi = guest + size;
+    WbLines lines;
+    lines.n = 0;
+    int hit = 0;
+    wb_lock_take();
+    for (uint64_t page = guest >> 12; page <= (hi - 1) >> 12; page++) {
+        WbPage *p = wb_page(page, 1);
+        if (!p) continue;
+        WbTarget *t = NULL, *free_t = NULL, *old_t = NULL;
+        for (int j = 0; j < WB_PER && !t; j++) {
+            WbTarget *c = &p->t[j];
+            if (c->lo == guest && c->hi == hi) t = c;
+            else if (!c->hi && !free_t) free_t = c;
+            else if (!old_t || c->last < old_t->last) old_t = c;
+        }
+        if (!t) {
+            t = free_t ? free_t : old_t;
+            memset(t, 0, sizeof *t);
+            t->lo = guest, t->hi = hi, t->first = now;
+            if (page == guest >> 12) atomic_fetch_add_explicit(&wb_n[3], 1, memory_order_relaxed);
+        }
+        t->last = now, t->value = value, t->what = what;
+        t->count++;
+        if (t->blk.addr && !hit) {
+            hit = 1;
+            atomic_fetch_add_explicit(&wb_n[0], 1, memory_order_relaxed);
+            if (!t->told[0] && !t->told[1]) atomic_fetch_add_explicit(&wb_n[4], 1, memory_order_relaxed);
+            if (wb_tell(&t->told[0])) {
+                char ch[96];
+                chain_text(ch, sizeof ch, t->blk.chain);
+                wb_line(&lines, "TRACE WB: %s INTO A LIVE HEAP BLOCK: [%#llx, %#llx) submission %llu (%llu write-backs of it since "
+                        "%.3f ms ago; %u told); block %#llx size %#llx heap %#llx allocated %.3f ms ago on %s by%s",
+                        gpu_what(what), (unsigned long long)guest, (unsigned long long)hi, (unsigned long long)value,
+                        (unsigned long long)t->count, ms_ago(t->first, now), t->told[0], (unsigned long long)t->blk.addr,
+                        (unsigned long long)t->blk.size, (unsigned long long)t->blk.heap, ms_ago(t->blk.stamp, now),
+                        ring_name(t->blk.tid), ch);
+            }
+        }
+    }
+    wb_lock_drop();
+    wb_flush(&lines);
+}
+
+static void wb_block(uint64_t block, uint64_t size, int freed, const HlTraceRecord *r) {
+    if (!wbp || size > (64u << 10)) return;   /* (a heap's arena is a block of its parent: not the CPU's words) */
+    const uint64_t lo = block >= 16 ? block - 16 : 0, hi = block + (size ? size : 16);   /* (with its header) */
+    const uint64_t now = hl_trace_now(), window = (uint64_t)(5000.0 * tick_ms);
+    WbLines lines;
+    lines.n = 0;
+    wb_lock_take();
+    for (uint64_t page = lo >> 12; page <= (hi - 1) >> 12; page++) {
+        WbPage *p = wb_page(page, 0);
+        if (!p) continue;
+        for (int j = 0; j < WB_PER; j++) {
+            WbTarget *t = &p->t[j];
+            if (!t->hi || !(t->lo < hi && lo < t->hi)) continue;
+            if (freed && t->blk.addr == block) t->blk.addr = 0;
+            if (now - t->last > window) continue;   /* (not written back lately) */
+            const int kind = freed ? 2 : 1;
+            if (!freed) t->blk = *r;
+            if (page != ((t->lo > lo ? t->lo : lo) >> 12)) continue;   /* (one count for a block over a target's pages) */
+            atomic_fetch_add_explicit(&wb_n[kind], 1, memory_order_relaxed);
+            if (!t->told[0] && !t->told[1] && !t->told[2]) atomic_fetch_add_explicit(&wb_n[4], 1, memory_order_relaxed);
+            if (wb_tell(&t->told[kind])) {
+                char ch[96];
+                chain_text(ch, sizeof ch, r->chain);
+                wb_line(&lines, "TRACE WB: %s A WRITE-BACK TARGET: block %#llx size %#llx heap %#llx (with its header [%#llx, "
+                        "%#llx)) on %s by%s; target [%#llx, %#llx) (%s) written back %llu times since %.3f ms ago, the last "
+                        "%.3f ms ago in submission %llu",
+                        freed ? "FREED UNDER" : "ALLOCATED OVER", (unsigned long long)block, (unsigned long long)size,
+                        (unsigned long long)r->heap, (unsigned long long)lo, (unsigned long long)hi, ring_name(r->tid), ch,
+                        (unsigned long long)t->lo, (unsigned long long)t->hi, gpu_what(t->what), (unsigned long long)t->count,
+                        ms_ago(t->first, now), ms_ago(t->last, now), (unsigned long long)t->value);
+            }
+        }
+    }
+    wb_lock_drop();
+    wb_flush(&lines);
+}
+
+void hl_trace_wb_counts(HlTraceWbCounts *out) {
+    out->into_live = atomic_load(&wb_n[0]);
+    out->allocs_over = atomic_load(&wb_n[1]);
+    out->frees_under = atomic_load(&wb_n[2]);
+    out->targets = atomic_load(&wb_n[3]);
+    out->targets_hit = atomic_load(&wb_n[4]);
 }
 
 /* ---- the report ---- */

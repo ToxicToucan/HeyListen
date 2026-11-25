@@ -114,7 +114,7 @@ def main():
         "jobs[P]->g = {h, nullptr, &jobs[P]->s, ub0, cond0, serial0};",
         "(int)open + 1 < nplan + (int)P && work >= plan[open - P]",
         "if (used < 2 + P || !early) {",
-        "texture_segment_end((int)P);",
+        "texture_segment_end(*G.seg_table, (int)P);",
         "while (G.next_sub < P) early_submit_job(G, jobs[G.next_sub++].get());",
         "Segment whole = jobs[P]->g;",
     ])

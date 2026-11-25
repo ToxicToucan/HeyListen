@@ -1,0 +1,40 @@
+# Copyright (C) 2026 Sacrappy
+
+# The Builder (engine/builder/HookshotBuilder, C#/WPF) compiled on GitHub's Windows runner, so that a C# error shows on the push or
+# pull request that makes it and not first when a release is made. Builds only: nothing is published or uploaded, no secret is used,
+# the files stay on the runner. Release.yml's windows job builds the same project with the same actions (make_release.py runs
+# dotnet publish -c Release); every file the project reads is in the repository, so nothing is stubbed. Runs only when the
+# Builder or this file changes, or by hand.
+name: Builder compile
+on:
+  push:
+    paths:
+      - 'engine/builder/**'
+      - '.github/workflows/builder-compile.yml'
+  pull_request:
+    paths:
+      - 'engine/builder/**'
+      - '.github/workflows/builder-compile.yml'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: builder-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  builder-compile:
+    name: builder-compile
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore and build the Builder (Release)
+        shell: bash
+        run: dotnet build engine/builder/HookshotBuilder/HookshotBuilder.csproj --configuration Release -p:Version=0.0.0 -p:NuGetAudit=false --nologo

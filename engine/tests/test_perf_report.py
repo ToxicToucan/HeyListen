@@ -95,7 +95,7 @@ static int g_by = 0;   // (framegen_rows::BY_OWN; the Frame generation by row's 
 static bool framegen_on() { return g_on; }
 static int multiplier() { return opts.framegen == 1 ? 3 : opts.framegen; }   // (Auto: the display's cap, here 3)
 static int framegen_by_now() { return g_by; }
-namespace framegen_rows { enum { BY_OWN, BY_DLSS, BY_FSR3 }; }
+namespace framegen_rows { enum { BY_OWN, BY_DLSS, BY_FSR3, BY_FSR4 }; }
 namespace fsr3fi { static unsigned frames_wanted() { return g_fsr ? 1u : 0u; } }
 %s
 #define CHECK(name, cond) do { if (!(cond)) { std::fprintf(stderr, "FAIL %%s\n", name); return 1; } } while (0)
@@ -121,6 +121,8 @@ int main() {
     CHECK("DLSS FG at 4x: its engine", framegen_engine(&m, &a) == 3 && m == 4 && !a);
     opts.framegen = 2; g_fsr = true;
     CHECK("DLSS FG chosen over FSR 3.1: its engine", framegen_engine(&m, &a) == 3 && m == 2 && !a);
+    g_by = framegen_rows::BY_FSR4; opts.framegen = 2;
+    CHECK("AMD FSR 4 FG at 2x: its engine, over FSR 3.1", framegen_engine(&m, &a) == 4 && m == 2 && !a);
     g_by = framegen_rows::BY_OWN;
     CHECK("2x where FSR 3.1 runs, the by row elsewhere: FSR 3.1", framegen_engine(&m, &a) == 2 && m == 2 && !a);
     std::puts("ok");

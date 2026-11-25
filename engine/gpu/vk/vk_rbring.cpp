@@ -29,6 +29,10 @@ const rb_ring::Config& config() {
         const char* fk = getenv("RX_VK_FRAMES_IN_FLIGHT");
         if (k.lag && !(getenv("HL_RB_LAG") && *getenv("HL_RB_LAG")) && fk && atoi(fk) > 1)
             k.lag = std::min<unsigned>(rb_ring::kMaxLag, 2u + (unsigned)std::min(atoi(fk), 3) - 1u);
+        // (PIPE2) RX_VK_ORDER_THREAD=1 (on by default where the host keeps a core for the replay, hos_main.c; vk_replay.cpp): the replay on an order thread, the submitting threads return
+        // after the capture, a frame behind the game's CPU as frames in flight are: the ring serves at lag 3
+        const char* ot = getenv("RX_VK_ORDER_THREAD");
+        if (k.lag && !(getenv("HL_RB_LAG") && *getenv("HL_RB_LAG")) && ot && atoi(ot) != 0) k.lag = std::max(k.lag, std::min<unsigned>(rb_ring::kMaxLag, 3u));
         return k;
     }();
     return c;
@@ -38,17 +42,19 @@ bool frame_log_on() {
     return on;
 }
 
-struct Addr {
+// (the standing, rb_ring.h: stageable (a binding written in the mirror was staged), tainted (a written binding that is not exactly this
+// range overlaps it: its write-back would land in it, the old path), writes (written bindings of exactly this range) and staged (those of
+// them staged; the rest went to guest memory with a write-back), first_stage, the CPU's reads, settle)
+struct Addr : rb_ring::Standing {
     int cls = 0;
-    bool stageable = false;   // a binding written in the mirror was staged: reads are answered by the ring
-    bool tainted = false;     // a written binding that is not exactly this range overlaps it (its write-back would land in it): the old path
-    uint64_t writes = 0;      // written bindings of exactly this range, and how many of them were staged (the rest went to guest memory directly)
-    uint64_t staged = 0;
-    uint64_t first_stage = 0;   // the writes counted when the first one was staged: those before it wrote guest memory and have landed long since
-    uint64_t reads = 0;       // the CPU's reads of it so far
     rb_ring::Entry ents[rb_ring::kMaxEntries];
     unsigned n = 0;
     uint64_t applied = 0;   // the newest seq handed to the game
+    // (EXPO1, HL_METER_LOG: what the last staged binding was, and how many were staged in the last whole frame)
+    VkBuffer last_buffer = VK_NULL_HANDLE;
+    VkDeviceSize last_offset = 0;
+    int64_t stage_frame = -1;
+    unsigned in_frame = 0, last_frame_stages = 0;
 };
 struct Req {
     uint64_t guest, size;
@@ -58,28 +64,24 @@ struct Req {
 
 std::mutex mu;
 std::map<std::pair<uint64_t, uint64_t>, Addr> table;   // (guest, size)
-std::vector<Req> pending;
-uint64_t pending_bytes = 0;
 VkBuffer ring_buffer = VK_NULL_HANDLE;
 uint8_t* ring_map = nullptr;
 bool ring_failed = false;
 uint64_t arena_at = 0, arena_total = 0, next_seq = 0;
 
 struct Stats {
-    std::atomic<int64_t> reads{0}, applied{0}, none{0}, waited{0}, late{0};
+    std::atomic<int64_t> reads{0}, applied{0}, none{0}, waited{0}, late{0}, again{0};   // (again: PIPE2, the meter's block handed the last value back)
     std::atomic<int64_t> chk_new{0}, chk_equal{0}, chk_differ{0}, chk_zero{0}, chk_nonzero{0}, chk_notdone{0}, chk_old{0};
     std::atomic<int64_t> age[4] = {};
     std::atomic<int64_t> got[5] = {};   // (serve mode) the age in frames of the entries handed out: 1, 2, 3, 4, more
 } stats[4];
 std::atomic<int64_t> st_staged{0}, st_staged_bytes{0}, st_direct{0};
+std::atomic<int64_t> st_kept_wb{0}, st_retaken{0};   // (EXPO1: written bindings of a tainted range given their write-back; ranges taken over again)
 std::atomic<uint64_t> learned_lo{~0ull}, learned_hi{0};   // (the span of the learned ranges: a written binding outside it is not looked up)
-constexpr unsigned kQuietReads = 8;   // reads of a range no program writes before it is answered without a wait (the write-backs of before are long done)
+constexpr unsigned kQuietReads = rb_ring::kQuietReads;
 // A range is served by the ring when its writes are exactly its staged ones, nothing else's write-back lands in it, and either a staged entry
-// exists or no program has written it at all (a result slot nothing wrote: nothing to wait for)
-bool served(const Addr& a) {
-    if (a.tainted || a.writes - a.first_stage != a.staged) return false;
-    return a.stageable || (a.writes == 0 && a.reads >= kQuietReads);
-}
+// exists or no program has written it at all (rb_ring::served). Without `done`: the settle value is not looked at (logs, the check's quiet ranges)
+bool served(const Addr& a, uint64_t done = ~0ull) { return rb_ring::served(a, done); }
 
 bool ring_init() {   // (mu held)
     if (ring_map) return true;
@@ -154,7 +156,10 @@ void rbring_note_read(uint64_t guest, uint64_t size) {
     const int cls = rb_ring::class_of(size);
     if (!cls) return;
     std::lock_guard lk(mu);
-    if (table.size() > 4096) table.clear(), learned_lo = ~0ull, learned_hi = 0;
+    if (table.size() > 4096) {
+        if (meter_log_rows() > 0) logf("vk: rbring: the table of learned ranges cleared (4096 ranges) at frame %lld", (long long)rb_frame_now());
+        table.clear(), learned_lo = ~0ull, learned_hi = 0;
+    }
     Addr& a = table[{guest, size}];
     a.cls = cls, a.reads++;
     {   // (HL_RB_LAG_LOG=2: the learned ranges that are not served, every 6000 reads)
@@ -171,6 +176,20 @@ void rbring_note_read(uint64_t guest, uint64_t size) {
     }
     if (learned_lo > guest) learned_lo = guest;
     if (learned_hi < guest + size) learned_hi = guest + size;
+    if (cls == 1 && meter_log_rows() > 0) {   // (EXPO1, HL_METER_LOG: every R1 range the ring knows, every 3000 R1 reads)
+        static uint64_t r1 = 0;
+        if (++r1 % 3000 == 0)
+            for (const auto& [k, v] : table)
+                if (v.cls == 1) {
+                    const int nw = rb_ring::newest(v.ents, v.n);
+                    uint32_t w[4] = {};
+                    if (nw >= 0 && ring_map && rb_ring::intact(v.ents[nw], arena_total, 16)) std::memcpy(w, ring_map + v.ents[nw].at, 16);
+                    logf("vk: rbring R1 range %#llx +%#llx: served %d writes %llu staged %llu reads %llu entries %u, newest #%lld t%lld %08x %08x %08x %08x",
+                         (unsigned long long)k.first, (unsigned long long)k.second, served(v), (unsigned long long)v.writes,
+                         (unsigned long long)v.staged, (unsigned long long)v.reads, v.n, nw >= 0 ? (long long)v.ents[nw].seq : -1ll,
+                         nw >= 0 ? (long long)v.ents[nw].tag : -1ll, w[0], w[1], w[2], w[3]);
+                }
+    }
 }
 
 /// Every binding for writing (a mirror's or guest memory's, gpu_buffer_bind): the learned ranges it overlaps are marked, an exact one counted
@@ -186,31 +205,59 @@ void rbring_note_written(uint64_t guest, uint64_t size) {
 }
 
 /// A program's binding for writing in a mirror (pools_mu held): true when the range is staged, so no write-back is made for it
-bool rbring_stage_bind(uint64_t guest, uint64_t size, VkBuffer buffer, VkDeviceSize offset) {
+bool rbring_stage_bind(uint64_t guest, uint64_t size, VkBuffer buffer, VkDeviceSize offset, RbPending& pend) {
     if (!config().lag || !rb_ring::class_of(size) || !buffer) return false;
     std::lock_guard lk(mu);
     const auto it = table.find({guest, size});
     if (it == table.end()) return false;
-    if (!ring_init() || pending_bytes + rb_ring::copy_bytes(it->second.cls, size) > rb_ring::kMaxPending) return false;
-    if (!it->second.stageable) it->second.first_stage = it->second.writes ? it->second.writes - 1 : 0;   // (this binding was counted by rbring_note_written just before)
-    it->second.staged++;
-    it->second.stageable = true;
-    for (Req& r : pending)
+    if (!ring_init() || pend.bytes + rb_ring::copy_bytes(it->second.cls, size) > rb_ring::kMaxPending) return false;
+    // (this binding was counted by rbring_note_written just before) (EXPO1) a tainted range keeps its write-backs: its reads take the old
+    // path; one whose writes before this went to guest memory is taken over again from this one, served once the GPU is past it (rb_ring.h)
+    const bool was = it->second.stageable;
+    const uint64_t settle0 = it->second.settle;
+    // HL_RB_LAG_KEEP=0: as before 2026-11-23 (A/B): every learned range's binding is staged, served or not, with no settle (a range moved to the old path by one direct write never gets its write-backs again: the exposure froze); 1 (the default): a tainted range keeps its write-backs, a range taken over again is answered once the GPU is past it
+    static const bool keep = !getenv("HL_RB_LAG_KEEP") || atoi(getenv("HL_RB_LAG_KEEP")) != 0;
+    if (!keep) {
+        if (!it->second.stageable) it->second.first_stage = it->second.writes ? it->second.writes - 1 : 0;
+        it->second.staged++, it->second.stageable = true;
+    } else if (!rb_ring::stage(it->second)) {
+        st_kept_wb++;
+        return false;
+    }
+    if (it->second.settle == rb_ring::kUnsettled && settle0 != rb_ring::kUnsettled) {
+        // (its entries from before went to the game's reads or are older than what the old path gave it meanwhile: none is handed out)
+        if (const int nw = rb_ring::newest(it->second.ents, it->second.n); nw >= 0)
+            it->second.applied = std::max(it->second.applied, it->second.ents[nw].seq);
+        st_retaken++;
+        if (meter_log_rows() > 0 || st_retaken.load() % 200 == 1)
+            logf("vk: rbring: %#llx +%#llx taken over again by the ring (%lld so far): %llu of its %llu written bindings went to guest memory (%s)",
+                 (unsigned long long)guest, (unsigned long long)size, (long long)st_retaken.load(),
+                 (unsigned long long)(it->second.writes - it->second.staged), (unsigned long long)it->second.writes,
+                 was ? "since the last staged one" : "before the first staged one");
+    }
+    {   // (HL_METER_LOG's description)
+        Addr& a = it->second;
+        const int64_t f = rb_frame_now();
+        if (f != a.stage_frame) a.last_frame_stages = a.in_frame, a.in_frame = 0, a.stage_frame = f;
+        a.in_frame++, a.last_buffer = buffer, a.last_offset = offset;
+    }
+    for (RbPending::Req& r : pend.reqs)
         if (r.guest == guest && r.size == size) {   // (written twice in a submission: the last binding's state is what the end copies)
             r.buffer = buffer, r.offset = offset;
             return !config().check;
         }
-    pending.push_back({guest, size, buffer, offset});
-    pending_bytes += rb_ring::copy_bytes(it->second.cls, size);
+    pend.reqs.push_back({guest, size, buffer, offset});
+    pend.bytes += rb_ring::copy_bytes(it->second.cls, size);
     return !config().check;
 }
 
 /// The end of a submission (pools_mu held): what the submission's programs wrote to the staged ranges, copied into the ring
-void rbring_flush(VkCommandBuffer cmd, uint64_t value) {
+void rbring_flush(VkCommandBuffer cmd, uint64_t value, RbPending& pend) {
+    std::vector<RbPending::Req>& pending = pend.reqs;
     if (pending.empty()) return;   // (read without mu: written under pools_mu, as this call is)
     std::lock_guard lk(mu);
     if (pending.empty() || !ring_map) {
-        pending.clear(), pending_bytes = 0;
+        pending.clear(), pend.bytes = 0;
         return;
     }
     const int64_t tag = rb_tag_for(value);
@@ -222,13 +269,13 @@ void rbring_flush(VkCommandBuffer cmd, uint64_t value) {
         vkCmdPipelineBarrier2(cmd, &di);
     };
     barrier(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
-    std::stable_sort(pending.begin(), pending.end(), [](const Req& a, const Req& b) { return a.buffer < b.buffer; });
+    std::stable_sort(pending.begin(), pending.end(), [](const RbPending::Req& a, const RbPending::Req& b) { return a.buffer < b.buffer; });
     std::vector<VkBufferCopy> regions;
     for (size_t i = 0; i < pending.size();) {
         const VkBuffer buffer = pending[i].buffer;
         regions.clear();
         for (; i < pending.size() && pending[i].buffer == buffer; i++) {
-            const Req& r = pending[i];
+            const RbPending::Req& r = pending[i];
             Addr& a = table[{r.guest, r.size}];
             const uint64_t n = rb_ring::copy_bytes(a.cls, r.size);
             rb_ring::Entry e;
@@ -236,13 +283,14 @@ void rbring_flush(VkCommandBuffer cmd, uint64_t value) {
             e.cum = arena_total;
             e.at = rb_ring::allocate(arena_at, arena_total, n);
             rb_ring::push(a.ents, a.n, e);
+            rb_ring::settle_at(a, value);   // (EXPO1: a range taken over again is answered once the GPU is past this submission)
             regions.push_back({r.offset, e.at, n});
             st_staged++, st_staged_bytes += (int64_t)n;
         }
         vkCmdCopyBuffer(cmd, buffer, ring_buffer, (uint32_t)regions.size(), regions.data());
     }
     barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
-    pending.clear(), pending_bytes = 0;
+    pending.clear(), pend.bytes = 0;
 }
 
 /// HL_RB_LAG_CHECK=1: a read of a range no program writes (answered with no wait in lag mode) before the check's entry: would the waits have changed it?
@@ -264,9 +312,21 @@ void rbring_quiet_result(uint64_t size, bool changed) {
 bool rbring_serves(uint64_t guest, uint64_t size) {
     if (!config().lag || config().check) return false;
     if (!rb_ring::class_of(size)) return false;
+    uint64_t settle = 0;
+    {
+        std::lock_guard lk(mu);
+        const auto it = table.find({guest, size});
+        if (it == table.end() || !served(it->second)) return false;
+        if (!(settle = it->second.settle)) return true;
+    }
+    // (EXPO1: a range taken over again: served once the GPU is past the submission that staged it, so no write-back of the bindings before
+    // lands after an answer. The GPU's progress read outside the lock: completed() applies staged write-backs)
+    if (settle == rb_ring::kUnsettled || settle > vk_timeline_completed()) return false;
     std::lock_guard lk(mu);
     const auto it = table.find({guest, size});
-    return it != table.end() && served(it->second);
+    if (it == table.end()) return false;
+    if (it->second.settle == settle) it->second.settle = 0;
+    return served(it->second, settle);   // (a settle set again meanwhile is above the value reached)
 }
 
 /// The read of a served range: the newest unapplied entry `lag` frames old into guest memory
@@ -287,11 +347,25 @@ void rbring_apply(uint64_t gpu, uint64_t size) {
         const int k = rb_ring::pick(a.ents, a.n, c, config().lag, a.applied);
         stats[cls].reads++;
         if (k < 0) {
-            stats[cls].none++;
-            hash_add(c, cls, rb_ring::hash_read(cls, guest, nullptr, 0));
-            return;
+            // (PIPE2) the exposure meter's block: the game reads and zeroes it, so a read with no new entry finds the game's own
+            // zero and the meter hold (vk_replay.cpp) hands it the last result again. Here the ring hands that last value back
+            // itself, which is the same value by the same rule (the frame count and the entries), so the read is answered without
+            // a hold and the held-read count stays at 0. (Only the meter's block: an R2/R3 range with no new entry reads what the
+            // old path read.)
+            int again = -1;
+            if (size == 0x1040 && a.applied && memory_is_meter(guest))
+                for (unsigned i = 0; i < a.n; i++)
+                    if (a.ents[i].seq == a.applied) { again = (int)i; break; }
+            if (again < 0) {
+                stats[cls].none++;
+                hash_add(c, cls, rb_ring::hash_read(cls, guest, nullptr, 0));
+                return;
+            }
+            stats[cls].again++;
+            e = a.ents[again];
+        } else {
+            e = a.ents[k];
         }
-        e = a.ents[k];
     }
     const uint64_t n = rb_ring::copy_bytes(cls, size);
     if (!rb_ring::intact(e, total, n)) return;   // (the ring went round since: far too old to hand out)
@@ -314,12 +388,15 @@ void rbring_apply(uint64_t gpu, uint64_t size) {
     }
     hash_add(c, cls, rb_ring::hash_read(cls, guest, buf, n));
     if (stats[cls].reads % 3000 == 0)
-        logf("vk: rbring %s: 3000 reads, %lld applied (%lld waited for the GPU, %lld not done in time), %lld nothing new; age in frames of the entries "
-             "applied 1/2/3/4+: %lld/%lld/%lld/%lld (a fixed lag L hands out entries L frames old or older); staged so far %lld ranges, %.1f MB",
+        logf("vk: rbring %s: 3000 reads, %lld applied (%lld waited for the GPU, %lld not done in time), %lld nothing new, %lld handed the last value "
+             "back (the meter's block); age in frames of the entries "
+             "applied 1/2/3/4+: %lld/%lld/%lld/%lld (a fixed lag L hands out entries L frames old or older); staged so far %lld ranges, %.1f MB; "
+             "ranges taken over again %lld, written bindings of tainted ranges given their write-back %lld",
              cname(cls), (long long)stats[cls].applied.exchange(0), (long long)stats[cls].waited.exchange(0), (long long)stats[cls].late.exchange(0),
-             (long long)stats[cls].none.exchange(0), (long long)stats[cls].got[0].exchange(0), (long long)(stats[cls].got[1].exchange(0) + 0),
+             (long long)stats[cls].none.exchange(0), (long long)stats[cls].again.exchange(0),
+             (long long)stats[cls].got[0].exchange(0), (long long)(stats[cls].got[1].exchange(0) + 0),
              (long long)stats[cls].got[2].exchange(0), (long long)(stats[cls].got[3].exchange(0) + stats[cls].got[4].exchange(0)),
-             (long long)st_staged.load(), st_staged_bytes.load() / 1048576.0);
+             (long long)st_staged.load(), st_staged_bytes.load() / 1048576.0, (long long)st_retaken.load(), (long long)st_kept_wb.load());
 }
 
 /// HL_RB_LAG_CHECK=1, after the old path's waits: the ring's candidate against the value the game is about to read
@@ -383,6 +460,65 @@ void rbring_check(uint64_t gpu, uint64_t size) {
              (long long)st.chk_notdone.exchange(0), (long long)st.chk_old.exchange(0), (long long)(st.chk_zero.load() + st.chk_nonzero.load()),
              (long long)st.chk_zero.exchange(0), (long long)st.chk_nonzero.exchange(0), (long long)st.age[0].exchange(0),
              (long long)st.age[1].exchange(0), (long long)st.age[2].exchange(0), (long long)st.age[3].exchange(0));
+}
+
+/// (EXPO1, a test) HL_RB_TEST_DIRECT=<frame>[:<every>] (default off): from that frame on (and again every <every> frames), the next written binding of each exposure-meter block (0x1040) the ring learned goes to guest memory directly, as a binding of a pool with no mirror does after a zone change: the freeze of 2026-11-23 on demand (with HL_RB_LAG_KEEP=0) and the ring's take-over (without)
+bool rbring_test_direct(uint64_t guest, uint64_t size) {
+    static const int64_t from = getenv("HL_RB_TEST_DIRECT") ? atoll(getenv("HL_RB_TEST_DIRECT")) : 0;
+    static const int64_t every = [] {
+        const char* e = getenv("HL_RB_TEST_DIRECT");
+        const char* c = e ? strchr(e, ':') : nullptr;
+        return c ? atoll(c + 1) : 0ll;
+    }();
+    if (from <= 0 || size != 0x1040 || !config().lag || !memory_is_meter(guest)) return false;
+    const int64_t f = rb_frame_now();
+    if (f < from) return false;
+    const int64_t round = every > 0 ? (f - from) / every : 0;   // (each block once a round)
+    std::lock_guard lk(mu);
+    const auto it = table.find({guest, size});
+    if (it == table.end()) return false;
+    static std::map<uint64_t, int64_t> done;   // (block -> the round it was sent direct in)
+    const auto d = done.find(guest);
+    if (d != done.end() && d->second >= round) return false;
+    done[guest] = round;
+    logf("vk: HL_RB_TEST_DIRECT: frame %lld, the binding of meter block %#llx sent to guest memory directly (writes %llu, staged %llu)",
+         (long long)f, (unsigned long long)guest, (unsigned long long)it->second.writes, (unsigned long long)it->second.staged);
+    return true;
+}
+
+/// (EXPO1, HL_METER_LOG) the ring's state of a range, for a log row: how it is served, its counters, the last staged binding, and its
+/// entries newest first (seq, tag, done or not, the first four words; "gone" when the ring went round over it)
+void rbring_describe(uint64_t guest, uint64_t size, char* out, size_t cap) {
+    if (!cap) return;
+    out[0] = 0;
+    if (!config().lag) {
+        snprintf(out, cap, "ring off");
+        return;
+    }
+    std::lock_guard lk(mu);
+    const auto it = table.find({guest, size});
+    if (it == table.end()) {
+        snprintf(out, cap, "not learned (table %zu)", table.size());
+        return;
+    }
+    const Addr& a = it->second;
+    size_t n = (size_t)snprintf(out, cap, "served %d stageable %d tainted %d writes %llu first %llu staged %llu reads %llu settle %lld applied %llu, "
+                                "last bind %#llx+%#llx (%u staged in its last frame) table %zu:", served(a), a.stageable, a.tainted,
+                                (unsigned long long)a.writes, (unsigned long long)a.first_stage, (unsigned long long)a.staged,
+                                (unsigned long long)a.reads, (long long)a.settle, (unsigned long long)a.applied, (unsigned long long)(uintptr_t)a.last_buffer,
+                                (unsigned long long)a.last_offset, a.last_frame_stages, table.size());
+    unsigned order[rb_ring::kMaxEntries];
+    for (unsigned i = 0; i < a.n; i++) order[i] = i;
+    std::sort(order, order + a.n, [&](unsigned x, unsigned y) { return a.ents[x].seq > a.ents[y].seq; });
+    const uint64_t done = vk_timeline_completed();
+    for (unsigned k = 0; k < a.n && n < cap; k++) {
+        const rb_ring::Entry& e = a.ents[order[k]];
+        uint32_t w[4] = {};
+        const bool ok = ring_map && rb_ring::intact(e, arena_total, 16);
+        if (ok) std::memcpy(w, ring_map + e.at, 16);
+        n += (size_t)snprintf(out + n, cap - n, ok ? " #%llu t%lld%s %08x %08x %08x %08x" : " #%llu t%lld%s gone", (unsigned long long)e.seq,
+                              (long long)e.tag, e.value > done ? " (not done)" : "", w[0], w[1], w[2], w[3]);
+    }
 }
 
 }   // namespace mkwvk

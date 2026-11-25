@@ -131,6 +131,7 @@ const Host host_fns{host_gpu_ptr, host_collect_written, host_free_pages, host_ma
 const Host* host = &host_fns;
 // (stand-ins for the rest of vk_memory.cpp the two functions use)
 uint32_t gen_now = 1;
+uint32_t gen_cpu_last = 0;   // (DECOUPLE: the collection notes its generation, end_submission_impl)
 uint64_t pages_collected = 0;
 uint32_t stamped[kTestPages];
 void stamp_page(uint64_t p, uint32_t g) {

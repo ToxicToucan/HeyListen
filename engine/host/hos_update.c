@@ -130,6 +130,8 @@ static void options_set_off(const wchar_t *dir) {
 void hos_update_check(void) {
     /* (the launcher and the builder look for updates themselves and start the game with HOOKSHOT_NO_UPDATE_CHECK=1) */
     if (getenv("HOOKSHOT_NO_UPDATE_CHECK") && strcmp(getenv("HOOKSHOT_NO_UPDATE_CHECK"), "0")) return;
+    /* (RecompLauncher sets RECOMPLAUNCHER=1 for what its Play starts, and offers a newer release itself: no second question) */
+    if (getenv("RECOMPLAUNCHER") && strcmp(getenv("RECOMPLAUNCHER"), "0")) return;
     wchar_t dir[MAX_PATH], file[MAX_PATH + 64];
     DWORD n = hos_game_path_w(dir, MAX_PATH);
     if (!n || n >= MAX_PATH) return;
@@ -345,6 +347,9 @@ static void options_set_off(const char *dir) {
 void hos_update_check(void) {
     /* (the launcher and the builder look for updates themselves and start the game with HOOKSHOT_NO_UPDATE_CHECK=1) */
     const char *off = getenv("HOOKSHOT_NO_UPDATE_CHECK");
+    if (off && strcmp(off, "0")) return;
+    /* (RecompLauncher sets RECOMPLAUNCHER=1 for what its Play starts, and offers a newer release itself: no second question) */
+    off = getenv("RECOMPLAUNCHER");
     if (off && strcmp(off, "0")) return;
     char path[MAX_PATH + 64], have[128], builder[MAX_PATH * 2], skipped[128] = "", tag[128];
     DWORD n = hos_game_path_a(path, MAX_PATH);

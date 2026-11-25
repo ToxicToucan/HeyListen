@@ -50,7 +50,7 @@ def main():
     gs = function(rp, "void gpu_time_segment_submitted(const Recording& r) {")
     need("if (!ts_pool || !ts_pending[r.slot]) return;" in gs and "ts_seq_submitted++;" in gs and "std::lock_guard lk(ts_mu);" in gs,
          "gpu_time_segment_submitted: counts only a timed segment, under ts_mu")
-    sr = function(rp, "void submit_recording(Recording& r, bool signal_value = true, uint64_t signal_at = 0) {")
+    sr = function(rp, "void submit_recording(Recording& r, bool signal_value = true, uint64_t signal_at = 0, SubmitPrep* defer = nullptr) {") + function(rp, "void submit_send(SubmitPrep& P) {")
     need("ts_seq_submitted++;" in sr, "submit_recording no longer counts its submissions")
 
     e = function(rp, "const uint8_t* replay_handle_early(")

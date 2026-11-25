@@ -94,10 +94,70 @@ class NgxRuntimeTests(unittest.TestCase):
         self.assertFalse((self.out / "ngx").exists())
 
 
+class FinishNgxTests(unittest.TestCase):
+    """The game folder says what its renderer was built with, and a build without DLSS leaves none of NVIDIA's runtime behind
+    (issue 130: a folder built without DLSS, then ticked, kept a runtime and a menu with no DLSS)"""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="hookshot-finish-ngx-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.sdk = self.root / "sdk"
+        self.out = self.root / "game"
+        (self.out / "ngx").mkdir(parents=True)
+        self.ngx = make_game.ngx_script()
+        self.platform = make_game.ngx_platform()
+
+    def sdk_files(self):
+        for path in (self.ngx.library(str(self.sdk), self.platform), self.ngx.runtime(str(self.sdk), self.platform)):
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"x")
+
+    def finish(self, sdk=True):
+        env = {"HOOKSHOT_NGX_SDK": str(self.sdk) if sdk else ""}
+        with mock.patch.dict(os.environ, env), mock.patch("sys.stdout", io.StringIO()) as out:
+            return make_game.finish_ngx(str(self.out)), out.getvalue()
+
+    def test_a_build_with_the_sdk_places_the_runtime_and_the_mark(self):
+        self.sdk_files()
+        built, _ = self.finish()
+        self.assertTrue(built)
+        self.assertTrue((self.out / make_game.NGX_MARK).is_file())
+        self.assertTrue((self.out / "ngx" / self.ngx.runtime_name(self.platform)).is_file())
+
+    def test_a_build_without_it_takes_the_mark_and_the_runtime_away(self):
+        (self.out / make_game.NGX_MARK).write_bytes(b"")
+        for kind in self.ngx.RUNTIMES:
+            (self.out / "ngx" / self.ngx.runtime_name(self.platform, kind)).write_bytes(b"x")
+        (self.out / "ngx" / "ngx.log").write_text("NGX's own")
+        built, said = self.finish(sdk=False)
+        self.assertFalse(built)
+        self.assertFalse((self.out / make_game.NGX_MARK).exists())
+        self.assertEqual(sorted(p.name for p in (self.out / "ngx").iterdir()), ["ngx.log"])
+        self.assertIn("not in this build", said)
+
+    def test_a_sdk_folder_without_the_library_is_not_a_build_with_dlss(self):
+        Path(self.ngx.runtime(str(self.sdk), self.platform)).parent.mkdir(parents=True)
+        Path(self.ngx.runtime(str(self.sdk), self.platform)).write_bytes(b"x")   # (the runtime alone)
+        built, _ = self.finish()
+        self.assertFalse(built)
+        self.assertFalse((self.out / make_game.NGX_MARK).exists())
+
+
 class FetchGateTests(unittest.TestCase):
-    def fetch(self, accept, sdk="sdk"):
+    def fetch(self, accept, sdk="sdk", makes_library=True):
         calls = []
-        ngx = SimpleNamespace(NOTICE="notice", fetch=lambda *a, **k: calls.append(a))
+        library = os.path.join(tempfile.gettempdir(), "hookshot-fetch-gate-%d.lib" % os.getpid())
+
+        def fetched(*a, **k):
+            calls.append(a)
+            if makes_library:
+                open(library, "wb").close()
+
+        if os.path.exists(library):
+            os.remove(library)
+        self.addCleanup(lambda: os.path.exists(library) and os.remove(library))
+        ngx = SimpleNamespace(NOTICE="notice", fetch=fetched, library=lambda *a: library)
         with mock.patch.object(make_game, "ngx_script", return_value=ngx), mock.patch.dict(os.environ, {"HOOKSHOT_NGX_SDK": sdk}), \
                 mock.patch("sys.stdout", io.StringIO()) as out:
             try:
@@ -121,6 +181,15 @@ class FetchGateTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(calls, [("sdk", make_game.ngx_platform())])
         self.assertTrue(out.startswith("notice"))
+
+    def test_a_fetch_that_leaves_no_library_stops_the_build(self):
+        """The box was ticked, the SDK folder cannot build DLSS (no library): the build says so and stops. It used to go on and
+        come out without DLSS, saying nothing the player could see (issue 130)"""
+        calls, code, out = self.fetch(True, makes_library=False)
+        self.assertEqual(code, 1)
+        self.assertIn("@@error", out)
+        self.assertIn("NVIDIA DLSS", out)
+        self.assertIn("untick", out)
 
     def test_flags_are_off_by_default(self):
         with mock.patch("sys.argv", ["make_game.py", "--out", "x", "--nup", "y"]):

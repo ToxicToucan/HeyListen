@@ -614,6 +614,24 @@ static void load_hookshot_env(void) {
     fclose(f);
 }
 
+uint64_t hos_reserved_cpus(void);   /* hos_thread.c */
+/* (DECOUPLE3, docs/research/decouple-cross-frame.md 4.9) The order thread (RX_VK_ORDER_THREAD: the replay's submits and presents on
+   one ordered thread, the game's threads go on after the capture; PC 3050 +9.6% Kokiri, +9% Hyrule, +5% Market, matrix82) on where
+   the host keeps a core for the replay (hos_reserved_cpus: 8 or more logical processors, 4 or more of the fastest kind), the core
+   it is pinned to: it takes ~75% of one (hT2). Elsewhere it would take that share from the game's threads: off.
+   RX_VK_ORDER_THREAD=0 in hookshot_env.txt or the environment: off, =1: on anywhere. After hookshot_env.txt (its
+   HOS_RESERVE_CORE=0 counts, and hos_reserved_cpus keeps its first answer); the host's readers of the switch (nvn_native.c) and
+   the renderer's read the same variable later, so they agree */
+static void order_thread_default(void) {
+    if (getenv("RX_VK_ORDER_THREAD") || !hos_reserved_cpus()) return;
+#ifdef _WIN32
+    _putenv("RX_VK_ORDER_THREAD=1");
+#else
+    setenv("RX_VK_ORDER_THREAD", "1", 0);
+#endif
+    env_note("env: RX_VK_ORDER_THREAD=1: a core is kept for the replay, the order thread is on (RX_VK_ORDER_THREAD=0: off)");
+}
+
 #ifdef __linux__
 #include "hos_submit_thread.h"
 /* (Linux) Mesa's submit thread (hos_submit_thread.h): decided in main() after load_hookshot_env (the switch may come from
@@ -2149,6 +2167,7 @@ static int game_main(int argc, char **argv) {
     }
     if (!narrow_paths_ok(argc, argv)) return 1;
     load_hookshot_env();
+    order_thread_default();
     nv_cache_env();
 #endif
 #if defined(_WIN32) || defined(__linux__)
@@ -2474,6 +2493,7 @@ int main(int argc, char **argv) {
     int hos_display_init(void);
     void hos_display_loop(void);
     load_hookshot_env();
+    order_thread_default();
     nv_cache_env();
 #ifdef __linux__
     /* (after hookshot_env.txt, which may set RX_VK_RADV_SUBMIT_THREAD, and before hos_display_init's SDL_Init, the first

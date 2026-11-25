@@ -252,6 +252,9 @@ BOOL GetProcessAffinityMask(HANDLE p, DWORD_PTR *proc, DWORD_PTR *sys);
 HRESULT SetThreadDescription(HANDLE t, PCWSTR name);
 HRESULT GetThreadDescription(HANDLE t, PWSTR *name);
 BOOL GetThreadTimes(HANDLE t, FILETIME *create, FILETIME *exit, FILETIME *kernel, FILETIME *user);
+/* (Linux) the thread's CPU time in nanoseconds, its CLOCK of pthread_getcpuclockid: Windows counts CPU cycles, and the callers
+   use differences (hos_jobtrace.c's stall watch) */
+BOOL QueryThreadCycleTime(HANDLE t, ULONG64 *cycles);
 DWORD SuspendThread(HANDLE t);
 DWORD ResumeThread(HANDLE t);
 BOOL GetExitCodeThread(HANDLE t, DWORD *code);

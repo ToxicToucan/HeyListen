@@ -275,6 +275,89 @@ void MeshFallbackEpilogue(EmitContext& ctx) {
     });
 }
 
+/// (LAPTOP1, RX_VK_FALLBACK_INDEXED) The indexed form of MeshFallbackEpilogue: a record a vertex (all max_vertices of the
+/// workgroup's, the stage buffer holds no vertex count) and three indices a primitive, each the vertex's record number. Thread 0
+/// takes both from their allocators and hands the indices' first in mesh_primitive_count and the vertices' first in the map's
+/// word 0 (the map's indices start at byte 4; bytes 0-2 are never written: the count's word is EmitIsbeWriteMapU32's)
+void MeshFallbackEpilogueIndexed(EmitContext& ctx) {
+    const MeshInfo& mesh{ctx.mesh_info};
+    const u32 corners{mesh.Corners()};
+    const u32 words{FallbackRecordWords(mesh)};
+    const u32 vertex_fit{(MESH_FALLBACK_RECORD_WORDS - MESH_FALLBACK_INDEX_WORDS) / words};
+    const u32 index_fit{MESH_FALLBACK_INDEX_WORDS - 8};
+    const Id none{ctx.Const(0xFFFFFFFFU)};
+    Barrier(ctx);
+    const Id slot{FallbackSlot(ctx)};
+    const Id in_range{ctx.OpULessThan(ctx.U1, slot, ctx.Const(MESH_FALLBACK_CAPACITY))};
+    Id count{ctx.OpUMin(ctx.U32[1], ctx.OpLoad(ctx.U32[1], ctx.mesh_primitive_count),
+                        ctx.Const(mesh.max_primitives))};
+    count = ctx.OpSelect(ctx.U32[1], in_range, count, ctx.u32_zero_value);
+    const Id indices{ctx.OpIMul(ctx.U32[1], count, ctx.Const(corners))};
+    const Id vertices{ctx.Const(mesh.max_vertices)};
+    const Id handoff{SharedWord(ctx, ctx.mesh_map, ctx.u32_zero_value)};
+    const auto atomic_add = [&](u32 word, Id value) {
+        return ctx.OpAtomicIAdd(ctx.U32[1], BufferWord(ctx, ctx.mesh_fallback_records_member_index, ctx.Const(word)),
+                                ctx.Const(static_cast<u32>(spv::Scope::Device)), ctx.u32_zero_value, value);
+    };
+    Barrier(ctx);
+    If(ctx, ctx.OpIEqual(ctx.U1, LocalInvocation(ctx), ctx.u32_zero_value), [&] {
+        ctx.OpStore(ctx.mesh_primitive_count, none);
+        ctx.OpStore(handoff, none);
+        If(ctx, ctx.OpINotEqual(ctx.U1, indices, ctx.u32_zero_value), [&] {
+            const Id vbase{atomic_add(MESH_FALLBACK_ALLOC_WORD, vertices)};
+            const Id vfits{ctx.OpLogicalAnd(ctx.U1, ctx.OpULessThanEqual(ctx.U1, vbase, ctx.Const(vertex_fit)),
+                                            ctx.OpULessThanEqual(ctx.U1, vertices,
+                                                                 ctx.OpISub(ctx.U32[1], ctx.Const(vertex_fit), vbase)))};
+            If(ctx, vfits, [&] {
+                const Id ibase{atomic_add(MESH_FALLBACK_INDEX_ALLOC_WORD, indices)};
+                const Id ifits{ctx.OpLogicalAnd(ctx.U1, ctx.OpULessThanEqual(ctx.U1, ibase, ctx.Const(index_fit)),
+                                                ctx.OpULessThanEqual(ctx.U1, indices,
+                                                                     ctx.OpISub(ctx.U32[1], ctx.Const(index_fit), ibase)))};
+                If(ctx, ifits, [&] {
+                    atomic_add(MESH_FALLBACK_INDEXED_DRAW_WORD, indices);
+                    ctx.OpStore(ctx.mesh_primitive_count, ibase);
+                    ctx.OpStore(handoff, vbase);
+                });
+            });
+        });
+    });
+    Barrier(ctx);
+    const Id ibase{ctx.OpLoad(ctx.U32[1], ctx.mesh_primitive_count)};
+    const Id vbase{ctx.OpLoad(ctx.U32[1], handoff)};
+    If(ctx, ctx.OpINotEqual(ctx.U1, ibase, none), [&] {
+        const Id invocation{LocalInvocation(ctx)};
+        Strided(ctx, mesh.max_vertices, ctx.mesh_threads, invocation, [&](Id vertex) {
+            const Id record{ctx.OpIAdd(ctx.U32[1], vbase, vertex)};
+            const Id word{ctx.OpIAdd(ctx.U32[1], ctx.Const(MESH_FALLBACK_HEADER_WORDS),
+                                     ctx.OpIMul(ctx.U32[1], record, ctx.Const(words)))};
+            StoreWord(ctx, BufferWord(ctx, ctx.mesh_fallback_records_member_index, word), ctx.Const(1U));
+            for (u32 line = 0; line < mesh.vertex_lines.size(); ++line) {
+                const Id value{LineWord(ctx, ctx.mesh_attributes, vertex, 0,
+                                        static_cast<u32>(mesh.vertex_lines.size()), line)};
+                StoreWord(ctx, BufferWord(ctx, ctx.mesh_fallback_records_member_index,
+                                          ctx.OpIAdd(ctx.U32[1], word, ctx.Const(1U + line))),
+                          value);
+            }
+        });
+        Strided(ctx, mesh.max_primitives, ctx.mesh_threads, invocation, [&](Id primitive) {
+            If(ctx, ctx.OpULessThan(ctx.U1, primitive, count), [&] {
+                for (u32 corner = 0; corner < corners; ++corner) {
+                    const Id at{ctx.OpIAdd(ctx.U32[1], ctx.OpIMul(ctx.U32[1], primitive, ctx.Const(corners)),
+                                           ctx.Const(corner))};
+                    // (an index byte the program left unwritten is held to the vertex count, as the other form)
+                    const Id vertex{Clamped(
+                        ctx, ctx.OpLoad(ctx.U32[1], SharedWord(ctx, ctx.mesh_map, ctx.OpIAdd(ctx.U32[1], at, ctx.Const(4U)))),
+                        mesh.max_vertices)};
+                    const Id word{ctx.OpIAdd(ctx.U32[1], ctx.Const(MESH_FALLBACK_INDEX_FIRST_WORD),
+                                             ctx.OpIAdd(ctx.U32[1], ibase, at))};
+                    StoreWord(ctx, BufferWord(ctx, ctx.mesh_fallback_records_member_index, word),
+                              ctx.OpIAdd(ctx.U32[1], vbase, vertex));
+                }
+            });
+        });
+    });
+}
+
 void StorePosition(EmitContext& ctx, u32 element, Id value) {
     ctx.OpStore(ctx.OpAccessChain(ctx.output_f32, ctx.output_position, ctx.Const(element)), value);
 }
@@ -358,7 +441,8 @@ void TaskEpilogue(EmitContext& ctx) {
 void MeshEpilogue(EmitContext& ctx) {
     const MeshInfo& mesh{ctx.mesh_info};
     if (ctx.mesh_fallback) {
-        MeshFallbackEpilogue(ctx);
+        if (ctx.runtime_info.mesh_fallback_indexed) MeshFallbackEpilogueIndexed(ctx);
+        else MeshFallbackEpilogue(ctx);
         return;
     }
     Barrier(ctx);

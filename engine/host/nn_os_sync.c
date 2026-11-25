@@ -8,6 +8,7 @@
    initializers) is created on first use. Mutexes are always recursive: relocking a non-recursive nn::os mutex
    would be a game bug on hardware anyway. */
 #include "hos.h"
+#include "hos_slack.h"
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
@@ -942,7 +943,9 @@ static int event_wait(Obj *e, int64_t timeout_ns, int try_only) {
         if (try_only) return 0;
         const int64_t now = timeout_ns > 0 ? hos_now_ns() : 0;
         const int64_t until = timeout_ns > INT64_MAX - now ? INT64_MAX : now + timeout_ns;
-        HOS_JT(JT_EV_WAIT_B, e->key, hos_jt_lr());
+        const uint64_t slack_lr = hos_jt_lr();   /* (PIPE2 stage 0: hos_slack.c) */
+        const int64_t slack_t0 = now ? now : hos_now_ns();
+        HOS_JT(JT_EV_WAIT_B, e->key, slack_lr);
         spin_until_set(e, &e->signaled);
         int got = event_peek(e), slept = 0;
         int64_t signaled_at = 0;
@@ -964,10 +967,12 @@ static int event_wait(Obj *e, int64_t timeout_ns, int try_only) {
         }
         if (got && wake_lat_on()) wake_lat_note(slept ? 2 : 1, slept ? hos_now_ns() - signaled_at : 0);
         HOS_JT(JT_EV_WAIT_E, e->key, (slept ? 2 : got ? 1 : 0) | (got ? 0 : 4));
+        hos_slack_wait(HOS_SLACK_EVENT, slack_lr, hos_now_ns() - slack_t0);
         return got;
     }
     int64_t deadline = timeout_ns > 0 ? hos_now_ns() + timeout_ns : 0;
     const int was_set = e->signaled > 0;
+    const int64_t slack_t0 = try_only || was_set ? 0 : hos_now_ns();   /* (PIPE2 stage 0: hos_slack.c) */
     if (!try_only) HOS_JT(JT_EV_WAIT_B, e->key, hos_jt_lr());
     if (!try_only) spin_until_set(e, &e->signaled);
     int slept = 0;
@@ -984,6 +989,7 @@ static int event_wait(Obj *e, int64_t timeout_ns, int try_only) {
     if (got && e->autoclear) e->signaled = 0;
     ReleaseSRWLockExclusive(&e->lk);
     if (!try_only) HOS_JT(JT_EV_WAIT_E, e->key, (slept ? 2 : spun ? 1 : 0) | (got ? 0 : 4));
+    if (slack_t0) hos_slack_wait(HOS_SLACK_EVENT, hos_jt_lr(), hos_now_ns() - slack_t0);
     return got;
 }
 
@@ -1273,6 +1279,7 @@ static int queue_get(Obj *q, uint64_t *out, int take, int64_t timeout_ns) {
     int64_t deadline = timeout_ns > 0 ? hos_now_ns() + timeout_ns : 0;
     const int was_set = q->qlen > 0;
     const int jt = timeout_ns != 0 && take;
+    const int64_t slack_t0 = jt && !was_set ? hos_now_ns() : 0;   /* (PIPE2 stage 0: hos_slack.c) */
     if (jt) HOS_JT(JT_Q_WAIT_B, q->key, hos_jt_lr());
     if (timeout_ns != 0) spin_until_set(q, &q->qlen);
     int slept = 0;
@@ -1289,6 +1296,7 @@ static int queue_get(Obj *q, uint64_t *out, int take, int64_t timeout_ns) {
     }
     if (timeout_ns != 0 && wake_lat_on()) wake_lat_note(slept ? 2 : spun ? 1 : 0, slept ? hos_now_ns() - q->sig_ns : 0);
     if (jt) HOS_JT(JT_Q_WAIT_E, q->key, slept ? 2 : spun ? 1 : 0);
+    if (slack_t0) hos_slack_wait(HOS_SLACK_QUEUE, hos_jt_lr(), hos_now_ns() - slack_t0);
     *out = q->q[q->qhead];
     if (take) {
         q->qhead = (q->qhead + 1) % q->qcap;

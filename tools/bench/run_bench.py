@@ -600,6 +600,10 @@ def run(args: argparse.Namespace) -> dict:
                     # (sound off for measured runs; BENCH_AUDIO=1 keeps it, for a window someone plays by hand)
                     "HOS_AUDIO": "1" if os.environ.get("BENCH_AUDIO") == "1" else "0",
                     "HOS_WINDOW_NOACTIVATE": "1", "HOS_INPUT_SCRIPT": script})
+        if os.environ.get("BENCH_AUDIO") != "1":
+            # (a measured run is ended by the bench or an agent's kill: no "closed unexpectedly" window on the desktop
+            # for it; a window played by hand keeps the crash window)
+            env.setdefault("HOS_CRASH_WATCH", "0")
         if mode == "skip":
             env.update({"HL_SKIP_TITLE": "1", "HOS_INPUT_FROM_PLAY": "1"})
     else:

@@ -49,7 +49,7 @@ def main():
 #include <vector>
 enum VkPrimitiveTopology { VK_PRIMITIVE_TOPOLOGY_POINT_LIST = 0, VK_PRIMITIVE_TOPOLOGY_LINE_LIST = 1, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST = 3 };
 struct Program {   // (the fields of vk_shader.h's Program that a record's head holds)
-    bool compute = false, mesh = false, fallback = false, fallback_task = false;
+    bool compute = false, mesh = false, fallback = false, fallback_task = false, fallback_indexed = false;
     std::array<uint32_t, 3> workgroup{1, 1, 1};
     uint32_t shared_memory = 0;
     VkPrimitiveTopology fallback_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -75,6 +75,7 @@ void check(const char* name, const Program& p, uint64_t stages) {
     WANT(r.get<uint64_t>() == stages);
     WANT(!r.bad && r.p == r.end);
     WANT(q.compute == p.compute && q.mesh == p.mesh && q.fallback == p.fallback && q.fallback_task == p.fallback_task);
+    WANT(q.fallback_indexed == p.fallback_indexed);
     WANT(q.workgroup == p.workgroup && q.shared_memory == p.shared_memory);
     WANT(q.fallback_topology == p.fallback_topology && q.fallback_vertices_per_workgroup == p.fallback_vertices_per_workgroup);
     WANT(q.fallback_record_words == p.fallback_record_words && q.fallback_payload_words == p.fallback_payload_words);
@@ -95,6 +96,8 @@ int main() {
     fb.fallback_topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
     fb.fallback_vertices_per_workgroup = 384, fb.fallback_record_words = 9, fb.fallback_payload_words = 4, fb.fallback_task_threads = 8;
     check("mesh fallback", fb, 4);
+    fb.fallback_indexed = true;   // (LAPTOP1: the indexed form's bit)
+    check("mesh fallback, indexed", fb, 4);
     if (fails) return 1;
     std::puts("ok");
 }

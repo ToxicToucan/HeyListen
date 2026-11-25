@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Sacrappy
 
 """RX_VK_WAIT_OWN (gpu/vk/wait_own.h, v0.4.4): how far behind the GPU the replay lets the game run at each present on an AMD
-integrated GPU. Compiled with a small program: the mode by the switch, RX_VK_WAIT_GPU and the GPU's kind (3, the frame before's work and the frame's own after a texture upload, by default on an AMD integrated GPU; 2 the frame before's; 1 the frame's own, v0.4.3's rule; 0 none), and the value each present waits for. And, by the
+integrated GPU. Compiled with a small program: the mode by the switch, RX_VK_WAIT_GPU and the GPU's kind (1, the frame's own work, by default on an AMD integrated GPU; 3 the frame before's and the frame's own after a texture upload; 2 the frame before's; 0 none), and the value each present waits for. And, by the
 text, that the present waits for that value only (and not for its own on mode 2).
 
 python -I -B tests/test_wait_own.py --cxx <compiler>
@@ -21,7 +21,7 @@ static int fails;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL line %d: %s\n", __LINE__, #c); fails++; } } while (0)
 int main() {
     using namespace wait_own;
-    CHECK(mode(nullptr, false, true) == 3);    // (an AMD integrated GPU: the frame before's, its own after an upload)
+    CHECK(mode(nullptr, false, true) == 1);    // (an AMD integrated GPU: its own frame's, the only value with a whole HUD on a 5700U)
     CHECK(mode(nullptr, false, false) == 0);   // (any other GPU: none)
     CHECK(mode(nullptr, true, true) == 0);     // (RX_VK_WAIT_GPU set: the ring is the user's choice)
     CHECK(mode("1", false, false) == 1 && mode("1", true, true) == 1 && mode("0", false, true) == 0);

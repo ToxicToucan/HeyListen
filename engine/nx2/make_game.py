@@ -1293,6 +1293,10 @@ def fetch_ngx_sdk(a):
         ngx.fetch(sdk, ngx_platform(), say=lambda line: print(line, flush=True))
     except (OSError, ValueError) as e:
         fail("NVIDIA's DLSS SDK could not be downloaded (%s). Check the connection and build again, or untick NVIDIA DLSS." % e)
+    # (the box was ticked: a build that came out without DLSS, quietly, was issue 130's "I ticked it and nothing changed")
+    if not ngx_built():
+        fail("NVIDIA DLSS was asked for, but NVIDIA's SDK in %s has no library to build it with (%s). Delete that folder and build "
+             "again, or untick NVIDIA DLSS." % (sdk, ngx.library(sdk, ngx_platform())))
 
 
 def ngx_built():
@@ -1347,7 +1351,11 @@ def place_fsr_runtime(out):
     """(AMD FSR 4, --fetch-fsr-runtime) AMD's runtime into the game folder, where gpu/vk/vk_fsr4.cpp looks. Returns the folder,
     or None when nothing was fetched"""
     ffx = ffx_script()
-    if LINUX or not ffx.complete(ffx_folder()):
+    if LINUX:
+        return None
+    if not ffx.complete(ffx_folder()):   # (said: a game folder without AMD's files shows FSR 4 as not found, and nothing told why)
+        print("AMD FSR 4: AMD's runtime in %s is not complete, so it is not in the game folder: build again with AMD FSR 4 ticked "
+              "(it is downloaded again), or put AMD's DLLs beside the game yourself (the readme)" % ffx_folder(), flush=True)
         return None
     if ffx.others(out):
         ffx.install(ffx_folder(), out, say=lambda line: print(line, flush=True))   # (it says what it left alone)
@@ -1379,6 +1387,43 @@ def place_ngx_runtime(out):
         print("NVIDIA DLSS Frame Generation: %s has no %s yet (scripts/ngx_sdk.py fetches it): until then NGX takes the "
               "driver's own, which may be older" % (sdk, fg), flush=True)
     return dst
+
+
+NGX_MARK = ".hookshot_dlss"   # (in a game folder whose renderer was built with NVIDIA DLSS: the builder reads it, as FSR_MARK)
+
+
+def drop_ngx_runtime(out):
+    """(a build without NVIDIA DLSS) NVIDIA's runtime files an earlier build with DLSS left in the folder's ngx folder go: nothing
+    here uses them, and they are NVIDIA's (never share the folder). NGX's own logs and files in that folder stay"""
+    if not os.path.isfile(os.path.join(ROOT, "scripts", "ngx_sdk.py")):   # (the AppImage: no scripts/, and no DLSS in its renderer)
+        return []
+    ngx = ngx_script()
+    gone = []
+    for kind in ngx.RUNTIMES:
+        path = os.path.join(out, "ngx", ngx.runtime_name(ngx_platform(), kind))
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                gone.append(path)
+            except OSError:
+                pass
+    return gone
+
+
+def finish_ngx(out):
+    """The game folder's NVIDIA DLSS, at the end of a build: with the SDK the renderer was built with, DLSS's runtime in the ngx
+    folder and the mark; without it (the box unticked) neither, so the folder says what its renderer is. The builder compares
+    this with its tick, so a tick changed later rebuilds the folder. Returns whether the build has DLSS"""
+    mark = os.path.join(out, NGX_MARK)
+    if ngx_built() and place_ngx_runtime(out):
+        open(mark, "w").close()
+        return True
+    if os.path.isfile(mark):
+        os.remove(mark)
+    for path in drop_ngx_runtime(out) if os.path.isdir(os.path.join(out, "ngx")) else []:
+        print("NVIDIA DLSS: not in this build: %s removed" % path, flush=True)
+    print("NVIDIA DLSS: not in this build (built without NVIDIA's SDK: the NVIDIA DLSS box was not ticked)", flush=True)
+    return False
 
 
 def parse_args():
@@ -1850,7 +1895,7 @@ def main(a=None):
                     os.remove(os.path.join(out, n))
             except OSError:
                 pass
-    place_ngx_runtime(out)
+    finish_ngx(out)
     if fsr_wanted(a, out) and getattr(a, "fetch_fsr_runtime", False):
         place_fsr_runtime(out)
     # every shader of the game, for its first start to translate (gpu/vk/vk_shader.cpp seed_open). Without it the game still runs, compiling them

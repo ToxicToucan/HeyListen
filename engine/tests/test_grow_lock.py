@@ -69,10 +69,15 @@ def main():
     append = first + " " + other + "\n" + publish
     if append.count("UbGrowGuard ug;") != 1 or not re.search(r"\} else \{\s*par_conds\.push_back", append):
         raise SystemExit("FAIL: the condition's append is not as expected (the guard only when the buffer moves)")
-    read_at = source.find("if (cond_at < par_conds_n.load(std::memory_order_acquire)) {")
+    read_at = source.find("if (cond_at < cl.n.load(std::memory_order_acquire)) {")
     if read_at < 0:
         raise SystemExit("FAIL: a worker does not read the render condition by the published count")
-    read = block(source, "if (cond_at < par_conds_n.load(std::memory_order_acquire)) {", read_at)
+    # (DECOUPLE: the list is the worker's group's, conds_r(); par_conds and par_conds_n name the writer's, conds_w)
+    if "CondList& cl = conds_r();" not in source[read_at - 120:read_at]:
+        raise SystemExit("FAIL: a worker does not read its group's list of render conditions")
+    if "#define par_conds (conds_w->v)" not in source or "#define par_conds_n (conds_w->n)" not in source:
+        raise SystemExit("FAIL: par_conds is not the writer's list")
+    read = block(source, "if (cond_at < cl.n.load(std::memory_order_acquire)) {", read_at)
     read_rest = source[read_at + len(read):]
     if not read_rest.lstrip().startswith("else {"):
         raise SystemExit("FAIL: a worker's read of a condition has no else")
@@ -99,10 +104,16 @@ enum class Mode { Serial, Dry, Worker };
 thread_local Mode rmode = Mode::Serial;
 struct CondRes { uint64_t gate, at; uint8_t on; };
 thread_local uint64_t gate_cur = 0;
-std::vector<CondRes> par_conds;
-std::atomic<size_t> par_conds_n{0};
+struct CondList { std::vector<CondRes> v; std::atomic<size_t> n{0}; };   // (DECOUPLE: the writer's list, as the source's macros name it)
+CondList cond_list0;
+#define par_conds (cond_list0.v)
+#define par_conds_n (cond_list0.n)
+static void conds_rotate() {}
 std::shared_mutex ub_grow_mu;
 std::atomic<bool> ub_growing{false};
+std::atomic<bool> ub_group_pending{false};   // (stream SUB1)
+enum RecShared { kRsCondsReset };
+static void rec_shared_note(RecShared) {}
 thread_local int ub_read_depth = 0;
 @PLAIN@
 @ROOM@
@@ -122,6 +133,7 @@ void append_cond(bool on) {
 bool read_cond(size_t cond_at) {
     State s;
     UbReadGuard ug;
+    CondList& cl = cond_list0;
     @READ@
     return s.render_enabled;
 }

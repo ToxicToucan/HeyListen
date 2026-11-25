@@ -40,7 +40,7 @@ def main():
     if "if (!p) return {};" not in bind:
         raise SystemExit("a miss is remembered")
     stamp = block(source, "uint64_t gpu_bind_stamp(")
-    for needle in ("pools_gen", "mirror_epoch"):
+    for needle in ("pools_gen", "rec_epoch()"):
         if needle not in stamp:
             raise SystemExit(f"a remembered bind ignores {needle}")
     made = block(source, "bool mirror_make(Pool& pool) {")

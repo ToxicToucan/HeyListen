@@ -107,6 +107,14 @@ bool FoldWhenAllImmediatesWithFlags(IR::Inst& inst, Func&& func) {
         inst.GetAssociatedPseudoOperation(IR::Opcode::GetOverflowFromOp)) {
         return false;
     }
+    if (inst.HasAssociatedPseudoOperation()) {
+        static const FoldSelect select{getenv("RX_VK_FOLD_PSEUDO_ONLY"), getenv("RX_VK_FOLD_PSEUDO_SKIP"),
+                                       getenv("RX_VK_FOLD_PSEUDO_RANGE")};
+        if (!select.Allows(g_fold_code_key, g_fold_seen++)) {
+            return false;
+        }
+        ++g_fold_taken;
+    }
     using Indices = std::make_index_sequence<LambdaTraits<decltype(func)>::NUM_ARGS>;
     const IR::Value result{EvalImmediates(inst, func, Indices{})};
     const u32 bits{result.U32()};

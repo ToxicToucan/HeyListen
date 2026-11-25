@@ -45,7 +45,8 @@ static DWORD WINAPI writer(void *p) {
 
 int main(void) {
     snprintf(my_name, sizeof my_name, "main");
-    const HlTraceConfig cfg = {.thread_name = name, .out = out, .ring_events = EVENTS, .live_slots = 1u << 16, .freed_slots = 1u << 14};
+    const HlTraceConfig cfg = {.thread_name = name, .out = out, .ring_events = EVENTS, .live_slots = 1u << 16, .freed_slots = 1u << 14,
+                              .wb_watch = 1};
     CHECK(hl_trace_start(HL_TR_ALL, &cfg), "started");
     HANDLE th[WRITERS];
     for (int t = 0; t < WRITERS; t++) th[t] = CreateThread(NULL, 0, writer, (void *)(uintptr_t)t, 0, NULL);
@@ -92,6 +93,35 @@ int main(void) {
           "the back end's write over it");
     CHECK(has_line("mirror given back by the back end"), "the pool's mirror given back");
     CHECK(has_line("writer3") && has_line("main") && has_line(" free "), "the events with the threads' names");
+
+    /* (CRASH3) the write-back watch (the lazy write above is a target too): a 64-byte write-back target, a heap block allocated over it (its header in front),
+       a write-back into it while it lives, its free; a block elsewhere and one after its free are not told */
+    hl_trace_gpu_record(1, 0x30000, 0x40, 0, 100, 99);
+    hl_trace_alloc(0x40000, 0x40, 7, c1);
+    hl_trace_alloc(0x30040, 0x40, 7, c1);   /* (its header at 0x30030: over the target's end) */
+    hl_trace_free(0x30040, 7, c2);
+    HlTraceWbCounts wn;
+    hl_trace_wb_counts(&wn);
+    CHECK(wn.allocs_over == 1 && wn.frees_under == 1 && wn.into_live == 0, "a block whose header lies over the target: %llu %llu %llu",
+          (unsigned long long)wn.allocs_over, (unsigned long long)wn.frees_under, (unsigned long long)wn.into_live);
+    hl_trace_alloc(0x2fff8, 0x28, 7, c1);
+    CHECK(has_line("TRACE WB: ALLOCATED OVER A WRITE-BACK TARGET: block 0x2fff8 size 0x28") &&
+          has_line("target [0x30000, 0x30040) (write-back) written back 1 times"), "allocated over a target");
+    hl_trace_gpu_record(1, 0x30000, 0x40, 0, 101, 100);
+    CHECK(has_line("TRACE WB: write-back INTO A LIVE HEAP BLOCK: [0x30000, 0x30040) submission 101") &&
+          has_line("block 0x2fff8 size 0x28 heap 0x7"), "a write-back into the live block");
+    hl_trace_free(0x2fff8, 7, c2);
+    CHECK(has_line("TRACE WB: FREED UNDER A WRITE-BACK TARGET: block 0x2fff8 size 0x28"), "freed under a target");
+    hl_trace_gpu_record(1, 0x30000, 0x40, 0, 102, 101);
+    hl_trace_gpu_record(1, 0x50800, 0x1000, 0, 102, 101);   /* (a target over two pages... */
+    hl_trace_alloc(0x51000, 0x100, 7, c1);                  /* ...a block over both: told once) */
+    hl_trace_gpu_record(1, 0x60000, 0x100000, 0, 102, 101);   /* (larger than the watch keeps: no target) */
+    hl_trace_alloc(0x60100, 0x40, 7, c1);
+    hl_trace_wb_counts(&wn);
+    CHECK(wn.into_live == 1 && wn.allocs_over == 3 && wn.frees_under == 2 && wn.targets == 3 && wn.targets_hit == 2,
+          "the counts: %llu into live, %llu over, %llu under, %llu targets, %llu hit", (unsigned long long)wn.into_live,
+          (unsigned long long)wn.allocs_over, (unsigned long long)wn.frees_under, (unsigned long long)wn.targets,
+          (unsigned long long)wn.targets_hit);
 
     /* the rings, through the file: each writer's last EVENTS events whole and in order */
     char path[MAX_PATH];

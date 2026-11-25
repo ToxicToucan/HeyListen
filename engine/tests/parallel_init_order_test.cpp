@@ -189,6 +189,10 @@ template <class F> void spin_before_sleep(F&&) {}
 void full_barrier(VkCommandBuffer cmd, const char* = "") {
     record(cmd, 'F');
 }
+struct MemView {};   // (REC1, SUB1: the submission's view a segment's worker reads; nothing in this model)
+MemView memory_view() { return {}; }
+void memory_recording_thread(uint64_t, const MemView&) {}
+void memory_recording_thread_end() {}
 void memory_table_begin() {}
 bool memory_table_flush() { return false; }
 bool memory_rb_refresh(VkCommandBuffer) { return false; }
@@ -206,6 +210,7 @@ struct Texture {   // (the fields texture.cpp's astc_trace_note reads (TICK-051 
 namespace {   // (the cut leaves vk_texture.cpp's anonymous namespace and opens it again, around upload_to_earliest_*)
 #include "init_upload.inc"
 }  // namespace
+using SegTableRef = std::shared_ptr<SegTable>;   // (vk_texture.h: stream REC1)
 #include "init_hooks.inc"
 
 // ---- create()'s initialization of a new image ----
@@ -257,7 +262,7 @@ void scratch_use(bool resized) {   // (an ASTC/BC3 upload: decoded into the scra
 struct Segment {
     // t: the texture (made if new, uploaded, drawn with), s: the scratch, S: both scratches, -: nothing,
     // x / z: wait for latch x (a worker inside the texture's initialization) / z (segment 0 submitted), d: 100 ms more,
-    // L: the initialization holds the segments' init lock (seg_init_mu) while it records; then latch y lets it go on
+    // L: the initialization holds the segments' init lock (its segment table's lock) while it records; then latch y lets it go on
     std::string script;
     const uint8_t* end = nullptr;   // (kStop: to the command buffer's end, every segment's commands in order)
     uint64_t serial_end = UINT64_MAX;   // (OCC1: the real Segment's field, set by the cut-out init jobs)
@@ -275,8 +280,8 @@ void record_segment(VkCommandBuffer& cmd, const Segment& g) {
         if (a == 'd') std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if (a == 'L') {
 #if HAVE_SEG_INIT
-            if (seg_init_mu.try_lock()) {
-                seg_init_mu.unlock();
+            if (tl_seg_table->mu.try_lock()) {
+                tl_seg_table->mu.unlock();
                 std::printf("  FAIL: the init lock is free while another worker records a new image's initialization\n");
                 failures++;
             }

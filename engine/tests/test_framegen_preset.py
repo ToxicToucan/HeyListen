@@ -68,6 +68,8 @@ bool g_dlss_built = true;
 int framegen_by_now() { return opts.framegen_by; }
 int dlss_fg_most() { return g_most; }
 bool dlss_built() { return g_dlss_built; }
+bool g_fsr4 = false;
+bool fsr4fg_offered() { return g_fsr4; }   /* (AMD FSR 4 FG: AMD's runtime offers it only on a Radeon RX 9000) */
 const char* tx_framegen_by(int) { return ""; }
 const char* hn_framegen_by(int, int) { return ""; }
 void mic_chosen() {}
@@ -164,7 +166,24 @@ int main() {
     set_row(by, 1, -1);
     CHECK(opts.framegen_by == 0);   // (Left skips it too)
     g_dlss_built = true;
-    CHECK(by.hi == 2 && by.lo == 0 && by.preset_exempt && !by.restart);
+    // AMD FSR 4 FG (the fourth choice, 3) is a stop only where AMD's runtime offers it: not offered, the arrows go 0 1 2 round as before
+    opts.framegen_by = 2;
+    set_row(by, 3, 1);
+    CHECK(opts.framegen_by == 0);
+    opts.framegen_by = 0;
+    set_row(by, -1, -1);
+    CHECK(opts.framegen_by == 2);
+    g_fsr4 = true;
+    opts.framegen_by = 2;
+    set_row(by, 3, 1);
+    CHECK(opts.framegen_by == 3);
+    set_row(by, 4, 1);
+    CHECK(opts.framegen_by == 0);
+    set_row(by, -1, -1);
+    CHECK(opts.framegen_by == 3);
+    CHECK(switch_to(0, 3, 8) == 2 && switch_to(0, 3, 1) == 2 && switch_to(3, 0, 2) == 2);   // (2x at the most, no Auto; never raised by a switch back)
+    g_fsr4 = false;
+    CHECK(by.hi == 3 && by.lo == 0 && by.preset_exempt && !by.restart);
     CHECK(std::strstr(quality.help, "Frame generation") != nullptr);
     CHECK(std::strstr(quality.help, "stay yours") != nullptr);
     CHECK(saves > 0);

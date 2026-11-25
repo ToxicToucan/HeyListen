@@ -74,11 +74,19 @@ static bool submitted_known(uint64_t, uint32_t, uint64_t) { return false; }
 static SubmittedPage& submitted_page_for(uint64_t) { static SubmittedPage s; return s; }
 struct CapEntry { uint32_t gen, slot; };
 static CapEntry cap_entry(uint64_t page) { return page == 1 ? CapEntry{1, 0} : CapEntry{0, 0}; }
+// (stream SUB1: the submission's view: a thread outside a segment reads the newest entry; the pending-submission hook is not here)
+static thread_local bool tl_rec_set = false;
+static thread_local uint32_t tl_cap_limit = 0;
+static std::atomic<uint32_t> cap_latest{0};
+static CapEntry cap_entry_view(uint64_t page, bool* old) { *old = false; return cap_entry(page); }
+static bool memory_late_fix_pending() { return false; }
+static void replay_sub_complete_if_pending() {}
 struct CapBuf { void* map; std::vector<uint8_t>* gmask; };
 static std::map<uint32_t, CapBuf> cap_bufs = {{1, {capture, nullptr}}};
 struct PageX { uint8_t full; };
 static PageX* pagex(uint64_t, bool) { return nullptr; }
 static std::atomic<int64_t> st_gran_made_full{0}, st_late_reads{0};
+static std::atomic<int64_t> st_read_late{0};   // (PIPE3: the reads that took guest memory for a page written after its copy)
 static bool late_fix_slot_pending(uint32_t, uint32_t, uint64_t*) { return false; }
 static void vk_timeline_wait_sent(uint64_t) {}
 static void memory_late_fix_apply(uint64_t) {}

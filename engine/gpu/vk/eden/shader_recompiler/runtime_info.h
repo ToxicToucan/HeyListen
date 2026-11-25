@@ -111,6 +111,9 @@ struct RuntimeInfo {
     u32 mesh_fallback_task_threads{};
     /// (hookshot) the fallback's record slots: mesh workgroups past this one write nothing
     u32 mesh_fallback_capacity{};
+    /// (LAPTOP1) the fallback's indexed form (MESH_FALLBACK_INDEX_WORDS): a record a vertex and three indices a primitive. Only
+    /// for triangles with no per-primitive lines (the host decides, vk_shader.cpp, and draws it indexed)
+    bool mesh_fallback_indexed{};
 
     TessPrimitive tess_primitive{};
     TessSpacing tess_spacing{};

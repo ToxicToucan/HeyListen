@@ -323,6 +323,15 @@ static void (*vk_precopy_kick)(void);   /* (TICK-054) the renderer's pre-copy th
 /* (TICK-054) HOS_PRECOPY_KICK=1 (host/nn_os_sync.c): the capture's pre-copy thread starts a round now */
 void rx_precopy_kick(void) { if (vk_precopy_kick) vk_precopy_kick(); }
 static HMODULE vk_module;   /* (the last back end loaded: rx_close_asked) */
+/* (PIPE2, RX_VK_ORDER_THREAD) the back end replays on an order thread: an event poll waits for the jobs handed over before it, as
+   the submitting thread's replay had them done (nvn_native.c nvnEventGetValue); the core given up only when there are some */
+static int (*vk_order_join)(void), (*vk_order_behind)(void);
+void rx_order_join(void) {
+    if (!vk_order_behind || !vk_order_behind()) return;
+    const int away = hos_vcore_away();
+    vk_order_join();
+    if (away) hos_vcore_back();
+}
 
 /* The game registers its first textures and samplers before the window's thread starts the renderer (NVN is up
    first): those calls are kept here and given to the renderer rx_start chose, in order. Without that the Vulkan back
@@ -428,6 +437,8 @@ static const MkwVkRenderer *load_vulkan(const char *dll) {
     vk_pool_flags = (void (*)(uint64_t, uint64_t, uint32_t))(void *)GetProcAddress(m, "mkwvk_pool_flags");   /* (TICK-015; optional) */
     vk_pool_finalized = (void (*)(uint64_t, uint64_t))(void *)GetProcAddress(m, "mkwvk_pool_finalized");   /* (RX_VK_POOL_FINALIZE; optional) */
     vk_precopy_kick = (void (*)(void))(void *)GetProcAddress(m, "mkwvk_precopy_kick");   /* (TICK-054; optional) */
+    vk_order_join = (int (*)(void))(void *)GetProcAddress(m, "mkwvk_order_join");   /* (PIPE2; optional) */
+    vk_order_behind = (int (*)(void))(void *)GetProcAddress(m, "mkwvk_order_behind");
     {   /* (HL_TRACE: the back end's writes into guest memory, for the crash report; host/hl_trace.c) */
         extern volatile uint32_t hl_trace_mask;
         void hl_trace_gpu(uint32_t what, uint64_t guest, uint64_t size, uint64_t pool, uint64_t value, uint64_t done);

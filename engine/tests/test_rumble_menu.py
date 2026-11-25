@@ -90,6 +90,7 @@ namespace fgr = mkwvk::framegen_rows;
 int framegen_by_now() { return 0; }
 int dlss_fg_most() { return 0; }
 bool dlss_built() { return false; }
+bool fsr4fg_offered() { return false; }
 void mic_chosen() {}
 // (set_row steps the Output row through vk_menu.cpp's step_output_choice (#1144): not what this checks)
 int step_output_choice(int id, int dir) { return id + dir; }

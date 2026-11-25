@@ -182,6 +182,12 @@ class RecompLauncherJsonTests(unittest.TestCase):
         self.assertIn("ver_newer(look.tag, have)", play)                 # (a newer release: asked about, never installed here)
         self.assertIn("ini_update_off(ini)", play)                       # (the player's Never ask again, or the Settings row)
         self.assertIn('_wputenv_s(L"HOOKSHOT_NO_UPDATE_CHECK", L"1")', play)   # (asked here: the game does not ask again)
+        # (RecompLauncher sets RECOMPLAUNCHER=1 for the program it starts and offers updates itself: neither the setup's --play nor
+        # the game asks a second time, on either platform)
+        self.assertIn('getenv("RECOMPLAUNCHER")', play)
+        self.assertIn('!(launcher && strcmp(launcher, "0"))', play)
+        offer = (ENGINE / "host" / "hos_update.c").read_text(encoding="utf-8")
+        self.assertEqual(offer.count('getenv("RECOMPLAUNCHER")'), 3)   # (Windows: test and value; Linux: one read)
         self.assertIn("WaitForSingleObject(t, 4500)", play)              # (never held back by the network)
         self.assertLess(play.index("WaitForSingleObject(t, 4500)"), play.index("CreateProcessW"))
         # (no network: no question, the game starts; a folder that is not there or not built: an error and exit 1, no start)

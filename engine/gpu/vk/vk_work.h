@@ -20,9 +20,11 @@ inline std::atomic<uint64_t>& other_work_slot(VkCommandBuffer c) {
     return other_work_by_cmd[((v >> 4) ^ (v >> 10) ^ (v >> 16)) & 63];
 }
 extern std::atomic<uint64_t> xfer_work_by_cmd[64];   // (the same without dispatches: copies, clears, updates, queries)
+extern void hazard_note_xfer(VkCommandBuffer c);   // (GPUPOV, vk_texture.cpp: a copy, clear, fill or update writes memory)
 inline void note_xfer_work(VkCommandBuffer c) {
     const uintptr_t v = (uintptr_t)c;
     xfer_work_by_cmd[((v >> 4) ^ (v >> 10) ^ (v >> 16)) & 63].fetch_add(1, std::memory_order_relaxed);
+    hazard_note_xfer(c);   // (GPUPOV: off unless RX_VK_BARRIER_AUDIT / RX_VK_BARRIER_HAZARD is set: a thread-local flag test)
 }
 // (TICK-057) Every command that does or orders GPU work, and every begin of a command buffer, by the command buffer it went into
 // (a slot of 64 by its handle, as above: two command buffers in one slot count each other's, a barrier kept, never one left out).

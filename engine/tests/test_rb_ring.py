@@ -3,8 +3,10 @@
 A small program checks, with no GPU: the switch parse; the class of a read by its size; the
 bytes staged a class; which entry a read at frame c is answered with at each lag (the newest with tag + lag <= c that was not applied
 yet, none otherwise, an applied one never twice); the table's replacement of its oldest entry; the ring's allocation (wrap, total, an entry
-overwritten once the ring has gone round); the per-read hash. And, by the text, that invalidate() skips the old waits only for a served
-range, that the write-back is left out for a staged binding, and that the staged ranges are copied at the end of the submission.
+overwritten once the ring has gone round); the per-read hash; (EXPO1) a range's standing: a binding is staged only for a range the ring
+can serve (never a tainted one), and a range whose writes went to guest memory is served again only once the GPU is past the submission
+that took it over. And, by the text, that invalidate() skips the old waits only for a served range, that the write-back is left out for a
+staged binding only, and that the staged ranges are copied at the end of the submission.
 
 python -I -B tests/test_rb_ring.py --cxx <compiler>
 """
@@ -57,6 +59,36 @@ int main() {
     CHECK(hash_read(2, 0x1000, d, 4) == hash_read(2, 0x1000, d, 4) && hash_read(2, 0x1000, d, 4) != hash_read(2, 0x1000, d2, 4));
     CHECK(hash_read(2, 0x1000, d, 4) != hash_read(3, 0x1000, d, 4) && hash_read(2, 0x1000, d, 4) != hash_read(2, 0x1040, d, 4));
     CHECK(hash_read(2, 0x1000, nullptr, 0) != hash_read(2, 0x1000, d, 4));
+    {   // (EXPO1) a range's standing: which written bindings are staged, when its reads are served
+        Standing q;   // a range no program writes: served after kQuietReads reads
+        q.reads = kQuietReads - 1;
+        CHECK(!served(q, 0));
+        q.reads = kQuietReads;
+        CHECK(served(q, 0));
+        Standing a;   // the meter's block: read, then written in a mirror every frame
+        a.reads = 3, a.writes = 1;
+        CHECK(stage(a) && a.stageable && a.staged == 1 && a.first_stage == 0 && a.settle == 0 && served(a, 0));
+        a.writes++;
+        CHECK(stage(a) && a.staged == 2 && served(a, 0));
+        a.writes++;   // a binding in guest memory directly (its pool had no mirror): counted, not staged, written back
+        CHECK(!served(a, ~0ull - 1));   // the old path answers: it reads guest memory, where that write-back lands
+        a.writes++;   // the next one in a mirror: staged, but answered only once the GPU is past its submission
+        CHECK(stage(a) && a.staged == 3 && a.writes - a.first_stage == a.staged && a.settle == kUnsettled && !served(a, ~0ull - 1));
+        settle_at(a, 500);
+        CHECK(a.settle == 500 && !served(a, 499) && served(a, 500));
+        settle_at(a, 900);   // (a later submission does not move a settled value)
+        CHECK(a.settle == 500);
+        a.writes++;
+        CHECK(stage(a) && a.settle == 500 && served(a, 500));   // in good standing: no new settle
+        Standing b;   // two writes to guest memory before the first staged one
+        b.writes = 3;
+        CHECK(stage(b) && b.first_stage == 2 && b.staged == 1 && b.settle == kUnsettled && !served(b, ~0ull - 1));
+        settle_at(b, 7);
+        CHECK(served(b, 7));
+        Standing t;   // a written binding over it that is not exactly it: never staged, so its own write-backs go on (the old path reads them)
+        t.writes = 1, t.tainted = true;
+        CHECK(!stage(t) && t.staged == 0 && !t.stageable && !served(t, ~0ull));
+    }
     if (!fails) std::printf("PASS the rules\n");
     return fails;
 }
@@ -80,9 +112,18 @@ def main():
     assert inv.index("if (ring_serve) rbring_apply(gpu, size);") > inv.index("if (size && !expo_skip && !ring_serve) {"), "the answer comes before the wait's place"
     assert "rbring_check(gpu, size)" in inv, "the check is not called"
     mem = (ROOT / "gpu/vk/vk_memory.cpp").read_text(encoding="utf-8")
-    assert "!rbring_stage_bind(guest, size, p->mirror, off))\n            writebacks.push_back" in mem, "a staged binding still queues its write-back"
-    assert "rbring_flush(cmd, mem_rec_value);" in mem and mem.index("rbring_flush(cmd, mem_rec_value);") < mem.index("if (no_writeback) writebacks.clear();"), \
-        "the staged ranges are not copied before the write-backs"
+    assert "!rbring_stage_bind(guest, size, p->mirror, off, lists().rb))\n            lists().writebacks.push_back" in mem, "a staged binding still queues its write-back"
+    assert "rbring_flush(cmd, rec_value_of(), sub.rb);" in mem and mem.index("rbring_flush(cmd, rec_value_of(), sub.rb);") < mem.index("if (no_writeback) writebacks.clear();"), "the staged ranges are not copied before the write-backs"
+    # (EXPO1, docs/research/expo1-stuck-meter.md) a range the ring does not serve keeps its write-backs; one taken over again waits for its settle
+    ring = (ROOT / "gpu/vk/vk_rbring.cpp").read_text(encoding="utf-8")
+    sb = ring[ring.index("bool rbring_stage_bind("):ring.index("void rbring_flush(")]
+    assert "} else if (!rb_ring::stage(it->second)) {" in sb and "st_kept_wb++;\n        return false;" in sb, \
+        "a binding of a range the ring does not serve is staged (its write-back left out)"
+    assert sb.index("rb_ring::stage(it->second)") < sb.index("pend.reqs.push_back"), "the standing is decided after the binding is queued"
+    fl = ring[ring.index("void rbring_flush("):ring.index("bool rbring_quiet(")]
+    assert "rb_ring::settle_at(a, value);" in fl, "a range taken over again never gets its settle value"
+    sv = ring[ring.index("bool rbring_serves("):ring.index("void rbring_apply(")]
+    assert "settle == rb_ring::kUnsettled || settle > vk_timeline_completed()" in sv, "a range taken over again is served before the GPU is past it"
     print("PASS the wiring")
 
 

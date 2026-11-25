@@ -34,7 +34,7 @@ def main():
     rearm = next(line.strip() for line in present.splitlines() if "pending = {true, value, presents" in line)
     read_at = present.index("auto take = [&]")
     read = present[read_at:present.index("// (RX_VK_DUMP_BLACK", read_at)]
-    copy_at, submit_at, consume_at = present.index(copy), present.index("submit_recording(r);"), present.index(consume)
+    copy_at, submit_at, consume_at = present.index(copy), present.index("submit_recording(r, rises);"), present.index(consume)
     assert copy_at < submit_at < read_at < consume_at
     state = "struct PendingShot { bool on=false; uint64_t value=0; int64_t presents=0; std::shared_ptr<std::vector<uint8_t>> pixels{}; };"
     helper = ""
@@ -43,7 +43,7 @@ def main():
         state = block(source, "struct PendingShot {") + ";"
         helper = block(source, "std::shared_ptr<std::vector<uint8_t>> shot_pixels(")
     marker = "if (pending.on && (pending.presents & 1)"
-    actions = [(copy_at, copy), (submit_at, "submit_recording(r);")]
+    actions = [(copy_at, copy), (submit_at, "submit_recording(r);")]   # (the fixture's stub: the signal's flag is timeline_order's)
     if marker in present:
         at = present.index(marker)
         assignment = "pending.pixels = shot_pixels(pending.value, pending.presents);"

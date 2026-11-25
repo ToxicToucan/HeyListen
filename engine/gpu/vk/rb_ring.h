@@ -71,6 +71,46 @@ inline int newest(const Entry* e, unsigned n) {
 /// An entry's place is still its own: the ring has handed out less than kArena bytes since it (and the entry's own bytes)
 inline bool intact(const Entry& e, uint64_t total, uint64_t bytes) { return e.seq && total - e.cum + bytes <= kArena; }
 
+constexpr unsigned kQuietReads = 8;   // reads of a range no program writes before it is answered without a wait (the write-backs of before are long done)
+constexpr uint64_t kUnsettled = ~0ull;
+
+/// A learned range's standing (vk_rbring.cpp keeps one a range): the written bindings of exactly it (writes, counted at each binding),
+/// how many of them were staged, the writes before the staged ones (first_stage: they went to guest memory with their write-back), a
+/// written binding over it that is not exactly it (tainted), the CPU's reads, and settle: a timeline value the GPU must have reached
+/// before the ring answers (0 none; kUnsettled until the end of the submission that staged it gives the value)
+struct Standing {
+    bool stageable = false, tainted = false;
+    uint64_t writes = 0, staged = 0, first_stage = 0, reads = 0, settle = 0;
+};
+/// The ring answers the range's reads (done: the timeline value the GPU has completed): every exact write since first_stage was staged,
+/// nothing else's write-back lands in it, the write-backs of the writes before have landed (settle), and either a staged entry exists or
+/// no program has written it at all (a result slot nothing wrote: nothing to wait for)
+inline bool served(const Standing& a, uint64_t done) {
+    if (a.tainted || a.writes - a.first_stage != a.staged || a.settle > done) return false;
+    return a.stageable || (a.writes == 0 && a.reads >= kQuietReads);
+}
+/// A written binding of exactly the range, in a mirror, counted in `writes` just before: true when it is staged (no write-back is made
+/// for it; the end of the submission copies it into the ring). (EXPO1) A range the ring does not serve keeps its write-backs: its reads
+/// take the old path, which reads guest memory. A tainted range never is staged. Before 2026-11-23 every learned range was staged, served
+/// or not, so a range that one direct write (a binding in guest memory while its pool had no mirror, after a zone change) had moved to
+/// the old path never got its GPU results again: OoT's exposure meter read the game's own zeros for good, the light meter's hold handed
+/// back the last sums for ever, and the exposure froze (docs/research/expo1-stuck-meter.md). Exact writes before this one that were not
+/// staged went to guest memory with their write-back: the ring takes the range over again from this binding, and answers only once the
+/// GPU is past this submission (settle), so none of those write-backs can land after one of its answers
+inline bool stage(Standing& a) {
+    if (a.tainted) return false;
+    const uint64_t before = a.writes ? a.writes - 1 : 0;   // (the exact writes before this one)
+    const bool unstaged_before = a.stageable ? before - a.first_stage != a.staged : before != 0;
+    a.first_stage = before >= a.staged ? before - a.staged : 0;
+    if (unstaged_before) a.settle = kUnsettled;
+    a.staged++, a.stageable = true;
+    return true;
+}
+/// The end of the submission that staged it: a range waiting for its settle value gets this submission's
+inline void settle_at(Standing& a, uint64_t value) {
+    if (a.settle == kUnsettled) a.settle = value;
+}
+
 /// Adds an entry to a full table of n entries (n <= kMaxEntries): the oldest one goes when the table is full
 inline void push(Entry* e, unsigned& n, const Entry& add) {
     if (n < kMaxEntries) {

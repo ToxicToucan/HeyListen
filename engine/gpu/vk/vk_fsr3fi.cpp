@@ -322,6 +322,7 @@ struct State {
     bool first_frame = true;
     uint64_t sequence = 0;               ///< Inputs::sequence of the frame kept as the previous source
     bool native_pq = false;
+    bool hudless = false;                ///< the previous source was a HUD-less colour (Inputs::present)
     float max_luminance = 1.0f;
     bool in_general = false;             ///< the UNDEFINED -> GENERAL barriers have been recorded
 };
@@ -851,8 +852,11 @@ bool generate(VkCommandBuffer cmd, const Inputs& in) {
     }
 
     const float max_luminance = in.native_pq ? in.max_luminance : 1.0f;
+    // (a frame HUD-less after one with the HUD, or the other way: the previous source is not the same kind of colour)
+    const bool hudless = in.present != VK_NULL_HANDLE;
     const bool reset = in.reset || g.first_frame || in.sequence != g.sequence + 1 ||
-                       g.native_pq != in.native_pq || g.max_luminance != max_luminance;
+                       g.native_pq != in.native_pq || g.max_luminance != max_luminance || g.hudless != hudless;
+    g.hudless = hudless;
     g.first_frame = false;
     if (g.native_pq != in.native_pq || g.max_luminance != max_luminance)
         logf("vk: fsr3fi: captured present %s, SDK luminance maximum %.0f; colour history reset",
@@ -875,7 +879,9 @@ bool generate(VkCommandBuffer cmd, const Inputs& in) {
     k.reset = reset ? 1 : 0;
     memcpy(k.device_to_view_depth, in.camera.device_to_view_depth, sizeof k.device_to_view_depth);
     k.delta_time = in.frame_time_ms;
-    k.hudless_attached_factor = 0;   // (one colour, with whatever the game drew on it)
+    // (HUD-less: color is the picture before the HUD and in.present the frame on top of it; else one colour, with whatever the
+    // game drew on it)
+    k.hudless_attached_factor = hudless ? 1 : 0;
     k.distortion_field_size[0] = 1, k.distortion_field_size[1] = 1;
     // GetOpticalFlowSize() in the GLSL reads this back as (1 / scale) / block size, so the scale is
     // the reciprocal of the display size and nothing else; it is also what turns a flow vector in
@@ -1147,9 +1153,11 @@ bool generate(VkCommandBuffer cmd, const Inputs& in) {
                              pyramid(10), pyramid(11), pyramid(12), cb_fi, cb_frame_pyramid};
         record_pass(cmd, P_FI_INPAINTING_PYRAMID, res, 17, frame_groups[0], frame_groups[1]);
     }
-    {   // The present backbuffer and the interpolation source are the same image here: this game has
-        // no separate HUD-less colour, so there is nothing to take the HUD from.
-        const Resource res[]{tex(g.of_scd_output), tex(g.fi_inpainting_pyramid), color, color,
+    {   // The present backbuffer (binding 2) and the interpolation source (3). HUD-less (Inputs::present): the frame with its
+        // HUD, laid over the made frame where it differs from the source. Else the same image: there is nothing to take the HUD
+        // from.
+        const Resource present = hudless ? Resource{in.present} : color;
+        const Resource res[]{tex(g.of_scd_output), tex(g.fi_inpainting_pyramid), present, color,
                              tex(out), cb_fi};
         record_pass(cmd, P_FI_INPAINTING, res, 6, display_x, display_y);
     }

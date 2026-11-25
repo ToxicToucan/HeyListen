@@ -50,6 +50,9 @@ struct Obj {
 std::atomic<int> wakes{}, parked{}, passed{};
 constexpr unsigned INFINITE = UINT_MAX;
 #define HOS_JT(...) ((void)0)
+uint64_t hos_jt_lr() { return 0; }
+enum { HOS_SLACK_QUEUE, HOS_SLACK_EVENT };
+void hos_slack_wait(int, uint64_t, int64_t) {}   // (PIPE2 stage 0, hos_slack.c)
 void AcquireSRWLockExclusive(std::mutex* m) { m->lock(); }
 void ReleaseSRWLockExclusive(std::mutex* m) { m->unlock(); }
 // Model a legal host wake-one choice: core 0's worker wakes first, but cannot

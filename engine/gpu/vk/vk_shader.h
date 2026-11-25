@@ -75,6 +75,7 @@ struct Program {
     uint32_t fallback_record_words = 1;             // (validity, then the vertex and primitive lines)
     uint32_t fallback_payload_words = 0;
     uint32_t fallback_task_threads = 1;             // (mesh workgroups one task workgroup may start)
+    bool fallback_indexed = false;   // (LAPTOP1, RX_VK_FALLBACK_INDEXED: a record a vertex, drawn indexed; MESH_FALLBACK_INDEX_WORDS)
     std::vector<VkPipeline> fallback_compute;       // (per stage: the mesh program's dispatches)
     // What the translator was told about the bound textures (when it asked: most texture instructions carry their
     // type themselves), by stage and texture descriptor: the variant stands while the textures still answer the same

@@ -40,12 +40,17 @@ quick. If the preparation is closed early, or the shader cache (`hookshot_progra
 start prepares again. The builder keeps its build files in `%LOCALAPPDATA%\HeyListenBuilder` so updates only recompile what changed
 (*Free up space* on the last page removes them).
 
+On integrated graphics and on graphics cards with less than 10 GB of video memory, the game also keeps its converted textures in
+the game folder (`hookshot_texcache_a.pack`, `hookshot_texcache_b.pack`, `hookshot_texcache_maps.bin`, 4 GB at most, oldest
+first out; it never fills the last GB of the disk) so that places you come back to load with less work. They are made on your PC
+from your own game: never share them. Deleting them is safe (they are made again); `RX_VK_BC_DISK=0` turns this off, `=1` on.
+
 ## 4. Play
 
 Press **Play**, or use the *HeyListen* shortcut on the desktop or in the Start menu. The game folder's `HeyListen.exe` starts it too
 (the game itself is `bin\HeyListen.exe`, which is what Task Manager shows). **Insert** opens the in-game menu
 (graphics, controls, frame rate, cheats); on a controller, press Home, the touchpad click (DualSense, DualShock 4) or
-Select and Start together. The same press closes it. If none of those suits your pad, bind your own on the Controls page:
+Select and Start together (the touchpad click can be turned off in **Controls → Touchpad opens menu**). The same press closes it. If none of those suits your pad, bind your own on the Controls page:
 the **Open menu** row takes one gamepad button, or two pressed together (L3 + R3, Share + Options). It is not set by default, and
 the ways above keep working. A combination held does not reach the game. When a controller is opened the game's log
 (`hookshot_log.txt`) says what it is and which buttons open the menu. Frame generation is off by default.
@@ -70,7 +75,9 @@ and window settings after):
 3. **DLSS model** (with NVIDIA DLSS).
 4. **Frame generation by**: who makes the made frames: **Built-in / AMD FSR 3.1** (the game's own interpolation, and AMD FSR 3.1's at 2x
    where it runs), **NVIDIA DLSS FG** (RTX 40 and newer, with a temporal upscaler, DLSS or FSR 4, and NVIDIA's runtime files) or
-   **AMD FSR 3.1 FG**. In `hookshot_options.ini` it is `frame_generation_by` (0, 1, 2).
+   **AMD FSR 3.1 FG**, or, on a Radeon RX 9000 only, **AMD FSR 4 FG** (2x; the row offers it only where AMD's own runtime says it runs;
+   not tested on real hardware yet; AMD's `amd_fidelityfx_framegeneration_vk.dll` goes beside the other two AMD files). In
+   `hookshot_options.ini` it is `frame_generation_by` (0, 1, 2, 3).
 5. **Frame generation**, directly under it: Off, Auto and 2x to 8x, but only what the mode above makes. **NVIDIA DLSS FG** goes up to
    what NVIDIA's runtime makes on your GPU (**6x on an RTX 50, 2x on an RTX 40**) and has no Auto. **AMD FSR 3.1 FG** makes 2x only.
    **Built-in** has Auto and 2x to 8x. Changing the mode keeps the multiplier within the new mode's, never raising it (8x becomes 6x
@@ -88,6 +95,15 @@ FPS counter's line **Frame limit** says it, for example `120 fps (game 40 x 3)`.
 holds nothing back: the game runs as fast as the PC can, and every one of its frames gets its made frames (your display, and a
 V-Sync setting of the driver, may still hold the shown rate). Above 60 the limit needs **Game speed** on Real time (the default); with
 Per frame the game runs at 60 as before and the limit does not apply.
+
+### Base frame rate limit
+
+**Base frame rate limit** (under Frame rate limit; off by default; `base_frame_rate_limit` in the options file) holds the game's OWN
+frame rate, before frame generation: Off, or 30, 40, 45, 48, 50, 60, 72, 75, 90, 120. With it on, the game runs at that rate whatever
+the Frame rate limit says, and the frames shown are that rate times the multiplier that runs: base 60 at 2x shows 120, base 48 at 3x
+shows 144. Frame generation gets an even rate to work from, with Auto too (it fills up to your display's refresh from the base). The
+Frame rate limit then holds nothing back, and the FPS counter's **Frame limit** line says `144 fps (game 48 x 3)`. With Frame
+generation Off it does what the Frame rate limit does with the same number. Needs Game speed on Real time.
 
 ### HDR
 
@@ -343,6 +359,10 @@ is out, a window offers:
 - **skip this version**: the game starts, and you are asked again only when a later release is out;
 - **never ask again**: the game starts and stops looking. Turn it back on in the game menu: **Settings**, **Gameplay**,
   **Check for updates**. The choice is `update_check=0` in the game folder's `hookshot_options.ini`.
+
+RecompLauncher offers a newer release itself (its **Update** button, or its automatic updates), and tells what it starts so
+(`RECOMPLAUNCHER=1`): from 0.4.4 neither the setup program nor the game asks you a second time there. Without that (an older
+launcher, or the setup program started by hand):
 
 When RecompLauncher starts the game on Windows, its Play runs `HeyListenBuilder-Setup.exe --play`, which looks for a newer
 release first (the game itself is then told not to ask again) and, when there is one, asks in the same way: play my version, open

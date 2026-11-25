@@ -83,7 +83,7 @@ def main():
     rd = body(mem, "bool memory_read_as_submitted(uint64_t gpu, void* dst, uint64_t n) {")
     need("late_fix_slot_pending(e.gen, e.slot, &lv)" in rd and "vk_timeline_wait_sent(lv);" in rd and
          "memory_late_fix_apply(vk_timeline_completed());" in rd and
-         "if (!segmented && page0 == page1 && !late_read && from == 0) {" in rd, "memory_read_as_submitted: a pending late slot read after its value and fix")
+         "if (!segmented && page0 == page1 && !late_read && from == 0 && !behind) {" in rd, "memory_read_as_submitted: a pending late slot read after its value and fix")
     need("const bool late_pending = late_fix_slot_pending(e.gen, e.slot, nullptr);" in mem and
          "if (!late_pending && d_ok && gb - ga == 4096 && b->second.map) {" in mem, "mirror sync: no hash of a pending late slot")
 
@@ -91,7 +91,7 @@ def main():
     qf = body(rep, "void queue_flush_locked() {")
     need(qf.index("late_fix_flush_locked();") < qf.index("if (pend.cbs.empty()) return;"), "queue_flush_locked: fixes first")
     need("if (res == VK_SUCCESS && pend.any_signal) note_signal_sent(pend.signal);" in qf, "queue_flush_locked: sent signal noted")
-    sr = body(rep, "void submit_recording(Recording& r, bool signal_value = true, uint64_t signal_at = 0) {")
+    sr = body(rep, "void submit_recording(Recording& r, bool signal_value = true, uint64_t signal_at = 0, SubmitPrep* defer = nullptr) {") + body(rep, "void submit_send(SubmitPrep& P) {")
     need("if (batch_on() || late_hold) {" in sr, "submit_recording: held while a fix is pending")
     direct = sr[sr.index("PROF(PROF_QSUBMIT);") - 400:]
     need("queue_flush_locked();" in direct[:direct.index("vkQueueSubmit2")], "submit_recording: held ones flushed before a direct submit")

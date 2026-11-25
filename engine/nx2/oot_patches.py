@@ -18,6 +18,10 @@ Each is a runtime switch where it can be, so the game's own path stays reachable
   before any recompute. So the fixed path kept the dynamic path's last scale (0.75 docked: 1536x864 at every setting). Flag 1 now
   also asks for the recompute, and on the fixed path the flags +0xe20 bits 3/4 (a hardcoded 0.75 / 0.5 in place of the scale)
   are not looked at.
+- Sprint with L3 (host/oot_sprint.c; original change by llun, Longshot #1929 and #2038): two places load Link's input flags, whose
+  bit 4 is the dash input, the game's own run after a roll: his movement update (f_804caa80, at 0x804ce798, for the sprint's start
+  and keep tests) and his stance and camera update (f_80c225d0, at 0x80c27f3c). A call right after each load (hos_sprint_link,
+  hos_sprint_stance) ORs the bit in while the row is on and the left stick is pressed. A and the game's buttons are left alone.
 - The Voice Language option kept after a restart (host/oot_voice.c): the voice resource's update (f_80a9ca30) asks
   GameDataMgr whether the option was written (f_80a9d1c0) and applies it only then; option.sav's value replaces the
   option without a write, so a saved choice was never applied (issue 430). The call goes through hos_oot_voice_option,
@@ -25,8 +29,11 @@ Each is a runtime switch where it can be, so the game's own path stays reachable
 """
 import glob
 import os
+import re
 import sys
-import whole_write   # (rewrites written beside and moved over: issue 1197)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # (python -I leaves the script folder off)
+import whole_write   # noqa: E402  (rewrites written beside and moved over: issue 1197)
 
 DECL = "extern volatile int hos_fixed_resolution;\nextern volatile int hos_dynres_runs;\nextern volatile uint32_t hos_fixed_scale_bits;\n"
 OLD = "if (!((c->x[8] >> 0) & 1)) { goto L_8082640c; }"
@@ -324,6 +331,71 @@ def patch_job_order(source):
     return source, done
 
 
+# (where each patch's text lives, for the message when it is not found: the function, and what to look at)
+WHERE = {"dynamic resolution branch": " (the branch at 0x8082640c, label %s)" % LABEL.rstrip(":;"),
+         "text speed block": " (f_80b1e140's letters block)", "fixed path's scale": " (the fixed path's scale)",
+         "player heart protection": " (the player's life)", "player flight": " (the player's movement)",
+         "player flight rotation": " (the player's flight rotation)", "free camera": " (the free camera)",
+         "mouse camera": " (the mouse camera)", "voice option check": " (the Voice Language option)",
+         "scene format": " (the scene buffer's format, found by name)",
+         "sprint link": " (f_804caa80, Link's movement update, at 0x804ce798)",
+         "sprint stance": " (f_80c225d0, Link's stance and camera update, at 0x80c27f3c)"}
+
+
+# Sprint with L3 (host/oot_sprint.c): the flags' loads. f_804caa80 loads Link's input flags into x10 at 0x804ce798 (Link in x19);
+# f_80c225d0 loads their low byte into x8 at 0x80c27f3c. The sites are matched as patterns, the named group ending at the load
+# whose result the host hook changes. Both functions are named here, so nx2/guest_locals.py keeps them in the c->x form.
+SPRINT_LINK_HEAD = "void f_804caa80(Ctx *__restrict A64_NOESC c) {\n"
+_SPRINT_LOAD = r"c->x\[%d\]\s*=\s*recomp_load%d\(c,\s*c->x\[%d\]\s*\+\s*%d\);\s*"
+SPRINT_LINK_AT = (r"L_804ce790:;\s*" + _SPRINT_LOAD % (10, 64, 19, 80) + _SPRINT_LOAD % (9, 32, 19, 44) +
+                  r"(?P<site>" + _SPRINT_LOAD % (10, 64, 10, 0) + r")")
+SPRINT_LINK_CALL = "    hos_sprint_link(c);   /* (nx2/oot_patches.py: Sprint with L3) */\n"
+SPRINT_STANCE_HEAD = "void f_80c225d0(Ctx *__restrict A64_NOESC c) {\n"
+SPRINT_STANCE_AT = (_SPRINT_LOAD % (8, 64, 19, 80) + r"(?P<site>" + _SPRINT_LOAD % (8, 8, 8, 0) + r")" +
+                    r"if\s*\(\(\(c->x\[8\]\s*>>\s*4\)\s*&\s*1\)\)\s*\{\s*goto\s+L_80c27f54;\s*\}")
+SPRINT_STANCE_CALL = "    hos_sprint_stance(c);   /* (nx2/oot_patches.py: Sprint with L3) */\n"
+SPRINT_DECL = "extern void hos_sprint_link(Ctx *c);\nextern void hos_sprint_stance(Ctx *c);\n"
+
+
+def _sprint_hook(source, head, pattern, call):
+    """The call after the one matching site of the function: (source, 1), or (source, 0) when the function is not here or its
+    code differs (nothing is changed then); a second run changes nothing and says 1"""
+    start = source.find(head)
+    if start < 0:
+        return source, 0
+    end = source.find("\nvoid f_", start + len(head))
+    end = end if end >= 0 else len(source)
+    body = source[start:end]
+    if call in body:
+        return source, 1
+    matches = list(re.finditer(pattern, body))
+    if len(matches) != 1:
+        return source, 0
+    at = matches[0].end("site")
+    source = source[:start] + body[:at] + call + body[at:] + source[end:]
+    if SPRINT_DECL not in source:
+        source = source.replace('#include "a64.h"\n', '#include "a64.h"\n' + SPRINT_DECL, 1)
+    return source, 1
+
+
+def patch_sprint_link(source):
+    """f_804caa80 calls hos_sprint_link right after it loads Link's input flags into x10 (0x804ce798): (source, found)"""
+    return _sprint_hook(source, SPRINT_LINK_HEAD, SPRINT_LINK_AT, SPRINT_LINK_CALL)
+
+
+def patch_sprint_stance(source):
+    """f_80c225d0 calls hos_sprint_stance right after it loads the flags' low byte into x8 (0x80c27f3c): (source, found)"""
+    return _sprint_hook(source, SPRINT_STANCE_HEAD, SPRINT_STANCE_AT, SPRINT_STANCE_CALL)
+
+
+def searched(gen):
+    """The files a patch looked in, for a message: how many, which first and last, and how many of them are parts"""
+    names = sorted(os.path.basename(p) for p in glob.glob(os.path.join(gen, "code_*.c")))
+    parts = sum(1 for n in names if re.fullmatch(r"code_\d{3}_\d+\.c", n))
+    return "%d code_*.c files in %s, %d of them parts, %s .. %s" % (len(names), gen, parts, names[0] if names else "none",
+                                                                  names[-1] if names else "none")
+
+
 def apply(gen, *, protect_hearts=False, required=False):
     """required: the lift of the supported build (LIFE_BUILD_ID), whole: a missing output-size edit stops it (apply_output_size).
     The other patches only warn when their place is not found once."""
@@ -345,6 +417,8 @@ def apply(gen, *, protect_hearts=False, required=False):
         done["mouse camera"] = 0
         done["voice option check"] = 0
         done["scene format"] = 0
+        done["sprint link"] = 0
+        done["sprint stance"] = 0
     for path in sorted(glob.glob(os.path.join(gen, "code_*.c"))):
         with open(path, encoding="utf-8", newline="") as f:
             s = f.read()
@@ -405,11 +479,18 @@ def apply(gen, *, protect_hearts=False, required=False):
             if scene != out:
                 print("oot_patches: the scene buffer's format for native HDR in", os.path.basename(path))
             out = scene
+        if protect_hearts:
+            for what, patch in (("sprint link", patch_sprint_link), ("sprint stance", patch_sprint_stance)):
+                sprint, n = patch(out)
+                done[what] += n
+                if sprint != out:
+                    print("oot_patches: Sprint with L3's %s site in %s" % (what.split()[1], os.path.basename(path)))
+                out = sprint
         if out != s:
             whole_write.write_whole(path, out, newline="")
     for what, n in done.items():
         if n != (2 if what == "job order" else 1):
-            print("oot_patches: WARNING: the %s was found %d times" % (what, n))
+            print("oot_patches: WARNING: the %s was found %d times%s" % (what, n, WHERE.get(what, "")), "(searched %s)" % searched(gen))
     apply_output_size(gen, required=required)
 
 
@@ -473,11 +554,18 @@ OUT_EDITS = [
 ]
 
 
+# (each OUT_EDITS entry's place, in order)
+OUT_NAMES = ["f_810a7b70: the picture's 2560 x 1440", "f_810a7b70's config copy (+724)", "f_80ea2f30: the 3D's largest size",
+             "the 0x44f00000 / 0x44870000 sizes", "L_836cea54 in f_836ce9d0: the render targets' pool",
+             "f_83b7b340: the Graphics heap's size", "f_83b7b340: the module heap's budget", "f_80b72340: the heap made of what is left"]
+
+
 def apply_output_size(gen, required=False):
     """required (the supported build's whole lift): each edit must be made, or found made, exactly once, else SystemExit: without
     one the Insert menu's Output resolution is ignored, or a 4K output runs out of the render targets' pool. Elsewhere (another
     build, part of a lift, by hand) a warning"""
     found = [0] * len(OUT_EDITS)
+    where = [[] for _ in OUT_EDITS]
     for path in sorted(glob.glob(os.path.join(gen, "code_*.c"))):
         with open(path, encoding="utf-8", newline="") as f:
             s = f.read()
@@ -488,6 +576,8 @@ def apply_output_size(gen, required=False):
             made = s.count(new)
             raw = (s.replace(new, "\0") if made else s).count(old)
             found[i] += made + raw
+            if made + raw:
+                where[i].append(os.path.basename(path))
             if raw and not made:
                 s = s.replace(old, new)
                 hit = True
@@ -497,9 +587,15 @@ def apply_output_size(gen, required=False):
             whole_write.write_whole(path, s, newline="")
             print("oot_patches: output size in", os.path.basename(path))
     if found != [1] * len(OUT_EDITS):
+        for i, n in enumerate(found):
+            if n != 1:
+                print("oot_patches: output size edit %d (%s): found %d times, in %s" % (
+                    i, OUT_NAMES[i], n, ", ".join(where[i]) or "no file"))
         if required:
-            raise SystemExit("oot_patches: the output size places were found %s times, not once each (OUT_EDITS %s): the "
-                             "lifted C no longer has the text they match" % (found, [i for i, n in enumerate(found) if n != 1]))
+            raise SystemExit("oot_patches: the output size places were found %s times, not once each (OUT_EDITS %s: %s): the "
+                             "lifted C no longer has the text they match, or a file that held them is missing (searched %s)" % (
+                                 found, [i for i, n in enumerate(found) if n != 1],
+                                 "; ".join(OUT_NAMES[i] for i, n in enumerate(found) if n != 1), searched(gen)))
         print("oot_patches: WARNING: the output size places were found %s times" % found)
 
 
@@ -534,4 +630,7 @@ def touches(text):
 
 
 if __name__ == "__main__":
-    apply(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "work", "sa", "gen"))
+    import genlock
+    gen_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "work", "sa", "gen")
+    with genlock.hold(gen_dir, "oot_patches.py"):
+        apply(gen_dir)

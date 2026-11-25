@@ -5,6 +5,9 @@
 // library (such as fsr4-vk's amd_fidelityfx_upscaler_vk.so) in their place.
 #pragma once
 
+#include <string>
+#include <vector>
+
 namespace mkwvk {
 
 struct TemporalEngine;
@@ -19,6 +22,9 @@ FsrWhy fsr4_why();
 void fsr4_probe();
 /// (linux) a Vulkan FSR 4 library is there and records with descriptor buffers: the device has to enable them
 bool fsr4_wants_descriptor_buffer();
+/// The folders AMD's runtime is looked for in (RX_VK_FSR_DIR, the executable's, the game's), for vk_fsr4fg.cpp, which opens the same
+/// loader; empty in a build without FSR
+std::vector<std::string> fsr_library_dirs();
 /// FSR 4 as the temporal upscaler's engine (FSR 4 and its native AA on the Upscaler row); nullptr in a build without it
 const TemporalEngine* fsr4_engine();
 

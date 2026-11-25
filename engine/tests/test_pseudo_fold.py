@@ -24,7 +24,7 @@ def check_source():
     if '"RX_VK_FOLD"' not in shader:
         raise SystemExit("the program cache's stamp no longer covers the RX_VK_FOLD names")
     cp = (SR / "ir_opt/constant_propagation_pass.cpp").read_text(encoding="utf-8")
-    for needle in ('getenv("RX_VK_FOLD_PSEUDO")', "FoldWhenAllImmediatesWithFlags(inst, [](s32 base, u32 shift, u32 count)",
+    for needle in ('getenv("RX_VK_FOLD_PSEUDO")', 'getenv("RX_VK_FOLD_PSEUDO_ONLY")', 'getenv("RX_VK_FOLD_PSEUDO_RANGE")', "FoldWhenAllImmediatesWithFlags(inst, [](s32 base, u32 shift, u32 count)",
                    "FoldWhenAllImmediatesWithFlags(inst, [](u32 base, u32 shift, u32 count)"):
         if needle not in cp:
             raise SystemExit("constant_propagation_pass.cpp no longer has: " + needle)
@@ -43,7 +43,7 @@ def main():
         subprocess.run([args.cxx, "-std=c++20", "-O1", "-w", "-I", str(EDEN), "-I", str(ROOT / "gpu/vk/compat"),
                         "-I", str(ROOT / "gpu/compat"), str(ROOT / "tests/test_pseudo_fold.cpp"),
                         *map(str, sources), "-o", str(exe)], check=True)
-        for mode in ("off", "on"):
+        for mode in ("off", "on", "range"):
             subprocess.run([str(exe), mode], check=True)
 
 

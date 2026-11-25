@@ -17,6 +17,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <set>
@@ -89,9 +90,14 @@ bool import_again(Pool&, int) { return true; }
 bool staging_into_mirror(Pool&, std::vector<VkBufferCopy>&, VkCommandBuffer = VK_NULL_HANDLE) { return false; }
 std::map<uint64_t, Pool> imported;
 uint64_t mirror_epoch = 0;
+uint64_t rec_epoch() { return mirror_epoch; }   // (REC1: a segment's worker reads its own; the model has one thread's)
+uint64_t rec_value_of();
 bool mirror_upload = false;
 #include "rb_writeback.inc"
 std::vector<WriteBack> writebacks;
+struct ModelLists { std::vector<WriteBack>& writebacks; int rb; };   // (SUB1: the submission's lists)
+ModelLists lists() { return {writebacks, 0}; }
+bool pool_synced_for(const Pool& p, uint64_t epoch, uint64_t seg) { return p.synced_epoch == epoch && p.sync_seg <= seg; }   // (SUB1: one submission at a time in the model)
 void mirror_sync(Pool& p) {   // (model: no CPU page is dirty here)
     p.synced_epoch = mirror_epoch;
     p.sync_seg = texture_segment();
@@ -107,7 +113,16 @@ int rbclass_of(uint64_t size) { return size == 0x40 ? 2 : size == 0x2000 ? 3 : 0
 int rbclass_mode(int) { return 0; }
 bool rbclass_check(int) { return false; }
 // (STEP1, HL_RB_LAG: the readback ring stages no range in the model, so every written binding queues its write-back)
-bool rbring_stage_bind(uint64_t, uint64_t, VkBuffer, uint64_t) { return false; }
+bool rbring_stage_bind(uint64_t, uint64_t, VkBuffer, uint64_t, int) { return false; }
+// (EXPO1's test switch HL_RB_TEST_DIRECT: unset in the model, so no binding goes to guest memory on purpose)
+bool rbring_test_direct(uint64_t, uint64_t) { return false; }
+// (CRASH3: a bare entry's guessed head, RX_VK_WB_GUESS_CHECKED: in the model a written binding like any other)
+thread_local bool tl_bind_guess = false;
+bool wb_guess_checked_on() { return false; }
+void guess_snap_take(Pool*, uint64_t, uint64_t) {}
+uint64_t mem_rec_value = 0;
+uint64_t rec_value_of() { return mem_rec_value; }
+void wb_pages_note(uint64_t, uint64_t, uint64_t) {}   // (WBL1's put-off pages: never reached in the model)
 void rbck_record(VkCommandBuffer, int, const std::map<Pool*, std::vector<VkBufferCopy>>&) {}   // (READB2 CHECK: off)
 #include "rb_refresh.inc"
 
@@ -124,6 +139,7 @@ BufferRef gpu_buffer_bind(uint64_t gpu, uint64_t size, bool written) {
 #include "rb_bindtail.inc"
     return {p->mirror, off, size, 0};
 }
+BufferRef gpu_buffer_bind_guess(uint64_t gpu, uint64_t size) { return gpu_buffer_bind(gpu, size, true); }
 uint64_t gpu_pool_end(uint64_t gpu) {
     std::lock_guard lk(pools_mu);
     auto it = imported.upper_bound(gpu);

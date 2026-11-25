@@ -19,6 +19,7 @@ constexpr VkBufferUsageFlags VK_BUFFER_USAGE_STORAGE_BUFFER_BIT = 1;
 constexpr VkBufferUsageFlags VK_BUFFER_USAGE_TRANSFER_DST_BIT = 2;
 constexpr VkBufferUsageFlags VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT = 4;
 constexpr VkBufferUsageFlags VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT = 8;
+constexpr VkBufferUsageFlags VK_BUFFER_USAGE_INDEX_BUFFER_BIT = 0x40;
 constexpr int VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO = 1;
 struct VkBufferDeviceAddressInfo { int sType; VkBuffer buffer = 0; };
 struct { int device = 1; } dev;

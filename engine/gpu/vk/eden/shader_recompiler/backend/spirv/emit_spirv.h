@@ -61,6 +61,16 @@ constexpr u32 MESH_FALLBACK_ALLOC_WORD = 4;       // (records taken, past the en
 constexpr u32 MESH_FALLBACK_DISPATCH_WORD = 5;
 constexpr u32 MESH_FALLBACK_HEADER_WORDS = 8;
 constexpr u32 MESH_FALLBACK_RECORD_WORDS = 16u << 20;   // (64 MB: ~47k grass primitives of 31 words are 17 MB)
+// (LAPTOP1, RX_VK_FALLBACK_INDEXED) The indexed form, for a mesh program with no per-primitive lines and triangles: a mesh
+// workgroup writes a record a VERTEX (its max_vertices of them) and three indices a primitive, and the vertex stage is drawn
+// indexed: a meshlet of 128 vertices and ~126 triangles wrote 378 records of every vertex line, now 128 and 378 indices.
+// The indices take the last MESH_FALLBACK_INDEX_WORDS of the record words: first a VkDrawIndexedIndirectCommand (its index
+// count the indices taken; instanceCount 1, set by the host) and the indices' allocator, then the indices themselves
+constexpr u32 MESH_FALLBACK_INDEX_WORDS = 2u << 20;   // (8 MB: ~700k triangles)
+constexpr u32 MESH_FALLBACK_INDEX_BASE = MESH_FALLBACK_HEADER_WORDS + MESH_FALLBACK_RECORD_WORDS - MESH_FALLBACK_INDEX_WORDS;
+constexpr u32 MESH_FALLBACK_INDEXED_DRAW_WORD = MESH_FALLBACK_INDEX_BASE;        // (indexCount; the command's 5 words)
+constexpr u32 MESH_FALLBACK_INDEX_ALLOC_WORD = MESH_FALLBACK_INDEX_BASE + 5;     // (indices taken, past the end too)
+constexpr u32 MESH_FALLBACK_INDEX_FIRST_WORD = MESH_FALLBACK_INDEX_BASE + 8;     // (the index buffer's start)
 
 [[nodiscard]] std::vector<u32> EmitSPIRV(const Profile& profile, const RuntimeInfo& runtime_info, IR::Program& program, Bindings& bindings);
 [[nodiscard]] inline std::vector<u32> EmitSPIRV(const Profile& profile, IR::Program& program) {

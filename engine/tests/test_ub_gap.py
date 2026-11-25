@@ -29,7 +29,7 @@ def main():
     fn = block(source, "bool ub_gap(")
     read = block(source, "bool ub_read(")
     holds = read.index("ub_gap_holds(")
-    scan = read.index("for (size_t i = 0; i < lim; i++)")
+    scan = read.index("for (size_t i = ub_base; i < lim; i++)")
     if holds > scan:
         raise SystemExit("ub_read walks the updates before checking the gap")
     if "ub_list_epoch.fetch_add" not in block(source, "void ub_prune("):

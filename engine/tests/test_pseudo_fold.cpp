@@ -2,6 +2,7 @@
 
 // The constant propagation pass's fold of an instruction of immediates that has flag pseudo-operations (RX_VK_FOLD_PSEUDO).
 // Builds real IR (shader_recompiler/frontend/ir) and runs ConstantPropagationPass over it: argv[1] is "on" or "off".
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -48,14 +49,39 @@ bool IsImmU32(const IR::Value& v, u32 expect) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const bool on{argc > 1 && !std::strcmp(argv[1], "on")};
+    // "range": on, and RX_VK_FOLD_PSEUDO_RANGE=1-2 lets only the second flagged instruction (the extract of case 2) fold
+    const bool range{argc > 1 && !std::strcmp(argv[1], "range")};
+    const bool on{range || (argc > 1 && !std::strcmp(argv[1], "on"))};
     CHECK(Optimization::FoldPseudoEnabled(on ? "1" : "0") == on);
     CHECK(Optimization::FoldPseudoEnabled(nullptr));   // (unset: on by default)
     CHECK(Optimization::FoldPseudoEnabled(""));
     CHECK(!Optimization::FoldPseudoEnabled("abc"));
     CHECK(Optimization::ZeroFlagOf(0) && !Optimization::ZeroFlagOf(1));
     CHECK(Optimization::SignFlagOf(0x80000000u) && !Optimization::SignFlagOf(0x7FFFFFFFu));
+    {   // the selection of programs and instructions (RX_VK_FOLD_PSEUDO_ONLY / _SKIP / _RANGE)
+        using Optimization::FoldSelect;
+        const std::uint64_t key{0x43ec86f35fd937b9ull};
+        CHECK(FoldSelect{}.Allows(key, 0) && FoldSelect{}.Allows(0, 123456));
+        CHECK(FoldSelect("43ec", nullptr, nullptr).Allows(key, 0));
+        CHECK(!FoldSelect("43ed", nullptr, nullptr).Allows(key, 0));
+        CHECK(FoldSelect("1234,43ec86", nullptr, nullptr).Allows(key, 7));
+        CHECK(!FoldSelect(nullptr, "43ec", nullptr).Allows(key, 0));
+        CHECK(FoldSelect(nullptr, "9999,43ed", nullptr).Allows(key, 0));
+        CHECK(!FoldSelect("43ec", "43ec86", nullptr).Allows(key, 0));   // (skip wins)
+        CHECK(FoldSelect(nullptr, nullptr, "2-5").Allows(key, 2) && FoldSelect(nullptr, nullptr, "2-5").Allows(key, 4));
+        CHECK(!FoldSelect(nullptr, nullptr, "2-5").Allows(key, 1) && !FoldSelect(nullptr, nullptr, "2-5").Allows(key, 5));
+        CHECK(FoldSelect(nullptr, nullptr, "3-").Allows(key, 1000) && !FoldSelect(nullptr, nullptr, "3-").Allows(key, 2));
+        CHECK(FoldSelect(nullptr, nullptr, "-3").Allows(key, 2) && !FoldSelect(nullptr, nullptr, "-3").Allows(key, 3));
+        CHECK(FoldSelect("", "", "").Allows(key, 0));
+    }
     // the switch is read once, at the first fold
+    if (range) {
+#ifdef _WIN32
+        _putenv_s("RX_VK_FOLD_PSEUDO_RANGE", "1-2");
+#else
+        setenv("RX_VK_FOLD_PSEUDO_RANGE", "1-2", 1);
+#endif
+    }
 #ifdef _WIN32
     _putenv_s("RX_VK_FOLD_PSEUDO", on ? "1" : "0");
 #else
@@ -112,7 +138,14 @@ int main(int argc, char** argv) {
     CHECK(IsImmU32(e8, 3));   // (6 >> 1) & 3, no flag: folded either way
     CHECK(!e7.Resolve().IsImmediate());
     CHECK(!z7.Resolve().IsImmediate());
-    if (on) {
+    if (range) {
+        CHECK(!e1.Resolve().IsImmediate() && !z1.Resolve().IsImmediate());   // (flagged number 0: left as it was)
+        CHECK(IsImm(z2, true) && IsImmU32(e2, 0));                           // (number 1: folded)
+        CHECK(!e3.Resolve().IsImmediate() && !z3.Resolve().IsImmediate());   // (numbers 2 and on)
+        CHECK(!e5.Resolve().IsImmediate() && !e6.Resolve().IsImmediate());
+        CHECK(Optimization::g_fold_seen == 6 && Optimization::g_fold_taken == 1);
+    } else if (on) {
+        CHECK(Optimization::g_fold_seen == 6 && Optimization::g_fold_taken == 6);
         CHECK(IsImm(z1, false));
         CHECK(IsImm(not1, true));
         CHECK(sel1.Resolve() == r2.Resolve());
@@ -143,6 +176,6 @@ int main(int argc, char** argv) {
     if (failures) {
         return 1;
     }
-    std::printf("pseudo_fold %s: ok\n", on ? "on" : "off");
+    std::printf("pseudo_fold %s: ok\n", range ? "range" : on ? "on" : "off");
     return 0;
 }

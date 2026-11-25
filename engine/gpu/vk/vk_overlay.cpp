@@ -18,6 +18,7 @@
 #include "vk_internal.h"   // (first: it sets the Win32 platform before any Vulkan header)
 #include "vk_menu.h"
 #include "vk_framegen.h"  // (framegen_on, framegen_now: the Frame limit line)
+#include "framegen_rows.h"  // (base_plan: the Base frame rate limit's line)
 #include "vk_perf.h"
 #include "vk_fsr3.h"      // (fsr3_wanted: the Scaling line names the upscaler)
 #include "vk_temporal.h"  // (temporal_mode)
@@ -197,6 +198,13 @@ void perf_picture(uint32_t w, uint32_t h, const ImVec4& c) {
         int limit = menu_fps_limit();
         if (const int cap = vrr_fps_cap(); limit > 60 && cap >= 60 && cap < limit) limit = cap;   // (the VRR row: held under the refresh)
         const int mult = framegen_on() && framegen_now() >= 2 ? framegen_now() : 1;
+        if (const int base = menu_base_fps(); base > 0) {   // (the Base frame rate limit: the game's own rate, the shown one its multiple)
+            double game = 0;
+            const int shown = framegen_rows::base_plan(base, mult, vrr_fps_cap(), &game);
+            if (mult > 1) snprintf(v[4], sizeof v[4], "%d fps (game %d x %d)", shown, (int)(game + 0.5), mult);
+            else if (opts.framegen == 1) snprintf(v[4], sizeof v[4], "game %d fps, Auto frame generation", shown);
+            else snprintf(v[4], sizeof v[4], "%d fps", shown);
+        } else
         if (limit == 0 && mult > 1) snprintf(v[4], sizeof v[4], "Unlimited, %dx frame generation", mult);
         else if (limit == 0) snprintf(v[4], sizeof v[4], "Unlimited");
         else if (limit < 0) snprintf(v[4], sizeof v[4], "%s", opts.framegen >= 1 ? "60 fps + frame generation" : "60 fps");

@@ -124,10 +124,15 @@ public partial class MainWindow : Window
     // ================= what the button does: build, update the game, play it, or get the newer builder =================
     // (as NX2navi's launcher: whatever version the player opens, it checks the latest release and says what is there)
 
-    enum Mode { Build, UpdateGame, UpToDate, UpdateBuilder }
+    enum Mode { Build, UpdateGame, UpToDate, UpdateBuilder, Rebuild }
     Mode mode = Mode.Build;
     string? latestTag, updateTarget;
     bool sourcePicked;   // (the player chose game files here: a build from them, even over a game that is up to date)
+    List<string> rebuildChanges = new();   // (Mode.Rebuild: what the ticks ask that the folder was not built with)
+    /// The ticks, set when Update or Rebuild is pressed: UpdateBuild builds the folder with them (null: the folder as it was built)
+    internal bool? PendingDlss, PendingFsr;
+    /// This app was started by the update of an older builder that had the player's ticks: they are in builder-settings.json
+    internal bool UseSavedTicks;
 
     /// The release a game folder was built with (its hookshot_version.txt), when it keeps its game files for updates
     static string? GameVersion(string folder)
@@ -151,7 +156,13 @@ public partial class MainWindow : Window
         // (the newest release known: GitHub's, else this builder's own. v2.0.0 took a GitHub that did not answer for "up to date")
         updateTarget = latestTag ?? builder;
         if (game != null && updateTarget != null && game != updateTarget && !sourcePicked) mode = Mode.UpdateGame;
-        else if (game != null && !sourcePicked) mode = Mode.UpToDate;
+        else if (game != null && !sourcePicked)
+        {
+            // (the same version, but the NVIDIA DLSS or AMD FSR 4 tick is not what the folder was built with: "Play" there ignored the
+            // tick, and the game had no DLSS however many times the box was ticked, issue 130)
+            rebuildChanges = GameFeatures.Changes(OutPath.Text, DlssTick.IsChecked == true, FsrTick.IsChecked == true);
+            mode = rebuildChanges.Count > 0 ? Mode.Rebuild : Mode.UpToDate;
+        }
         else if (latestTag != null && builder != null && builder != latestTag) mode = Mode.UpdateBuilder;
         else mode = Mode.Build;
         switch (mode)
@@ -161,6 +172,13 @@ public partial class MainWindow : Window
                 FilesSub.Text = $"HeyListen {updateTarget} is available. Your game is {game}: Update builds it again from the game files kept in " +
                                 "its folder, compiling only what changed.";
                 BuildButton.Content = "Update";
+                break;
+            case Mode.Rebuild:
+                FilesTitle.Text = "Build again with your choices";
+                FilesSub.Text = $"{game} is the latest version, but your game was not built this way. Rebuild builds it again " +
+                                $"{string.Join(" and ", rebuildChanges)}, from the game files kept in its folder. The game is translated again, " +
+                                "so it takes a while.";
+                BuildButton.Content = "Rebuild";
                 break;
             case Mode.UpToDate:
                 FilesTitle.Text = "Your game is up to date";
@@ -671,8 +689,25 @@ public partial class MainWindow : Window
         {
             case Mode.UpdateGame:   // (the kept game files; the newer builder first when this one is older)
                 SaveSettings();
+                (PendingDlss, PendingFsr) = (DlssTick.IsChecked == true, FsrTick.IsChecked == true);   // (the ticks are what the player asked for)
                 Updater.UpdateFolder(this, OutPath.Text, updateTarget, fetched: false);
                 return;
+            case Mode.Rebuild:   // (this version again, with the ticks as they are now: the folder's kept game files, no download)
+            {
+                SaveSettings();
+                var rebuildTools = Tools.Find();
+                if (rebuildTools == null)
+                {
+                    ShowProblem("The build tools are not in HeyListen's folder.", tools: true);
+                    return;
+                }
+                (PendingDlss, PendingFsr) = (DlssTick.IsChecked == true, FsrTick.IsChecked == true);
+                BeginUpdate(OutPath.Text, null);
+                VersionChip.Visibility = Visibility.Collapsed;
+                BuildTitle.Text = "Building your game again";
+                UpdateBuild(rebuildTools, OutPath.Text);
+                return;
+            }
             case Mode.UpToDate:
                 finished = OutPath.Text;
                 Play(sender, e);
@@ -737,6 +772,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, FsrLicense, "AMD FSR 4", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             FsrTick.IsChecked = false;
         SaveSettings();
+        RefreshMode();    // (a game folder built the other way: the button says Rebuild)
     }
 
     /// The code mods tick
@@ -771,6 +807,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, DlssLicense, "NVIDIA DLSS", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             DlssTick.IsChecked = false;
         SaveSettings();   // (kept at once, not only when Build is pressed: ticked and closed, it is still ticked next time)
+        RefreshMode();    // (a game folder built the other way: the button says Rebuild)
     }
 
     static readonly (string Id, string Build, string Update)[] Stages =
@@ -1271,15 +1308,22 @@ public partial class MainWindow : Window
     {
         download = null;
         if (rows.TryGetValue("download", out var d)) { d.Done(); d.Small("Build tools checked"); }
-        // (a folder built with NVIDIA DLSS, its license accepted then, is built with it again)
-        var dlss = File.Exists(System.IO.Path.Combine(folder, "ngx", "nvngx_dlss.dll")) &&
-                   File.Exists(System.IO.Path.Combine(Storage.NgxSdk, "LICENSE.txt"));
+        // (the ticks asked for, from the Update or Rebuild button here, or saved by the builder that started this one; null: the folder
+        // as it was built: a folder built with NVIDIA DLSS, its license accepted then, is built with it again)
+        bool? dlssChoice = PendingDlss, fsrChoice = PendingFsr;
+        if (dlssChoice == null && UseSavedTicks && BuilderSettings.Load(SettingsPath) is { } saved) (dlssChoice, fsrChoice) = (saved.Dlss, saved.Fsr);
+        PendingDlss = PendingFsr = null;
+        var dlss = dlssChoice ?? ((GameFeatures.HasDlss(folder) || File.Exists(System.IO.Path.Combine(folder, "ngx", "nvngx_dlss.dll"))) &&
+                                  File.Exists(System.IO.Path.Combine(Storage.NgxSdk, "LICENSE.txt")));
         // (prepareNow: the saved choice, read in BeginUpdate. The launcher's Update and the --update start after a self-update never
         // ran ApplySettings, so the tick there is only its default)
         // (codeMods: the launcher's Code mods window chose; otherwise make_game.py keeps what the folder's last build chose)
         var args = new List<string> { "--update", folder };
-        // (a folder with AMD's FSR 4 runtime, its license accepted then: AMD's files fetched again, only what is missing)
-        if (File.Exists(System.IO.Path.Combine(folder, "LICENSE-AMD-FSR-SDK.md")))
+        // (a folder with AMD's FSR 4 runtime, its license accepted then: AMD's files fetched again, only what is missing. The tick
+        // asked for wins: ticked, FSR 4 is built in and fetched; unticked, it is built without, whatever the folder had)
+        if (fsrChoice == true) args.AddRange(FsrArgs);
+        else if (fsrChoice == false) args.Add("--no-fsr");
+        else if (File.Exists(System.IO.Path.Combine(folder, "LICENSE-AMD-FSR-SDK.md")))
             args.AddRange(new[] { "--fetch-fsr-runtime", "--accept-amd-license" });
         if (codeMods != null) args.AddRange(new[] { "--code-mods", codeMods });
         Run(tools, ShaderStep.Args(args, prepareNow), keepRows: true, dlss: dlss);

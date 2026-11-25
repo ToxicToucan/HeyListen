@@ -107,11 +107,18 @@ static std::deque<DeadImport> dead_imports;
 static int64_t st_bg_waits, st_prefetch_sent, st_prefetch_used, st_prefetch_dropped, st_async_sent, st_async_copies;
 static std::vector<Pool*> mirror_wanted, sparse_wanted;
 static uint64_t mem_rec_value = 7, mirror_epoch = 10;
+static uint64_t rec_value_of() { return mem_rec_value; }   // (REC1: a segment's worker reads its own recording's; one thread here)
+static uint64_t rec_epoch() { return mirror_epoch; }
 static int failures;
 static thread_local bool import_cooling;
 static thread_local VkResult import_result = VK_SUCCESS;
 static Pool* pool_lookup(uint64_t, uint64_t);
 static void retire_pool(std::map<uint64_t, Pool>::iterator);
+// (issues 131, 121: the retry of a refused import, the bytes the imports hold and the give-back of retired ones: none of that is run here)
+static uint64_t retired_emergency_free(uint64_t) { return 0; }
+static void import_forget_failure(uint64_t, uint64_t) {}
+[[maybe_unused]] static int64_t st_emergency_ok;
+static void pinned_sub(uint64_t) {}
 
 /* ACTUAL */
 

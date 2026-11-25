@@ -91,7 +91,9 @@ def main():
 
     sr = function(rp, "void early_submit_ready(EarlyGroup& G)")
     body = sr[sr.index("{") + 1:sr.rindex("}")]
-    body = body.replace("early_submit_job(G, ", "submit_job(").replace("G.", "")
+    need("group_lane_close(G);" in body and body.index("group_lane_close(G);") < body.index("group_tail_send(G);"),
+         "the group's sequencer ticket is not finished before the submission's end goes (DECOUPLE)")
+    body = body.replace("group_lane_close(G);", "").replace("group_tail_send(G);", "").replace("early_submit_job(G, ", "submit_job(").replace("G.", "")
 
     fixture = r'''
 #include <algorithm>

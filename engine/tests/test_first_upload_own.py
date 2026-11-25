@@ -54,6 +54,7 @@ FIXTURE = r"""
 #include <unordered_map>
 #include <vector>
 static void logf(const char*, ...) {}
+static uint64_t texture_frame_no() { return 0; }   // (PIPE3: the log line of a read outside its submission's capture)
 static bool overlay_off() { return false; }
 struct ShadowPage {
     std::unique_ptr<uint8_t[]> b;

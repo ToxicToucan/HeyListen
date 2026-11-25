@@ -421,6 +421,15 @@ BOOL GetThreadTimes(HANDLE h, FILETIME *create, FILETIME *exit_, FILETIME *kerne
     filetime_ns(user, (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec);
     return TRUE;
 }
+BOOL QueryThreadCycleTime(HANDLE h, ULONG64 *cycles) {
+    HThread *t = thread_of(h);
+    clockid_t clk;
+    struct timespec ts;
+    if (!cycles) { last_error = ERROR_INVALID_PARAMETER; return FALSE; }
+    if (!t || t->done || pthread_getcpuclockid(t->th, &clk) || clock_gettime(clk, &ts)) { last_error = ERROR_INVALID_HANDLE; return FALSE; }
+    *cycles = (ULONG64)ts.tv_sec * 1000000000ULL + (ULONG64)ts.tv_nsec;
+    return TRUE;
+}
 /* (no suspending another thread: the samplers that do it find nothing to sample) */
 DWORD SuspendThread(HANDLE h) { (void)h; last_error = ERROR_NOT_SUPPORTED; return (DWORD)-1; }
 DWORD ResumeThread(HANDLE h) { (void)h; last_error = ERROR_NOT_SUPPORTED; return (DWORD)-1; }

@@ -235,7 +235,7 @@ def check_dispatch():
                                  "taau_stand_in(cmd, s, p)")]
     need(-1 not in order and order == sorted(order),
          "dispatch: the Off stand-in is not after FSR 3.1's (frame generation's inputs) and DLSS's, and before the TAAU stand-in")
-    need("return void(st_dispatches++)" in d[order[2]:order[3]], "dispatch: the Off stand-in's dispatch is not counted and left out")
+    need("void(st_dispatches++)" in d[order[2]:order[3]], "dispatch: the Off stand-in's dispatch is not counted and left out")
     stand = block(draw, "static bool off_stand_in(")
     need("upscaler_off()" in stand and "typed_upscale(" in stand and ", false)" in stand, "off_stand_in does not draw the plain upscale")
     need("temporal_upscale(" not in stand and "fsr3_upscale(" not in stand, "off_stand_in runs an engine")

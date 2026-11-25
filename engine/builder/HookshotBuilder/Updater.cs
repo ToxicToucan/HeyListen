@@ -29,6 +29,7 @@ static class Updater
             if (a[i] == "--update" && i + 1 < a.Length) folder = a[++i];
             else if (a[i] == "--tag" && i + 1 < a.Length) tag = a[++i];
             else if (a[i] == "--fetched") fetched = true;
+            else if (a[i] == "--ticks") w.UseSavedTicks = true;   // (the older builder's Update with the player's ticks, in the saved settings)
         }
         if (folder == null) return;
         UpdateFolder(w, folder, tag, fetched);
@@ -181,6 +182,7 @@ static class Updater
                 await DownloadWithRetries(w, http, setupUrl, setupApiUrl, setup, setupSize, token);
                 var ssi = new ProcessStartInfo(setup) { UseShellExecute = false, WorkingDirectory = cache };
                 foreach (var arg in new[] { "--update", folder, "--tag", newTag, "--fetched" }) ssi.ArgumentList.Add(arg);
+                if (w.PendingDlss != null) ssi.ArgumentList.Add("--ticks");
                 Process.Start(ssi);
                 Application.Current.Shutdown();
                 return;
@@ -206,6 +208,7 @@ static class Updater
             if (!File.Exists(exe)) throw new FileNotFoundException("The download has no HeyListenBuilder.exe (your antivirus may have removed it).");
             var si = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = target };
             foreach (var arg in new[] { "--update", folder, "--tag", newTag, "--fetched" }) si.ArgumentList.Add(arg);
+            if (w.PendingDlss != null) si.ArgumentList.Add("--ticks");
             Process.Start(si);
             Application.Current.Shutdown();
         }

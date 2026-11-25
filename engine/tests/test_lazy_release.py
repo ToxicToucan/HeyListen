@@ -47,7 +47,7 @@ def main():
                  "lazy_host_verdict(", "skipped_pages.erase(page)", "destroy_buffer("):
         if want not in apply:
             raise SystemExit(f"lazy_apply does not use {want!r}")
-    if "lazy_apply();" not in block(source, "void memory_end_submission("):
+    if "lazy_apply();" not in block(source, "void end_submission_impl(VkCommandBuffer cmd, MemSub& sub) {"):
         raise SystemExit("memory_end_submission does not apply the staged write-backs")
     host = (ROOT / "host" / "nvdrv.c").read_text(encoding="utf-8")
     live_write = block(host, "__declspec(dllexport) int hos_gpu_write_live(")

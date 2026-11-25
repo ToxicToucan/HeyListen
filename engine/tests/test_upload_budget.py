@@ -51,6 +51,7 @@ struct Texture {
     int64_t defer_ns = 0;
     uint32_t defer_asks = 0;
 };
+static bool bcd_hold(Texture&) { return false; }   // (TEXCACHE's hold: vk_texture.cpp, not this rule)
 uint64_t frame_no = 7;
 std::atomic<int64_t> frame_upload_ns{0}, st_deferred{0}, st_deferred_frame{0}, st_deferred_tex_frame{0};
 thread_local uint64_t tl_upload_frame = 0;

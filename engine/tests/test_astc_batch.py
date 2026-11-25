@@ -101,10 +101,10 @@ class AstcBatchTests(unittest.TestCase):
             self.assertIn(need, key, "the cache key leaves out " + need)
         self.assertLess(u.index("if (hit.buf) {"), u.index("const Staging s = staging("), "a hit still stages and decodes")
         self.assertIn("it->second.bytes == bcc_size(tex, pieces)", u)
-        self.assertIn("if (cache_key && !alpha) {", u, "a BC1 upload that found alpha (made again as BC7) is stored")
+        self.assertIn("if ((cache_key || to_disk) && !alpha) {", u, "a BC1 upload that found alpha (made again as BC7) is stored")
         self.assertIn("vkCmdCopyBuffer(cmd, bc_out, store->buf, 1, &bcp);", self.batch)
         free = block(self.tex, "void bcc_free_done(uint64_t completed) {")
-        self.assertIn("if (it->last_value > completed) { ++it; continue; }", free)
+        self.assertIn("if (it->last_value > completed || (it->pin && it->pin->load() > 0)) { ++it; continue; }", free)
         self.assertIn("bcc_free_done(completed);", block(self.tex, "void texture_frame(uint64_t completed) {"))
 
     def test_views_made_and_given_back(self):

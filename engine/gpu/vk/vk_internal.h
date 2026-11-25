@@ -9,6 +9,7 @@
 #include <array>
 #include <functional>
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -70,6 +71,7 @@ struct Device {
     uint32_t queue_family = 0;
     VkQueue queue = VK_NULL_HANDLE;
     // extensions in use
+    bool frag_shading_rate = false;   // (RX_VK_VRS: VK_KHR_fragment_shading_rate's pipeline rate, 2x2 usable; vk_vrs.h)
     bool mesh_shader = false, external_memory_host = false, external_memory_fd = false, dma_buf_import = false, pipeline_library = false,
          graphics_pipeline_library = false, custom_border_color = false, dynamic_state3 = false,
          depth_clip_control = false, null_descriptor = false, index_uint8 = false, push_descriptor = false,
@@ -233,6 +235,9 @@ BufferRef gpu_buffer(uint64_t gpu, uint64_t size, int use = kGpuBufferRead);   /
 /// A range as a binding of the replay sees it: the pool's VRAM mirror when it has one (vk_memory.cpp), else the
 /// imported pool. written: the GPU may write it (copied back to guest memory at the submission's end).
 BufferRef gpu_buffer_bind(uint64_t gpu, uint64_t size, bool written);
+/// (CRASH3) a written binding whose range is a guess (a bare storage entry's head, vk_draw.cpp): its write-back staged and
+/// checked, never over a CPU write (vk_memory.cpp wb_guess_checked_on, RX_VK_WB_GUESS_CHECKED)
+BufferRef gpu_buffer_bind_guess(uint64_t gpu, uint64_t size);
 BufferRef stream_copy(const void* src, uint64_t n);   // vk_draw.cpp: bytes in the recording's stream, as a binding
 /// Changes when a read binding remembered earlier must be looked up again (a pool left, a mirror was made, a new submission)
 uint64_t gpu_bind_stamp();
@@ -245,6 +250,42 @@ bool probe_serial();
 void probe_dump_all(const char* why);
 void probe_log(uint64_t frame);
 void memory_end_submission(VkCommandBuffer cmd);
+/// (WBL1, RX_VK_WB_LAZY; ProjectReLink, pixl27) pages whose write-back was put off wait for the frame's flush; and that flush queued into
+/// the recording being made (between its memory_begin_submission and memory_end_submission)
+bool memory_wb_pending();
+void memory_wb_flush_queue();
+bool memory_wb_flush_own();
+/// (WBL1) a texture's storage [gpu, gpu + size) is registered: its pages put off are written back, none put off again
+void memory_wb_texture(uint64_t gpu, uint64_t size);
+/// (WBL1) the CPU is about to read [gpu, gpu + size) of guest memory for a texture upload: the pages of it whose write-back was put off are
+/// copied from their mirrors and written into guest memory first (a wait for that copy); the pages settled (0: none was pending)
+int64_t memory_wbl_settle(uint64_t gpu, uint64_t size);
+/// (WBL1) the same from the guard's fault handler: waits for no lock; 0 when one is busy
+int64_t memory_wbl_settle_try(uint64_t gpu, uint64_t size);
+/// (stream REC1, SUB1) what a segment's worker reads of the submission it belongs to, not what the replay thread has moved on to (vk_memory.cpp):
+/// the submission's epoch, the newest capture it may read (a capture newer than that is the next submission's), and its lists (write-backs, pools synced)
+struct MemSub;   // (vk_memory.cpp)
+struct MemView {
+    uint64_t epoch = 0;
+    uint32_t cap = 0;
+    std::shared_ptr<MemSub> sub;
+};
+MemView memory_view();   // the replay thread's, now: a group takes it when it begins
+/// (stream SUB1, RX_VK_SUB_OVERLAP) a submission that ends after the next one began: its handoff (the replay thread, once its recordings are made: the
+/// generation its synced pools are current as of) and its end (any thread, in the queue's order, into a command buffer of its own: the write-backs)
+void memory_submission_handoff(const MemView& view);
+void replay_sub_complete_if_pending();   // (vk_replay.cpp: the pending submission's end sent, on the replay thread; a no-op elsewhere)
+void memory_end_submission_of(VkCommandBuffer cmd, uint64_t value, const MemView& view);
+void memory_recording_thread(uint64_t value, const MemView& view);
+void memory_recording_thread_end();
+void memory_recording_check(int64_t* reads, int64_t* value_diff, int64_t* epoch_diff);
+/// (stream SUB1, RX_VK_REC_OVERLAP_CHECK) reads and uses by workers of what a later submission replaced: all 0 with no recording beside another
+struct MemSubCheck {
+    int64_t cap_lost = 0;   // (DECOUPLE: views deeper than the capture history kept, RX_VK_CAP_DEPTH)
+    int64_t pool_lost = 0;  // (DECOUPLE: pool sync checks whose submission's pair fell out: synced twice since)
+    int64_t cap_reads = 0, cap_newer = 0, pool_checks = 0, pool_newer = 0, list_adds = 0, list_other = 0;
+};
+MemSubCheck memory_sub_check();
 /// The game made a memory pool (gpu address, bytes): imported in the background, before it is used
 /// RX_VK_CHECKPOINTS: the draws the GPU reached, logged once the device is lost (vk_draw.cpp)
 void checkpoints_report();
@@ -472,13 +513,29 @@ bool rbring_on();
 bool rbring_check_on();
 void rbring_note_read(uint64_t guest, uint64_t size);
 void rbring_note_written(uint64_t guest, uint64_t size);
-bool rbring_stage_bind(uint64_t guest, uint64_t size, VkBuffer buffer, VkDeviceSize offset);
-void rbring_flush(VkCommandBuffer cmd, uint64_t value);
+/// (stream SUB1) the readback ring's staged ranges of one submission: its own list, so a submission that ends after the next began flushes its own
+struct RbPending {
+    struct Req {
+        uint64_t guest, size;
+        VkBuffer buffer;
+        VkDeviceSize offset;
+    };
+    std::vector<Req> reqs;
+    uint64_t bytes = 0;
+};
+bool rbring_stage_bind(uint64_t guest, uint64_t size, VkBuffer buffer, VkDeviceSize offset, RbPending& pending);
+void rbring_flush(VkCommandBuffer cmd, uint64_t value, RbPending& pending);
 bool rbring_serves(uint64_t guest, uint64_t size);
 bool rbring_quiet(uint64_t guest, uint64_t size);
 void rbring_quiet_result(uint64_t size, bool changed);
 void rbring_apply(uint64_t gpu, uint64_t size);
 void rbring_check(uint64_t gpu, uint64_t size);
+/// (EXPO1, HL_METER_LOG) the ring's state of a range as one line of text (served or not, counters, entries newest first)
+void rbring_describe(uint64_t guest, uint64_t size, char* out, size_t cap);
+/// (EXPO1, a test, HL_RB_TEST_DIRECT) true: this written binding of a meter block goes to guest memory directly (vk_memory.cpp gpu_buffer_bind)
+bool rbring_test_direct(uint64_t guest, uint64_t size);
+/// (EXPO1, HL_METER_LOG=<rows>, default off: the exposure meter's diagnostic rows; vk_draw.cpp)
+int meter_log_rows();
 /// (FIF1, vk_replay.cpp) the ring's frame count: presents_now, or with RX_VK_FRAMES_IN_FLIGHT the game's own count of presents; an entry's
 /// tag (the count at its submission's submit); and the wait (bounded) for the replay to have staged the frames a read at frame c may get
 int64_t rb_frame_now();
@@ -511,6 +568,7 @@ uint64_t memory_late_fix_pending();
 void memory_late_fix_apply(uint64_t done);
 void memory_late_fix_wait_range(uint64_t guest, uint64_t n);   // (TICK-060m: before a CPU upload reads guest memory: a pending late page's value)
 uint64_t vk_timeline_signal_sent();
+uint64_t vk_timeline_held_present();   // (DECOUPLE3: a present the order thread holds, not recorded yet: 0 none; timeline_order.h)
 void vk_timeline_wait_sent(uint64_t v);   // (TICK-060: a wait for a value already sent: no flush, safe under any lock)
 bool late_fix_wait_unlocked();   // (TICK-060, vk_replay.cpp: a pending late fix's value waited for before the queue's lock; false: a poll)
 void late_fix_wake(uint64_t v);

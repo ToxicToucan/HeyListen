@@ -76,7 +76,7 @@ def main():
          "take_capture: the estimate starts at half the floor")
     need("const int cap_ms = adapt ? (int)std::clamp<int64_t>(k * p90 / 1000, wait_max_ms, std::max(wait_max_ms, 250)) : wait_fixed_ms;" in late,
          "take_capture: the cap follows the GPU, at most 250 ms, and is the fixed one when off")
-    need("const bool must_wait = adapt && done0 < c->late_value;" in late,
+    need("const bool must_wait = adapt && done0 < c->late_value && !behind_held;" in late,
          "take_capture: only a real wait under the adaptive cap moves the estimate")
     need("if (!done) p90_us.fetch_add(2000, std::memory_order_relaxed);" in late and
          "else if (took > p90) p90_us.fetch_add(900, std::memory_order_relaxed);" in late and
@@ -91,7 +91,7 @@ def main():
     need(copy.index("if (!done) continue;") < copy.index("guarded_copy((uint8_t*)c->map + (uint64_t)i * 4096"),
          "take_capture: a cut wait leaves the submit's copy of a late page (no reset words over the GPU's light)")
     need("if (done) flush_mapped(c->alloc, c->nbytes);" in late, "take_capture: nothing to flush when the copies were left")
-    need("if (cap_ms > 0) done = vk_timeline_wait_for(c->late_value, (uint32_t)cap_ms);" in late and
+    need("else if (cap_ms > 0) done = vk_timeline_wait_for(c->late_value, (uint32_t)cap_ms);" in late and
          "else vk_timeline_wait(c->late_value);" in late,
          "take_capture: the timed wait, and RX_VK_CAPTURE_WAIT_MAX_MS=0 as before")
 

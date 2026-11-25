@@ -18,10 +18,10 @@ def check_source():
                    # (as mirror_sync: a bare entry's pages keep the mirror's copy)
                    "protect_bare_on() && prot_page_since(page, synced)",
                    # (synced in this submission: synced_gen is behind the GPU's writes of its earlier segments)
-                   "if (inherit_all || r.synced_epoch == mirror_epoch)",
+                   "if (inherit_all || r.synced_epoch == rec_epoch())",
                    # (TICK-036, HeyListen: a retired mirror filled by a later segment of the parallel replay is left out)
-                   "if (r.made_epoch == mirror_epoch && r.made_seg > texture_segment()) {",
-                   "p->made_epoch = mirror_epoch, p->made_seg = texture_segment();"):
+                   "if (r.made_epoch == rec_epoch() && r.made_seg > texture_segment()) {",
+                   "p->made_epoch = rec_epoch(), p->made_seg = texture_segment();"):
         if needle not in src:
             raise SystemExit("vk_memory.cpp no longer has: " + needle)
     make = src[src.index("bool mirror_make(Pool& pool) {"):]

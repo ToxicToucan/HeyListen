@@ -65,6 +65,7 @@ bool texture_touch_quick(Texture* t, bool sampling) {
     note("touch_quick", (uint64_t)t->id, sampling);
     return (t->id + epoch) % 3 != 0;
 }
+bool texture_touch_unlocked(Texture*, bool) { return false; }   // (stream PIPE1, RX_VK_TOUCH_FAST off: the locked touch)
 void texture_touch(Texture* t, bool sampling) { note("touch", (uint64_t)t->id, sampling); }
 bool texture_of(int id, nvn_tex* t, nvn_view* v, bool* has_view) {
     note("texture_of", (uint64_t)id, versions[id & 4095]);

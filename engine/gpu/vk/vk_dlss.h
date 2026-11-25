@@ -59,6 +59,7 @@ struct DlssFgInputs {
     float jitter[2]{};                 // (render pixels)
     float near_z = 0.1f, far_z = 1000.0f, fov_y = 1.0f;
     bool reset = false;                // (a cut, a load, a new size)
+    float frame_ms = 16.667f;          // (since the frame before's: AMD FSR 4 frame generation's frame time)
 };
 /// Records `count` made frames between the frame before the game's `color` (w x h, RGBA8, GENERAL) and it into out[0..count)
 /// (RGBA8, GENERAL, w x h, with their views), from `in`. `sequence` counts the presents: a gap in it is a new history. Returns

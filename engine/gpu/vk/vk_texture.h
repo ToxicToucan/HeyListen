@@ -12,6 +12,7 @@
 // with the Switch 2 GOB swizzle); other formats are unswizzled on the CPU straight into the staging memory.
 #pragma once
 
+#include <memory>
 #include <string>
 #include <cstdint>
 #include <unordered_map>
@@ -29,6 +30,7 @@ struct Texture {
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     VkImageUsageFlags usage = 0;
     uint32_t width = 1, height = 1, depth = 1, levels = 1, layers = 1;   // the image's (after skip)
+    uint32_t shrink = 0;      // (RX_VK_SHADOW_SHIFT) a huge depth-only shadow map made 2^shrink times smaller than the guest's: its draws' viewport and scissor shrink with it, nothing is uploaded into it
     uint32_t skip = 0;        // top levels of the texture left out (huge textures: RX_VK_TEX_MAX_DIM, _MAX_MB)
     // (a huge array kept whole as a sparse resident image instead: each layer gets device memory when it is first
     // written, so only what the game streams in costs VRAM. MKW's terrain arrays, 8192 x 8192 x 68 BC6H: 5.8 GB
@@ -86,6 +88,9 @@ struct Texture {
     uint64_t defer_frame = 0, defer_seen = 0;
     int64_t defer_ns = 0;
     uint32_t defer_asks = 0;
+    uint64_t bcd_key = 0;      // (TEXCACHE: held back while the disk cache reads its blocks: their key, 0 when not held)
+    int64_t bcd_hold_ns = 0;   // (since when)
+    bool bcd_keyed = false;    // (the hold was decided once)
     uint64_t last_frame = 0;  // the present it was last used in (the cache's age)
     uint64_t first_render_frame = 0;   // the present it was first rendered into in (0: never)
     uint64_t last_value = 0;  // the timeline value of the last submission that used it
@@ -136,6 +141,10 @@ Texture* texture_touch(Texture* tex, bool for_sampling);
 /// texture_touch without the lock where it has nothing more to do (its contents up to date for this submission):
 /// false when the full texture_touch is needed
 bool texture_touch_quick(Texture* tex, bool for_sampling);
+/// (stream PIPE1, RX_VK_TOUCH_FAST) after texture_touch_quick said no, outside ParLock: true when the locked texture_touch would only
+/// note this submission's first look (uploaded, not GPU-written, nothing written into its storage since, not uploaded by a later
+/// segment); the look is then noted here. False: take ParLock and call texture_touch. Always false with RX_VK_TOUCH_FAST=0
+bool texture_touch_unlocked(Texture* tex, bool for_sampling);
 /// Whether texture_written and texture_rendered would change nothing this frame (a parallel replay: no lock then)
 bool texture_marked(const Texture* tex);
 /// The parallel replay's segment this thread records (its order in the submission; uploads and mirror syncs a later
@@ -145,14 +154,18 @@ uint64_t texture_segment();
 /// A parallel replay's segments, in queue order: each one's init command buffer (begun; submitted right before its
 /// uploads). A new image's first layout change (UNDEFINED -> GENERAL, and its clear) that a segment's worker makes goes
 /// to the earliest segment's still being recorded, not to the maker's own uploads: a segment before the maker's that
-/// uses it is submitted first, and found it UNDEFINED (VUID-vkCmdDraw-None-09600 with RX_VK_PARALLEL only)
-void texture_segments_begin(const VkCommandBuffer* init_cmds, size_t n);
-/// This thread records segment `index` of them (-1: none, after it)
-void texture_segment_worker(int index);
+/// uses it is submitted first, and found it UNDEFINED (VUID-vkCmdDraw-None-09600 with RX_VK_PARALLEL only).
+/// (stream REC1) The table is an object of the group of segments, not a global: the group, its jobs and each worker hold it
+/// (SegTableRef), so a later group's table does not replace what workers still recording the last one index
+struct SegTable;
+using SegTableRef = std::shared_ptr<SegTable>;
+SegTableRef texture_segments_begin(const VkCommandBuffer* init_cmds, size_t n);
+/// This thread records segment `index` of that group (a null table, index -1: none, after it)
+void texture_segment_worker(const SegTableRef& table, int index);
 /// Segment `index` recorded: its init command buffer ended (no new image's change goes to it after). 1: something went
 /// to it (submit it before the segment's uploads), 0: nothing, -1: something did and it could not be ended (lost: the
 /// replay stops)
-int texture_segment_end(int index);
+int texture_segment_end(SegTable& table, int index);
 /// (RX_VK_POOL_MIRROR) on a parallel segment's worker, upload_command_buffer() is the earliest open segment's init command buffer
 /// from the begin call to the end call (a mirror made there is filled before any segment that could read it); elsewhere nothing
 void* upload_to_earliest_begin();
@@ -161,6 +174,9 @@ void upload_to_earliest_end(void* h);
 uint32_t texture_epoch();
 /// Changes whenever a texture is destroyed (pointers to textures kept elsewhere go stale)
 uint64_t texture_destroy_generation();
+/// (ported from Longshot 597c5a4e0) Whether t, listed at gpu, is still that texture with that image: not destroyed since (t is only compared
+/// until it is found, so a freed one is never read). Replay thread
+bool texture_alive(uint64_t gpu, const Texture* t, VkImage image);
 /// The texture an NVN texture's storage is (made and uploaded at first use, uploaded again when the CPU wrote its
 /// storage since). null for formats and targets that have no image (buffers, unknown formats).
 Texture* texture_get(const nvn_tex* t, bool for_sampling, bool need_attach = false);
@@ -225,6 +241,28 @@ void dispatch_barrier(VkCommandBuffer cmd, const char* why);
 bool game_order();
 /// Full barriers recorded and left out (RX_VK_BARRIER_DEDUPE_OFF=1: none), since the start
 void barrier_stats(int64_t* made, int64_t* left_out);
+// ---- (GPUPOV) the barriers that separate no hazard: RX_VK_BARRIER_AUDIT=1 counts them, RX_VK_BARRIER_HAZARD=<mask> leaves the
+// proveably unneeded ones out (off by default: see the notes in vk_texture.cpp). A Texture* names a target written since the
+// command buffer's last recorded full barrier. ----
+struct Texture;
+bool hazard_audit_on();
+/// Work that writes memory and is not named (a copy, a clear, a fill or update, a query's results; vk_work.h's macros call it)
+void hazard_note_xfer(VkCommandBuffer cmd);
+/// The same, for a dispatch or a draw whose program stores to a storage buffer or image
+void hazard_note_unknown(VkCommandBuffer cmd);
+/// A pass began into these targets (color[0..n), depth): written from here on
+void hazard_note_pass(VkCommandBuffer cmd, const Texture* const* color, int n, const Texture* depth);
+/// Whether the barrier before this pass (and the draw it is about to record, which samples tex[0..ns)) may be left out
+bool hazard_pass_barrier_elidable(VkCommandBuffer cmd, const Texture* const* color, int n, const Texture* depth,
+                                  const Texture* const* tex, size_t ns, const char* why);
+/// A draw of a pass whose start barrier was left out samples an image written before it: true, and the pass must end here
+bool hazard_draw_reads_unordered(VkCommandBuffer cmd, const Texture* const* tex, size_t ns);
+/// The game's own barrier: left out (folded) when the next barrier of the command buffer decides instead, no work in between
+bool hazard_fold_game_barrier(VkCommandBuffer cmd);
+/// The audit's counts (RX_VK_BARRIER_AUDIT=1): kind 0 the game's, 1 pass starts, 2 dispatches, 3 others; what 0 checks, 1 named
+/// windows, 2 unknown windows, 3 read-after-write hits, 4 elided; folded: the game's barriers left out, kept: two in a row
+void hazard_stats(int64_t out[4][5], int64_t* folded, int64_t* kept);
+int hazard_mode();
 /// (hookshot) Set around a draw's sampled-texture lookups (vk_draw.cpp): a new ASTC texture there may wait for a later frame
 /// once this frame's uploads passed their budget (texture_touch). Never for compute: a dispatch may bake what it reads once
 extern thread_local bool upload_defer_ok;

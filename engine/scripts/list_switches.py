@@ -680,7 +680,7 @@ PLAYER_USE = [
                         "key models go missing)."),
     ("RX_VK_ASTC_RGBA8", "AMD cards: blocky textures, solid rectangles in the sky, or unusually dark courtyard "
                          "surfaces (uses more graphics memory)."),
-    ("RX_VK_ASTC_CPU", "A Ryzen 7000/9000 desktop APU resets the GPU or freezes for seconds while an area loads: "
+    ("RX_VK_ASTC_CPU", "An AMD integrated GPU (Ryzen desktop or handheld APU) resets the GPU or freezes for seconds while an area loads: "
                        "textures are decoded on the CPU instead."),
     ("RX_VK_MESH_G3", "A Steam Deck or AMD card draws wrong or hangs in a mesh scene: `=0` is the earlier "
                       "translation, the first thing to try."),

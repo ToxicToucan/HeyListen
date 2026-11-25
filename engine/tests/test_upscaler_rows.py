@@ -75,6 +75,18 @@ def main():
                 "(int)dlss_why()", "RX_VK_FSR4=0", "AMD's files were not found", "no FSR 4 for this GPU", "(int)fsr4_why()"):
         if why not in upscaler:
             raise SystemExit("hn_upscaler: the help no longer says why DLSS or FSR is not offered (%s)" % why)
+    # (issue 130) a build without DLSS next to NVIDIA's runtime on an RTX card (or without FSR 4 next to AMD's files on an AMD card)
+    # says to run the Builder again, only for the row as shown (variant < 0); the log says at the start what the build has
+    for need in ("ur::dlss_rebuild_hint_wanted(dlss_built(), ur::nvidia_rtx(dev.props.vendorID, dev.props.deviceName)",
+                 'file_beside_game("ngx/nvngx_dlss.dll")', "ur::fsr4_rebuild_hint_wanted(fsr4_built(), ur::amd_gpu(dev.props.vendorID)",
+                 'file_beside_game("amd_fidelityfx_loader_vk.dll")', "dn = ur::dlss_rebuild_hint()", "fn = ur::fsr4_rebuild_hint()"):
+        if need not in upscaler:
+            raise SystemExit("hn_upscaler: a build without DLSS or FSR 4 beside their files does not say to run the Builder again (%s)" % need)
+    if upscaler.index("if (variant < 0 && v == ur::GAME) {") > upscaler.index("if (v != ur::GAME || (!dn && !fn)) return t[v];"):
+        raise SystemExit("hn_upscaler: the Builder hint comes after the row's text is chosen")
+    main_cpp = (ROOT / "gpu" / "vk" / "vk_main.cpp").read_text(encoding="utf-8")
+    if "upscaler_rows::dlss_build_line(dlss_built())" not in main_cpp or "upscaler_rows::fsr4_build_line(fsr4_built())" not in main_cpp:
+        raise SystemExit("vk_main.cpp: the start does not log whether the build has DLSS and FSR 4")
     if upscaler.count("Sharpness to") < 2:
         raise SystemExit("hn_upscaler: NVIDIA DLSS and DLAA do not say to set Sharpness to around 80%")
     resolution = function(menu, "const char* hn_resolution(int v, int variant) {")

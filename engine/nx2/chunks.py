@@ -169,6 +169,29 @@ def parallel_emit(emit, order, texts, counters, jobs, run=2000):
             yield (e,) + tuple(emit(e, texts))
 
 
+def count_defs(gen_dir):
+    """{file name: the functions it defines} for every code_*.c of the gen folder"""
+    counts = {}
+    for f in sorted(os.listdir(gen_dir)):
+        if re.fullmatch(r"code_[0-9a-z_]+\.c", f):
+            with open(os.path.join(gen_dir, f), "rb") as h:
+                counts[f] = len(lifted_c.HEAD_BYTES.findall(h.read()))
+    return counts
+
+
+def check_whole(gen_dir, want):
+    """The written C defines each lifted function once: the numbered chunks, their parts and code_hot.c together hold `want`
+    definitions. Fewer is a gen folder another process rewrote while this lift worked (its split parts removed, its first parts
+    patched already: the text edits then miss their places, at random, in whichever chunk lost them); more, an earlier lift's
+    files left beside these"""
+    got = count_defs(gen_dir)
+    n = sum(got.values())
+    if n != want:
+        raise SystemExit("chunks: %s holds %d function definitions in %d files, the lift wrote %d: another process wrote in it "
+                         "meanwhile (a second lift or build on the same work folder, or one a stopped wrapper left running), or "
+                         "an earlier lift's files are still there. Wait for it to end, then lift again" % (gen_dir, n, len(got), want))
+
+
 def write(L, gen_dir, img_dir, rechunk=False, counters=(), jobs=None):
     """L.write(gen_dir) with stable boundaries; returns its files. counters: dicts the emit adds to besides the
     lifter's own (poll.stats); jobs: emit processes (emit_jobs())"""
@@ -211,6 +234,7 @@ def write(L, gen_dir, img_dir, rechunk=False, counters=(), jobs=None):
         if f == "code_hot.c.whole" or HOT_PIECE.fullmatch(f):
             os.remove(os.path.join(gen_dir, f))
     files += split_big(gen_dir, files)
+    check_whole(gen_dir, len(L.funcs))
     save(img_dir, starts or b.recorded)
     print("chunks: %d, boundaries %s" % (len(files), "kept" if starts else "from sizes (saved)"))
     return files

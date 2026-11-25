@@ -56,9 +56,10 @@ std::deque<std::pair<uint64_t,uint64_t>> bg_queue;
 void bg_start() { bg_starts++; } // Recording spy: no thread or GPU import is started.
 void logf(const char*,...){} void bg_drain(){}
 void guest_pages_set(uint64_t,uint64_t,uint64_t){}
-enum { MKWVK_TRACE_IMPORT_MADE = 5 }; uint64_t mem_rec_value = 0; void trace_gpu(uint32_t,uint64_t,uint64_t,uint64_t,uint64_t){}   // (HL_TRACE's record: none here)
+enum { MKWVK_TRACE_IMPORT_MADE = 5 }; uint64_t mem_rec_value = 0; uint64_t rec_value_of() { return mem_rec_value; } void trace_gpu(uint32_t,uint64_t,uint64_t,uint64_t,uint64_t){}   // (HL_TRACE's record: none here)
 void retire_pool(std::map<uint64_t,Pool>::iterator it) { imported_take(it);last_pool=nullptr;std::fill(std::begin(pool_cache),std::end(pool_cache),nullptr);retires++; }
-enum { VK_SUCCESS = 0 };
+enum { VK_SUCCESS = 0, VK_ERROR_OUT_OF_HOST_MEMORY = -1, VK_ERROR_OUT_OF_DEVICE_MEMORY = -2, VK_ERROR_INVALID_EXTERNAL_HANDLE = -1000072003 };
+uint64_t retired_emergency_free(uint64_t) { return 0; } void import_forget_failure(uint64_t, uint64_t) {} int64_t st_emergency_ok = 0;   // (issues 131, 121: a refused import's retry: nothing retired in the fixture)
 thread_local bool import_cooling = false;
 thread_local int import_result = 0;
 bool import_on_hold(uint64_t, uint64_t) { import_cooling = false; return false; }

@@ -86,8 +86,8 @@ def main():
 
     # (the menu: toggles on it, does not bind it)
     tick = menu[menu.index("void menu_tick() {"):]
-    need(re.search(r"if \(pad\(HOS_PAD_GUIDE\) \|\| pad\(HOS_PAD_TOUCHPAD\) \|\| chord_now\) press\[0\] = true;", tick),
-         "the touchpad click does not toggle the menu like Home")
+    need(re.search(r"if \(pad\(HOS_PAD_GUIDE\) \|\| \(opts\.touchpad_menu && pad\(HOS_PAD_TOUCHPAD\)\) \|\| chord_now\) press\[0\] = true;", tick),
+         "the touchpad click does not toggle the menu like Home (unless the Touchpad opens menu row is off: tests/test_input_options.py)")
     need(re.search(r"menu_only = 1u << HOS_PAD_GUIDE \| 1u << HOS_PAD_TOUCHPAD;", tick), "the binding wait takes the touchpad click")
     need("(raw & ~menu_only) == 0" in tick and "pad_press & ~menu_only" in tick, "the binding wait does not skip menu_only")
     need("touchpad click" in menu, "the Menu shortcut row does not mention the touchpad")

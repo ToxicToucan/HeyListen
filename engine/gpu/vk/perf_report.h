@@ -84,10 +84,11 @@ inline const char* event_name(int e) {
 
 /// Who makes the frames the Frame generation row asks for (vk_framegen.h framegen_engine's values): not running, the renderer's
 /// own interpolation, AMD FSR 3.1's frame interpolation (at 2x, where it runs), NVIDIA DLSS FG (the Frame generation by row's
-/// choice, where its runtime runs and a temporal Upscaler's inputs are there: the renderer's own makes them elsewhere)
-enum FrameGen { kFramegenOff, kFramegenBuiltin, kFramegenFsr3, kFramegenDlssg, kFramegens };
+/// choice, where its runtime runs and a temporal Upscaler's inputs are there: the renderer's own makes them elsewhere), AMD FSR 4 frame
+/// generation (the row's fourth choice, 2x, where AMD's runtime offers it; the other generators make a set it refuses)
+enum FrameGen { kFramegenOff, kFramegenBuiltin, kFramegenFsr3, kFramegenDlssg, kFramegenFsr4, kFramegens };
 inline const char* framegen_name(int e) {
-    static const char* const t[] = {"off", "builtin", "fsr3", "dlssg"};
+    static const char* const t[] = {"off", "builtin", "fsr3", "dlssg", "fsr4"};
     return e >= 0 && e < kFramegens ? t[e] : "other";
 }
 

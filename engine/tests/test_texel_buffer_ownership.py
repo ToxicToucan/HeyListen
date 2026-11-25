@@ -50,7 +50,7 @@ def main():
     probe = block(memory, "void link_probe()")
     assert probe.count("vkDestroyBuffer(") == 2
     assert memory.replace(probe, "").count("vkDestroyBuffer(") == 1
-    assert memory.count("destroy_import_buffer(") == 10   # (the definition and nine: the import rollbacks, now also a pointer no memory type fits)
+    assert memory.count("destroy_import_buffer(") == 11   # (the definition and ten: the import rollbacks, a pointer no memory type fits, and the give-back of retired imports when an import is refused)
     fixture = (ROOT / "tests/texel_buffer_ownership_test.cpp").read_text(encoding="utf-8")
     fixture = fixture.replace("/* DEAD IMPORT */", block(memory, "struct DeadImport {") + ";")
     fixture = fixture.replace("/* ACTUAL */", actual)

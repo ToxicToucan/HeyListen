@@ -88,7 +88,7 @@ def main():
     a = p.parse_args()
     src = (VK / "vk_replay.cpp").read_text(encoding="utf-8")
     flush = block(src, "void flush_ub_updates(VkCommandBuffer cmd)")
-    if "ub_disjoint_writes(ub_updates, ub_first_of_recording, ub_updates.size()," not in flush:
+    if "ub_disjoint_writes(ub_updates, first - ub_base, ub_updates.size()," not in flush:
         raise SystemExit("FAIL: flush_ub_updates does not write its updates through ub_disjoint_writes")
     if "gpu_write(cmd, ub_updates[i]" in flush:
         raise SystemExit("FAIL: flush_ub_updates writes each update as it is again")

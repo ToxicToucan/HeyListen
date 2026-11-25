@@ -3,7 +3,7 @@
 The graphics in AMD's Ryzen 7000 (PCI 0x164E) and 9000 (0x13C0) desktop CPUs lose the device on Windows when the GPU decodes
 Kokiri Forest's terrain arrays in one long submission, so there ASTC is decoded on the CPU unless RX_VK_ASTC_CPU=0. This cuts
 astc_cpu_wanted out of the source, compiles it for Windows (_WIN32 defined: the rule is Windows only) and for the rest, and checks:
- - RX_VK_ASTC_CPU unset: on for those two device ids of vendor 0x1002 on Windows, off for other AMD parts (a 780M, an RX 7800 XT),
+ - RX_VK_ASTC_CPU unset: on for AMD's integrated GPUs (vendor 0x1002, type integrated: the two Ryzen ids, a 780M, an 890M, issue 127) on Windows, off for AMD's discrete cards (an RX 7800 XT),
    other vendors, and everywhere off Windows;
  - RX_VK_ASTC_CPU=1 (or any value but 0, false, off, no, empty): on everywhere; =0: off even for the Ryzen graphics;
 and that astc_ready gives the GPU decoder up when astc_on_cpu says so, and the switch is in docs/development.md.
@@ -21,22 +21,25 @@ HARNESS = r"""
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include "%s"
 %s
 int main() {
-    struct { const char* env; uint32_t vendor, device; } cases[] = {
-        {nullptr, 0x1002, 0x164E}, {nullptr, 0x1002, 0x13C0}, {nullptr, 0x1002, 0x15BF}, {nullptr, 0x1002, 0x747E},
-        {nullptr, 0x10DE, 0x164E}, {nullptr, 0x8086, 0x13C0},
-        {"1", 0x10DE, 0x2684}, {"2", 0x1002, 0x747E}, {"0", 0x1002, 0x164E}, {"false", 0x1002, 0x13C0},
-        {"off", 0x1002, 0x164E}, {"no", 0x1002, 0x164E}, {"", 0x1002, 0x164E}, {"", 0x10DE, 0x2684},
+    struct { const char* env; uint32_t vendor, device; bool integrated; } cases[] = {
+        {nullptr, 0x1002, 0x164E, true}, {nullptr, 0x1002, 0x13C0, true}, {nullptr, 0x1002, 0x15BF, true},
+        {nullptr, 0x1002, 0x747E, false}, {nullptr, 0x10DE, 0x164E, false}, {nullptr, 0x8086, 0x13C0, true},
+        {nullptr, 0x1002, 0x1900, true}, {nullptr, 0x8086, 0x9A49, true},
+        {"1", 0x10DE, 0x2684, false}, {"2", 0x1002, 0x747E, false}, {"0", 0x1002, 0x164E, true}, {"false", 0x1002, 0x13C0, true},
+        {"off", 0x1002, 0x164E, true}, {"no", 0x1002, 0x164E, true}, {"", 0x1002, 0x164E, true}, {"", 0x10DE, 0x2684, false},
+        {"0", 0x1002, 0x1900, true}, {"1", 0x1002, 0x1900, true},
     };
-    for (const auto& c : cases) std::printf("%%d\n", astc_cpu_wanted(c.env, c.vendor, c.device) ? 1 : 0);
+    for (const auto& c : cases) std::printf("%%d\n", astc_cpu_wanted(c.env, c.vendor, c.device, c.integrated) ? 1 : 0);
     return 0;
 }
 """
 
-# (the rule on Windows, then elsewhere: one line a case)
-WINDOWS = [1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0]
-OTHER = [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0]
+# (the rule on Windows, then elsewhere: one line a case; AMD's integrated GPUs, a 780M and an 890M too, since issue 127)
+WINDOWS = [1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1]
+OTHER = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1]
 
 
 def block(text, marker):
@@ -67,10 +70,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="astc-cpu-") as folder:
         tmp = Path(folder)
         # (the rule's _WIN32 renamed: a Windows compiler defines _WIN32 itself, so the check of the other platforms got Windows'
-        # rule, and its own headers cannot do without it)
+        # rule, and its own headers cannot do without it; the policy header takes the platform as an argument)
         for name, define, want in (("windows", ["-DASTC_RULE_WIN32"], WINDOWS), ("other", [], OTHER)):
             cpp = tmp / (name + ".cpp")
-            cpp.write_text(HARNESS % rule.replace("_WIN32", "ASTC_RULE_WIN32"), encoding="utf-8")
+            cpp.write_text(HARNESS % ((ROOT / "gpu" / "vk" / "astc_cpu_policy.h").as_posix(), rule.replace("_WIN32", "ASTC_RULE_WIN32")), encoding="utf-8")
             exe = tmp / name
             r = subprocess.run([args.cxx, "-std=c++17", "-O0", "-Wall", "-Wextra", "-Werror", *define, str(cpp), "-o", str(exe)],
                                capture_output=True, text=True, timeout=120)
@@ -81,7 +84,7 @@ def main():
                 problems.append("%s: the rule answers %s, wanted %s" % (name, got, want))
     if problems:
         raise SystemExit("FAIL:\n  " + "\n  ".join(problems))
-    print("PASS: ASTC is decoded on the CPU for Ryzen 7000/9000 graphics on Windows unless RX_VK_ASTC_CPU=0, and by the switch elsewhere")
+    print("PASS: ASTC is decoded on the CPU for AMD's integrated graphics on Windows unless RX_VK_ASTC_CPU=0, and by the switch elsewhere")
 
 
 if __name__ == "__main__":

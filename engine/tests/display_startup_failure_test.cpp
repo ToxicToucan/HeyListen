@@ -122,6 +122,7 @@ static int setenv(const char* name, const char* value, int) { return _putenv_s(n
 #endif
 
 static void nv_cache_env(void) {}   // (QUICK1: the NVIDIA driver cache environment, set before Vulkan loads; nothing to do here)
+static void order_thread_default(void) {}   // (DECOUPLE: the order thread's default switch; nothing to do here)
 
 #include "display_startup_actual.inc"
 

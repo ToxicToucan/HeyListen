@@ -35,8 +35,11 @@ def main():
         raise SystemExit("a vertex set remembers an empty size as empty")
     if "gpu_bind_stamp() == vstamp" not in draw:
         raise SystemExit("a vertex set is remembered across a mirror")
-    if draw.count("bind_index(") != 3:
+    # (3 the game's indexed draws, 1 the no-mesh fallback's indexed form: LAPTOP1, RX_VK_FALLBACK_INDEXED)
+    if draw.count("bind_index(") != 4:
         raise SystemExit("an indexed draw binds its index buffer on its own")
+    if "bind_index(cmd, fallback_draw_records," not in draw:
+        raise SystemExit("the fallback's indexed form binds its index buffer through bind_index (its cache)")
     bound = block(source, "void bind_index(")
     if bound.index("index_bind_same(") > bound.index("vkCmdBindIndexBuffer("):
         raise SystemExit("an index buffer is bound before checking it is already bound")

@@ -50,6 +50,7 @@
 #include "vk_framegen.h"  // (the Frame generation row: the multiplier as it runs, who makes the frames)
 #include "framegen_rows.h"   // (what each Frame generation by offers; the Frame rate limit's share)
 #include "vk_fsr4.h"
+#include "vk_fsr4fg.h"
 #include "vk_temporal.h"
 #include "vk_reflex.h"
 #include "upscaler_rows.h"
@@ -57,6 +58,7 @@
 #include "menu_rows.h"   // (which dependent rows show: row_shown)
 #include "menu_restart.h"
 #include "present_mode.h"
+#include "lowend_rule.h"   // (the Volumetric fog row and the first-start rule for low-end GPUs)
 #ifndef HOOKSHOT_VERSION   // (nx2/build.py gives it to this file: nx2/version.py)
 #define HOOKSHOT_VERSION "unknown"
 #endif
@@ -113,7 +115,7 @@ const char* tx_framegen(int v) {
 }
 const char* tx_onoff(int v) { return v ? "On" : "Off"; }
 const char* tx_framegen_by(int v) {
-    static const char* t[fgr::kBy] = {"Built-in / AMD FSR 3.1", "NVIDIA DLSS FG", "AMD FSR 3.1 FG"};
+    static const char* t[fgr::kBy] = {"Built-in / AMD FSR 3.1", "NVIDIA DLSS FG", "AMD FSR 3.1 FG", "AMD FSR 4 FG"};
     return t[std::clamp(v, 0, fgr::kBy - 1)];
 }
 const char* tx_intel_compiles(int v) { return v ? "Side by side" : "One at a time"; }
@@ -128,6 +130,9 @@ const char* tx_fps_limit(int v) {
 const char* tx_shadow_res(int v) {   // (longshot 9f8958a5c, ported)
     static const char* t[] = {"Game (1600)", "High (2200)", "Ultra (3072)"};
     return t[v < 0 || v > 2 ? 0 : v];
+const char* tx_fps_base(int v) {
+    static const char* t[fgr::kBases] = {"Off", "30", "40", "45", "48", "50", "60", "72", "75", "90", "120"};
+    return t[v < 0 || v >= fgr::kBases ? 0 : v];
 }
 const char* tx_perf(int v) { return v == 2 ? "Full" : v ? "FPS" : "Off"; }
 const char* tx_menu_shortcut(int v) {
@@ -244,6 +249,17 @@ const char* tx_upscaler(int) {
                                             "AMD FSR 4", "Off"};
     return t[std::clamp(upscaler(), 0, ur::kUpscalers - 1)];
 }
+/// Whether a file (a path with /) is in the game folder: NVIDIA's DLSS runtime and AMD's FSR 4 loader, which a game built without
+/// them can have beside it (Windows' file names: the Linux runtimes carry a version in theirs)
+bool file_beside_game(const char* relative) {
+#ifdef _WIN32
+    std::error_code ec;
+    return std::filesystem::is_regular_file(game_dir_path() / relative, ec);
+#else
+    (void)relative;
+    return false;
+#endif
+}
 /// The Upscaler: the one shown (what runs, upscaler()), and with the game's own, why DLSS and FSR are not offered. Variants
 /// (every one): each value, then the game's own with each of DLSS's reasons, then with each of FSR's
 const char* hn_upscaler(int v, int variant) {
@@ -293,8 +309,18 @@ const char* hn_upscaler(int v, int variant) {
     // (the reasons are said only where the engine is in the build: one without FSR does not tell an NVIDIA user why)
     const char* dn = dlss_built() || variant >= 0 ? dlss_no[d] : nullptr;
     const char* fn = fsr4_built() || variant >= 0 ? fsr_no[f] : nullptr;
+    // (a build without DLSS or FSR 4 says nothing of it, except where its files are in the game folder on a card that would use
+    // them: then the way to get it. Each answer is kept: the folder and the GPU do not change while the game runs)
+    if (variant < 0 && v == ur::GAME) {
+        static const bool dlss_hint = ur::dlss_rebuild_hint_wanted(dlss_built(), ur::nvidia_rtx(dev.props.vendorID, dev.props.deviceName),
+                                                                    file_beside_game("ngx/nvngx_dlss.dll"));
+        static const bool fsr_hint = ur::fsr4_rebuild_hint_wanted(fsr4_built(), ur::amd_gpu(dev.props.vendorID),
+                                                                   file_beside_game("amd_fidelityfx_loader_vk.dll"));
+        if (dlss_hint) dn = ur::dlss_rebuild_hint();
+        if (fsr_hint) fn = ur::fsr4_rebuild_hint();
+    }
     if (v != ur::GAME || (!dn && !fn)) return t[v];
-    static char b[DLSS_WHY_COUNT][FSR_WHY_COUNT][320];
+    static char b[DLSS_WHY_COUNT][FSR_WHY_COUNT][520];
     snprintf(b[d][f], sizeof b[d][f], "%s%s%s%s%s", t[0], dn ? " " : "", dn ? dn : "", fn ? " " : "", fn ? fn : "");
     return b[d][f];
 }
@@ -726,6 +752,10 @@ const char* framegen_limit_note(int v, bool worst) {
     static char b[200];
     const int limit = worst ? fgr::limit_fps(fgr::kLimit60) : menu_fps_limit();
     if (limit < 0) return "";
+    if (!worst && menu_base_fps() > 0) {   // (the Base frame rate limit on: the shown rate is the game's times the multiplier)
+        snprintf(b, sizeof b, " The Base frame rate limit holds the game at %d frames a second, so %d are shown.", menu_base_fps(), menu_base_fps() * v);
+        return b;
+    }
     if (limit == 0) return " Unlimited: the game is not held back, and every frame of it gets its made frames.";
     const int run = worst ? v : fgr::limited(limit, v);
     if (run < v || worst)
@@ -740,9 +770,10 @@ const char* framegen_limit_note(int v, bool worst) {
 const char* hn_framegen(int v, int variant) {
     static char b[9][420];
     int shown = v;
-    bool fsr = false, worst = false;
+    bool fsr = false, worst = false, fsr4 = false;
     if (variant < 0) {
         shown = fgr::clamp(framegen_by_now(), dlss_fg_most(), std::clamp(v, 0, 8));
+        fsr4 = shown == 2 && framegen_by_now() == fgr::BY_FSR4;   // (AMD FSR 4 frame generation makes it, where AMD's runtime runs here)
         // (2x: by AMD FSR 3.1 where it runs, from the scene's depth and motion: vk_framegen.cpp)
         fsr = shown == 2 && (framegen_by_now() == fgr::BY_FSR3 || fsr3fi::frames_wanted() != 0);
     } else if (v >= 2) {
@@ -759,7 +790,7 @@ const char* hn_framegen(int v, int variant) {
     const char* made = shown == 2 ? "One made frame" : shown == 3 ? "Two made frames" : shown == 4 ? "Three made frames" : shown == 5 ? "Four made frames"
                        : shown == 6 ? "Five made frames" : shown == 7 ? "Six made frames" : "Seven made frames";
     char* out = b[std::clamp(shown, 2, 8)];
-    snprintf(out, sizeof b[0], "%s between each two of the game's%s.%s", made, fsr ? ", by AMD FSR 3.1 from the scene's depth and motion" : "",
+    snprintf(out, sizeof b[0], "%s between each two of the game's%s.%s", made, fsr4 ? ", by AMD FSR 4 from the scene's depth and motion" : fsr ? ", by AMD FSR 3.1 from the scene's depth and motion" : "",
              variant < 0 || worst ? framegen_limit_note(shown, worst) : "");
     return out;
 }
@@ -768,6 +799,17 @@ const char* hn_framegen(int v, int variant) {
 /// (4), no temporal Upscaler (5)
 const char* hn_framegen_by(int v, int variant) {
     static char b[260];
+    if (v == fgr::BY_FSR4) {   // (AMD FSR 4 frame generation: variants 0 it runs, 1 not offered here (the reason: its why text) )
+        static char c[420];
+        const bool offered = variant < 0 ? fsr4fg_offered() : variant == 0;
+        if (variant > 1) return nullptr;
+        if (offered)
+            return "AMD FSR 4 frame generation (a Radeon RX 9000 and AMD's runtime), from the scene's depth and motion: one made frame between two of "
+                   "the game's, 2x only. NOT TESTED on real hardware yet. Where AMD's runtime refuses a frame, the renderer's own makes it.";
+        snprintf(c, sizeof c, "Not available: %s The renderer's own (or AMD FSR 3.1) makes the frames.",
+                 *fsr4fg_why_text(fsr4fg_why()) ? fsr4fg_why_text(fsr4fg_why()) : "Not asked yet.");
+        return c;
+    }
     if (v == fgr::BY_FSR3)
         return variant > 0 ? nullptr
                            : "AMD FSR 3.1's frame interpolation, from the scene's depth and motion: one made frame between two of the "
@@ -794,6 +836,25 @@ const char* hn_framegen_by(int v, int variant) {
         snprintf(b, sizeof b, "NVIDIA DLSS Frame Generation makes the frames, from the scene's depth and motion: 2x up to %dx on this GPU, no Auto.", most + 1);
     else
         snprintf(b, sizeof b, "NVIDIA DLSS Frame Generation makes the frames, from the scene's depth and motion (RTX 40 and newer): 2x and up, no Auto.");
+    return b;
+}
+/// The Base frame rate limit: what the value makes at the multiplier that runs now. Variants (every one): none made; a multiplier
+/// (the longest); Game speed on Per frame
+const char* hn_fps_base(int v, int variant) {
+    static char b[240];
+    if (v <= 0) return variant > 0 ? nullptr : "The Frame rate limit holds the rate alone, as before: the rate shown, the game's frames and the made ones.";
+    if (variant > 2) return nullptr;
+    const int base = fgr::base_fps(v);
+    const bool per_frame = variant < 0 ? !opts.realtime : variant == 2;
+    if (per_frame) return "Game speed is on Per frame: the game runs at its own 60 and this holds nothing. Set Game speed to Real time.";
+    const int mult = variant < 0 ? (framegen_on() && framegen_now() >= 2 ? framegen_now() : 1) : variant == 0 ? 1 : 3;
+    if (mult < 2)
+        snprintf(b, sizeof b, "The game runs at %d frames a second%s.", base,
+                 variant < 0 && framegen_on() && framegen_now() == 1 ? ", and Auto frame generation fills up to the display's refresh from them"
+                                                                       : " (with Frame generation Off, the frames shown are those)");
+    else
+        snprintf(b, sizeof b, "At %dx the game runs at %d and %d frames a second are shown (the Frame rate limit holds nothing back; "
+                              "the VRR row's cap still does).", mult, base, base * mult);
     return b;
 }
 MENU_HINTS(hn_pace, 0, "As soon as it is ready.", "At an even interval: less stutter, at up to one frame of delay.")
@@ -881,7 +942,8 @@ Row rows[] = {
      hn_dlss_pre_bloom, false, true},
     {TAB_GRAPHICS, "Frame generation by", &opts.framegen_by, 0, fgr::kBy - 1, 1, tx_framegen_by,
      "Who makes the made frames, and so how many the Frame generation row offers. NVIDIA DLSS Frame Generation (RTX 40 and newer, "
-     "with a temporal Upscaler) is off unless chosen here. Changing it keeps the multiplier within what the new mode makes.",
+     "with a temporal Upscaler) is off unless chosen here. AMD FSR 4 FG (a Radeon RX 9000, 2x) is a choice only where AMD's own runtime "
+     "says it runs on this GPU, and is not tested on real hardware yet. Changing it keeps the multiplier within what the new mode makes.",
      hn_framegen_by, false, true},
     {TAB_GRAPHICS, "Frame generation", &opts.framegen, 0, 8, 1, tx_framegen,
      "Makes frames between the game's own, for smoother motion, at a little input delay. Fast motion or camera cuts can "
@@ -951,6 +1013,12 @@ Row rows[] = {
     {TAB_GRAPHICS, "Shadow resolution", &opts.shadow_res, 0, 2, 1, tx_shadow_res,   // (longshot 9f8958a5c, ported: HL_OPT_SHADOW_RES, host/oot_shadow.c)
      "The sun's shadow map: Game is the game's own 1600. High and Ultra use the game's larger sizes, so thin shadows near Link (chains, ivy, fences) "
      "are smoother, for a little more GPU time.", nullptr},
+    {TAB_GRAPHICS, "Base frame rate limit", &opts.fps_base, 0, fgr::kBases - 1, 1, tx_fps_base,   // (HeyListen: HL_OPT_BASE_LIMIT, vk_opt_ids.h, host/nn_vi.c)
+     "The game's OWN frame rate, before frame generation makes more: the Frame rate limit above holds what is shown, this holds what "
+     "the game draws. With it on, the game runs at this rate, the frames shown are this rate times the Frame generation multiplier "
+     "(60 at 2x is 120, 48 at 3x is 144), and Auto fills up to the display's refresh from it; the Frame rate limit then holds nothing "
+     "back. Every frame generator then gets an even rate. With Frame generation Off it is the limit itself. Off: the Frame rate limit "
+     "alone, as before. Needs Game speed on Real time.", hn_fps_base, false, true},
     // (the picture's way, top to bottom: the output's size, what fills it from the 3D, the 3D's size, then the window)
     {TAB_GRAPHICS, "Output resolution", &opts.output_res, 0, kLastOutput, 1, tx_output_res,
      "The game's whole frame, HUD included, before it is scaled to the window. Docked only. Applies after a restart.",
@@ -961,6 +1029,9 @@ Row rows[] = {
      "Sharpens the picture as it goes to the window, with any filter. Too much shows halos around edges.", hn_sharpness},
     {TAB_GRAPHICS, "Handheld profile", &opts.handheld, 0, 1, 1, tx_onoff,
      "Runs the game as if the console were undocked. Applies after a restart.", hn_handheld, true},
+    {TAB_GRAPHICS, "Volumetric fog", &opts.fog, 0, 1, 1, tx_onoff,
+     "The haze in the distance and the mist of the forests. Off is lighter on the GPU (about an eighth of the frame on integrated "
+     "graphics, a few percent on a graphics card) and shows the distance crisper. Applies after a restart.", nullptr, true},
     {TAB_GRAPHICS, "Ultrawide", &opts.ultrawide, 0, 1, 1, tx_ultrawide,
      "The camera's shape on a screen wider or narrower than 16:9 (4:3, 16:10). Applies after a restart.", hn_ultrawide, true},
     {TAB_GRAPHICS, "HUD layout", &opts.hud_layout, 0, 1, 1, tx_hud_layout,
@@ -1019,7 +1090,7 @@ Row rows[] = {
      "that offers to update, keep your version or skip that version. Nothing is asked when you are offline, and when the launcher "
      "starts the game it looks for updates itself. Applies after a restart.", nullptr, true, true},
 
-    // Controls (13 rows; Motion opens the 6 TAB_MOTION rows, Controls its page, which shows this tab's Layout preset and Button prompts rows too)
+    // Controls (15 rows; Motion opens the 6 TAB_MOTION rows, Controls its page, which shows this tab's Layout preset and Button prompts rows too)
     // (hookshot) the input rows first, together so they are easy to find; the Controls page shows the same two above its grid
     {TAB_CONTROLS, "Layout preset", &opts.pad_layout, 0, 3, 1, tx_pad_layout,
      "Which face button is which. Binding one yourself on the Controls page makes it Custom.", hn_pad_layout},
@@ -1028,6 +1099,16 @@ Row rows[] = {
      "put each action on.", hn_prompts, true, true},
     {TAB_CONTROLS, "Controller in background", &opts.pad_background, 0, 1, 1, tx_onoff,
      "Whether the controller plays the game while another window has the focus.", hn_background},
+    {TAB_CONTROLS, "Sprint with L3", &opts.sprint, 0, 1, 1, tx_onoff,   // (HL_OPT_SPRINT, vk_opt_ids.h, host/oot_sprint.c; saved as sprint_with_l3)
+     "Off (the default): the left stick's press is the game's own LS. On: while it is pressed Link runs with the game's own fast "
+     "run, the one that follows a roll while A is held, without the roll, until he stops, rolls or targets. Any input bound to the "
+     "game's LS counts, the keyboard's too. The game no longer gets that press as LS, except one that begins in a conversation or "
+     "a cutscene, which still hides the text box. A is untouched: tapping it still rolls. Ported from Longshot (llun, kendowashere).",
+     nullptr, false, true},
+    {TAB_CONTROLS, "Touchpad opens menu", &opts.touchpad_menu, 0, 1, 1, tx_onoff,   // (issue 120; saved as touchpad_opens_menu)
+     "On (the default): clicking the DualSense or DualShock 4 touchpad opens and closes this menu. Off: the click does nothing, "
+     "so it cannot open the menu by accident. The menu still opens with Insert or F1, Home, Select and Start together, and the "
+     "Open menu control of the Controls page.", nullptr, false, true},
     {TAB_CONTROLS, "Mouse camera", &opts.mouse_native, 0, 1, 1, tx_mousecam, "How the captured mouse turns the camera.",
      hn_mousecam, false, true},
     {TAB_CONTROLS, "Mouse sensitivity", &opts.mouse_sens, 10, 500, 10, tx_sens,
@@ -1068,7 +1149,7 @@ Row rows[] = {
      "buttons."},
     {TAB_CONTROLS, "Menu shortcut", &opts.menu_shortcut, 0, 2, 1, tx_menu_shortcut,
      "Which keyboard shortcut opens and closes this menu. Choose one key to leave the other free for an overlay. "
-     "On a controller, Home, the touchpad click (DualSense, DualShock 4) or Select and Start together always open it.",
+     "On a controller, Home, Select and Start together or, unless Touchpad opens menu is off, the touchpad click (DualSense, DualShock 4) open it.",
      nullptr, false, true},
     {TAB_CONTROLS, "Screenshot key", &opts.screenshot_key, 0, 4, 1, tx_screenshot_key,   // (fork: vk_replay.cpp's player screenshot)
      "Saves the picture as a PNG at its full size, with the game's HUD. The controller's Capture button does it too (a short "
@@ -1314,7 +1395,7 @@ bool row_shown(int i) {
     const int* v = rows[i].value;
     return (rows[i].cheat < 0 || cheats_on()) &&
            (rows[i].value != &opts.dlss_model || ur::model_shown(dlss_built(), upscaler())) &&
-           (rows[i].value != &opts.framegen_by || dlss_built() || fsr3fi::capable()) &&   // (a build with DLSS, or a GPU AMD FSR 3.1's frame interpolation runs on: the row has a choice)
+           (rows[i].value != &opts.framegen_by || dlss_built() || fsr3fi::capable() || fsr4fg_offered()) &&   // (a build with DLSS, or a GPU AMD FSR 3.1's frame interpolation runs on: the row has a choice)
            (rows[i].value != &opts.dlss_pre_bloom || ur::pre_bloom_shown(dlss_why() == DLSS_OK, upscaler_mode())) &&
            // (HeyListen: the rows that only matter with another setting on show only then. Frame generation's sub-rows with it on)
            ((v != &opts.framegen_by && v != &opts.pace) || mrow::framegen_sub_shown(opts.framegen)) &&
@@ -1479,6 +1560,9 @@ void mic_chosen() {
     mic_row_ends();
     mic_tell_host();
 }
+// (HeyListen) the options file's lowend_rule line: the low-end rule was applied once (menu_first_run_lowend), never again: the
+// player's choices stay theirs. Kept by save()
+[[maybe_unused]] static bool lowend_marked;   // (unused where a test cuts save() out alone)
 void save() {
     // (hookshot) the lines that are not the menu's are kept: the controls, pad_ and key_ (host/nn_hid.c)
     // (and every other line the menu does not write, such as discord_app_id=: they were dropped at the next save)
@@ -1493,7 +1577,7 @@ void save() {
             const char* eq = strchr(line, '=');
             if (!eq || eq == line) continue;
             const std::string key(line, (size_t)(eq - line));
-            bool mine = key == "microphone_device" || key == "options_version";
+            bool mine = key == "microphone_device" || key == "options_version" || key == "lowend_rule";
             for (const Row& r : rows)
                 if (!mine && r.value && key == ini_key(r)) mine = true;
             if (!mine) others += line, others += others.back() == '\n' ? "" : "\n";
@@ -1515,6 +1599,7 @@ void save() {
         // (2: game_speed below 2 was only ever the old default, see menu_init; 3: the mouse's buttons are bindings, see
         // host/nn_hid.c binds_load)
         put("options_version=3\n");
+        if (lowend_marked) put("lowend_rule=1\n");   // (menu_first_run_lowend)
         out += others;
         if (!can_bind()) out += kept;
         for (int i = 0; i < HOS_KEY_N && can_bind(); i++) {   // (the keys-only controls, HOS_KEY_*, have no pad_ line)
@@ -1549,7 +1634,8 @@ void set_row(Row& r, int v, int dir, bool keep = true) {
     // (Frame generation by: NVIDIA DLSS FG is not a stop where this build has none: the row is there for AMD FSR 3.1's)
     if (r.value == &opts.framegen_by) {
         v = (v % fgr::kBy + fgr::kBy) % fgr::kBy;
-        if (v == fgr::BY_DLSS && !dlss_built()) v = (v + (dir < 0 ? fgr::kBy - 1 : 1)) % fgr::kBy;
+        // (a stop this PC cannot make is stepped over: NVIDIA DLSS FG without it in the build, AMD FSR 4 where AMD's runtime does not offer it)
+        if ((v == fgr::BY_DLSS && !dlss_built()) || (v == fgr::BY_FSR4 && !fsr4fg_offered())) v = fgr::step_by(v, dir, dlss_built(), fsr4fg_offered());
     }
     if (stops_at_ends(r)) v = std::min(std::max(v, r.lo), r.hi);   // (a scale: it stops at its ends)
     if (r.value == &opts.pad_layout) {
@@ -2461,6 +2547,60 @@ void startup_screen(const StartupView* view) {
     startup_on.store(true, std::memory_order_release);
 }
 
+// (HeyListen) Low-end GPUs: the Volumetric fog row and the first-start rule (lowend_rule.h)
+static int env_int(const char* name) {   // (-1: unset or empty)
+    const char* e = getenv(name);
+    return e && *e ? atoi(e) : -1;
+}
+bool fog_runs() {
+    static const bool on = [] {
+        const bool v = lowend_rule::fog_on(env_int("RX_VK_FOG"), opts.fog);
+        logf("vk: volumetric fog %s%s", v ? "on" : "off", env_int("RX_VK_FOG") >= 0 ? " (RX_VK_FOG)" : " (the Volumetric fog row)");
+        return v;
+    }();
+    return on;
+}
+static bool lowend_mirror;
+bool lowend_mirror_not_wait() { return lowend_mirror; }
+/// The options file with only these keys' lines rewritten (lowend_rule.h ini_put_text: every other line and the file's line
+/// endings kept), written whole or not at all as save() does. Read in binary: a text read would turn CRLF into LF
+static void ini_put_only(const std::vector<std::pair<std::string, int>>& keys) {
+    std::string in;
+    if (FILE* f = fopen(ini_path().c_str(), "rb")) {
+        char b[4096];
+        for (size_t n; (n = fread(b, 1, sizeof b, f)) > 0;) in.append(b, n);
+        fclose(f);
+    }
+    const std::string out = lowend_rule::ini_put_text(in, keys);
+    hos_atomic_write(ini_path().c_str(), out.data(), out.size());
+}
+void menu_first_run_lowend(uint32_t vendor_id, bool integrated, bool mesh_shader) {
+    const bool gpu = lowend_rule::lowend_gpu(integrated, mesh_shader);
+    lowend_mirror = lowend_rule::mirror_not_wait(vendor_id, integrated, mesh_shader);
+    const lowend_rule::Apply a = lowend_rule::first_start(env_int("HL_LOWEND"), lowend_marked, gpu);
+    if (a == lowend_rule::NONE) {
+        if (gpu) logf("vk: low-end GPU (integrated, no mesh shaders): %s",
+                      lowend_marked ? "the low-end settings were applied once (lowend_rule=1 in the options file): the rows stay as set"
+                                    : "the rows stay as set (HL_LOWEND=0)");
+        return;
+    }
+    // (only the three rows, as the player would set them; the Quality preset row and every other row stay as they are)
+    opts.resolution = ur::snap(upscaler(), lowend_rule::kResolution);
+    opts.handheld = lowend_rule::kHandheld;
+    opts.fog = lowend_rule::kFog;
+    if (a == lowend_rule::APPLY_AND_SAVE) {
+        lowend_marked = true;
+        Row* res = nullptr;
+        for (Row& r : rows)
+            if (r.value == &opts.resolution) res = &r;
+        ini_put_only({{res ? ini_key(*res) : "resolution", opts.resolution}, {"handheld_profile", opts.handheld},
+                      {"volumetric_fog", opts.fog}, {"lowend_rule", 1}});
+    }
+    logf("vk: low-end GPU (integrated, no mesh shaders)%s: Render resolution %d%%, Volumetric fog off, the handheld profile (from "
+         "the next start: the game asks for it before the GPU is known)%s; nothing else changed, the Insert menu changes them back",
+         a == lowend_rule::APPLY_THIS_RUN ? ", HL_LOWEND=1" : "", ur::percent(opts.resolution),
+         a == lowend_rule::APPLY_AND_SAVE ? "; saved to the options file (those rows only)" : "; for this run only (nothing saved)");
+}
 static bool dlss_model_saved;   // (hookshot_options.ini has a dlss_model line)
 void menu_first_run_model(uint32_t vendor_id, uint32_t device_id) {
     if (dlss_model_saved || vendor_id != 0x10de) return;   // (only NVIDIA GPUs run DLSS; a saved value is never changed)
@@ -2506,6 +2646,7 @@ void menu_init() {
             has_resolution |= !strcmp(line, "resolution");
             v2 |= !strcmp(line, "options_version");
             if (!strcmp(line, "dynamic_resolution")) old_dynres = atoi(eq + 1);
+            if (!strcmp(line, "lowend_rule")) lowend_marked = true;   // (menu_first_run_lowend: applied once, never again)
             if (!strcmp(line, "vsync")) saved_vsync = atoi(eq + 1);
             if (!strcmp(line, "vsync_mode")) has_vsync_mode = true;
             if (!strcmp(line, "microphone_device")) {   // (hookshot: the microphone, by its name)
@@ -2565,13 +2706,25 @@ void menu_init() {
     restart_init();   // (what this run started with: the rows that take a restart differ from it once changed)
 }
 
+int menu_base_fps() {
+    if (!opts.realtime) return 0;   // (Per frame: the limit does not apply, the base one neither)
+    static const int env = [] {   // (the environment's limit stands over both rows, as host/nn_vi.c fps_plan has it)
+        const char* e = getenv("HOS_FPS_LIMIT") ? getenv("HOS_FPS_LIMIT") : getenv("HOS_FPS_MAX");
+        return e ? atoi(e) : 0;
+    }();
+    return env > 0 ? 0 : fgr::base_fps(opts.fps_base);
+}
 int menu_fps_limit() {
     if (!opts.realtime) return -1;   // (Per frame: the game's steps are whole frames of 1/60 s, the limit does not apply)
     static const int env = [] {   // (as host/nn_vi.c reads them: HOS_FPS_LIMIT, or Hookshot's HOS_FPS_MAX)
         const char* e = getenv("HOS_FPS_LIMIT") ? getenv("HOS_FPS_LIMIT") : getenv("HOS_FPS_MAX");
         return e ? atoi(e) : 0;
     }();
-    return env > 0 ? std::clamp(env, 30, 360) : fgr::limit_fps(opts.fps_limit);
+    if (env > 0) return std::clamp(env, 30, 360);
+    // (the Base frame rate limit on: the game's own rate is held, the rate shown is that times the multiplier and nothing holds it:
+    // Unlimited to the rest of the renderer)
+    if (menu_base_fps() > 0) return 0;
+    return fgr::limit_fps(opts.fps_limit);
 }
 bool resolution_auto() { return upscaler_rows::snap(upscaler(), opts.resolution) == 0; }
 int resolution_scale() {
@@ -2850,7 +3003,7 @@ void menu_tick() {
     if (host && host->binding)   // (A and B as bound now: the Controls page or the Layout preset can change them)
         menu_keys::confirm_back(host->binding(HOS_BIND_PAD, HOS_SW_A, 0), host->binding(HOS_BIND_PAD, HOS_SW_B, 0), &pad_confirm,
                                 &pad_back);
-    if (pad(HOS_PAD_GUIDE) || pad(HOS_PAD_TOUCHPAD) || chord_now) press[0] = true;   // (Home, the touchpad's click, Select and Start)
+    if (pad(HOS_PAD_GUIDE) || (opts.touchpad_menu && pad(HOS_PAD_TOUCHPAD)) || chord_now) press[0] = true;   // (Home, the touchpad's click unless "Touchpad opens menu" is off, Select and Start)
     {   // holding an arrow or the D-pad repeats it: after 0.35 s, 12 a second, then 30 a second after 1.5 s held
         static int64_t held_since[5], next_repeat[5];
         const int pads[5] = {0, HOS_PAD_UP, HOS_PAD_DOWN, HOS_PAD_LEFT, HOS_PAD_RIGHT};
@@ -2933,7 +3086,7 @@ void menu_tick() {
         // layout is not applied over them at start)
         if (open_now.load()) auto_pad = pad_last;   // (Menu size Auto: by what opened the menu)
         if (open_now.load()) opts.pad_layout = detect_pad_layout();
-        if (open_now.load()) dlss_probe(), dlss_fg_probe(), fsr4_probe();   // (whether the Upscaler row can offer DLSS and FSR here: asked once)
+        if (open_now.load()) dlss_probe(), dlss_fg_probe(), fsr4_probe(), fsr4fg_probe();   // (whether the Upscaler row can offer DLSS and FSR here: asked once)
         if (open_now.load()) refresh_mics();   // (the microphones as they are now)
     }
     if (open_now.load() && page == 5) {   // (hookshot) the restart question: Later (the default) or Restart now

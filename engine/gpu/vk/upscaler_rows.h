@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 namespace mkwvk::upscaler_rows {
 
@@ -95,7 +96,10 @@ inline bool migrate(int& upscaler, int& resolution) {
 /// Performance and Ultra Performance; Auto too, since DLSS follows the game's dynamic size (vk_dlss.cpp makes its feature again
 /// when the size leaves the mode's range; FSR 4's context takes any size up to the output). FSR 4 the same, its native
 /// choice being its Native AA. FSR 3.1: the modes alone
-constexpr int kGameSteps[] = {0, 1, 2, 3, 4};
+// (HeyListen, LAPTOP1) The game's own and Off go down to 33% too: on a Ryzen 7 5700U's Vega 8 (no cooperative matrices: our
+// TAAU stand-in draws in the network's place) and on an RTX 5070 with the game's network (HOS_RES_SCALE=0.25: the picture
+// right) a share under 50% draws and upscales right (docs/research/lowend-laptop.md)
+constexpr int kGameSteps[] = {0, 1, 2, 3, 4, 6};
 constexpr int kDlssSteps[] = {0, 3, 5, 4, 6};
 constexpr int kNativeSteps[] = {0, kNativeAa, 3, 5, 4, 6};
 inline const int* steps(int upscaler, int& n) {
@@ -230,6 +234,33 @@ inline bool pre_bloom_fixed(int mode, bool env_set, bool parallel = false) { ret
 /// a size not known yet (0) counts as different
 inline bool filter_needed(unsigned picture_w, unsigned picture_h, unsigned window_w, unsigned window_h) {
     return !picture_w || !window_w || picture_w != window_w || picture_h != window_h;
+}
+
+/// What the game says of its own build (issue 130: a game built without NVIDIA DLSS, the Builder's box ticked later, and a menu
+/// with no word of why DLSS was not there). One log line each at the start, in plain words
+inline const char* dlss_build_line(bool built) {
+    return built ? "vk: DLSS: in this build (NVIDIA's SDK was there when the game was built)"
+                 : "vk: DLSS: not in this build (the Builder's NVIDIA DLSS box was off when the game was built)";
+}
+inline const char* fsr4_build_line(bool built) {
+    return built ? "vk: FSR 4: in this build (the Builder's AMD FSR 4 box was ticked when the game was built)"
+                 : "vk: FSR 4: not in this build (the Builder's AMD FSR 4 box was off when the game was built)";
+}
+/// An NVIDIA RTX card by its Vulkan vendor id and name (the cards DLSS runs on): where a game built without DLSS has NVIDIA's
+/// runtime beside it, the Upscaler row's help says to run the Builder again
+inline bool nvidia_rtx(unsigned vendor_id, const char* name) { return vendor_id == 0x10DE && name && std::strstr(name, "RTX"); }
+inline bool amd_gpu(unsigned vendor_id) { return vendor_id == 0x1002; }
+/// The Upscaler row's help for a game built without DLSS (without FSR 4) with NVIDIA's runtime (AMD's files) found beside it on
+/// such a card: what to do, instead of the silence a build without them keeps
+inline bool dlss_rebuild_hint_wanted(bool dlss_built, bool rtx_card, bool runtime_found) { return !dlss_built && rtx_card && runtime_found; }
+inline bool fsr4_rebuild_hint_wanted(bool fsr4_built, bool amd_card, bool files_found) { return !fsr4_built && amd_card && files_found; }
+inline const char* dlss_rebuild_hint() {
+    return "DLSS and DLAA: NVIDIA's runtime is in the game folder, but the game was built without NVIDIA DLSS. Run the Builder "
+           "again with the NVIDIA DLSS box ticked.";
+}
+inline const char* fsr4_rebuild_hint() {
+    return "AMD FSR 4: AMD's files are beside the game, but the game was built without AMD FSR 4. Run the Builder again with "
+           "the AMD FSR 4 box ticked.";
 }
 
 } // namespace mkwvk::upscaler_rows

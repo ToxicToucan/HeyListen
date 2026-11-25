@@ -25,9 +25,9 @@ def main():
     read = block(source, "bool ub_read(")
     if read.index("ub_word_hit(") > read.index("memory_read_as_submitted("):
         raise SystemExit("a uniform word is read before checking it was already known")
-    if read.index("ub_gap_holds(") > read.index("for (size_t i = 0; i < lim; i++)"):
+    if read.index("ub_gap_holds(") > read.index("for (size_t i = ub_base; i < lim; i++)"):
         raise SystemExit("ub_read walks the updates before checking the gap")
-    if read.count("w.on = true") != 1 or read.index("w.on = true") > read.index("for (size_t i = 0; i < lim; i++)"):
+    if read.count("w.on = true") != 1 or read.index("w.on = true") > read.index("for (size_t i = ub_base; i < lim; i++)"):
         raise SystemExit("a uniform word is kept after an update has been copied onto it")
     hit = block(source, "bool ub_word_hit(")
     for needle in ("ub_gap_holds(", "memory_page_stamp(", "rec_value_now"):

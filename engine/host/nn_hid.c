@@ -36,7 +36,7 @@
 #include <windows.h>
 #include <xinput.h>
 #include "../gpu/vk/vk_api.h"   /* (the controls' names: HOS_SW_*, HOS_PAD_*) */
-#include "../gpu/vk/vk_opt_ids.h"   /* (fork: HL_OPT_FIRST_PERSON; HL_OPT_SCREENSHOT, HL_OPT_CLIP for the live file's !shot and !clip) */
+#include "../gpu/vk/vk_opt_ids.h"   /* (HL_OPT_SPRINT; fork: HL_OPT_FIRST_PERSON; HL_OPT_SCREENSHOT, HL_OPT_CLIP for the live file's !shot and !clip) */
 #include "hos_motion.h"
 #include "hos_atomic_file.h"   /* (the sensitivity is written whole or not at all) */
 
@@ -959,6 +959,10 @@ static void npad_states(Ctx *c) {
             stick[0] = stick[1] = 0;
             buttons &= ~(climb | (1ULL << B_L));
         }
+        /* Sprint with L3 (the Controls row, host/oot_sprint.c): with it on the left stick's press (the game's LS) is Sprint's, not the
+           game's, except for one that begins outside gameplay. Off: the buttons as they are. */
+        uint64_t hos_sprint_input(uint64_t buttons, int on, int blocked);   /* host/oot_sprint.c */
+        buttons = hos_sprint_input(buttons, rx_option(HL_OPT_SPRINT, 0), menu_open);
         __atomic_store_n(&flight_input, flight, __ATOMIC_RELAXED);
         __atomic_store_n(&free_camera_axes, axes, __ATOMIC_RELAXED);
         __atomic_store_n(&free_camera_height, height, __ATOMIC_RELAXED);

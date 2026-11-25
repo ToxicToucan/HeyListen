@@ -20,6 +20,7 @@
 
 #include "dlss_math.h"
 #include "vk_dlss.h"   // (dlss_fg_wanted)
+#include "vk_fsr4fg.h"   // (fsr4fg_wanted)
 #include "upscaler_rows.h"
 #include "vk_draw.h"   // (descriptors_disturbed)
 #include "vk_fsr3.h"
@@ -213,7 +214,7 @@ VkImageView depth_view(Texture* t) {
 
 } // namespace
 
-bool wanted() { return fsr3_wanted() || fsr3fi::frames_wanted() != 0 || dlss_fg_wanted(); }
+bool wanted() { return fsr3_wanted() || fsr3fi::frames_wanted() != 0 || dlss_fg_wanted() || fsr4fg_wanted(); }
 
 bool scene_format(VkFormat format) {
     if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) return true;

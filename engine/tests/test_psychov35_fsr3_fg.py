@@ -49,8 +49,9 @@ def main():
         color += '\n'+block(fi, 'void colour_constants(')
         start = fi.index('    const float max_luminance = in.native_pq')
         end = fi.index('    const int32_t rw =', start)
-        color += '\nstruct {bool first_frame=true,native_pq=false;float max_luminance=1;uint64_t sequence=0;} g;\n'
-        color += 'struct Input {bool reset=false,native_pq=false;float max_luminance=1;uint64_t sequence=1;};\n'
+        color += '\nstruct {bool first_frame=true,native_pq=false,hudless=false;float max_luminance=1;uint64_t sequence=0;} g;\n'
+        color += '#define VK_NULL_HANDLE nullptr\n'
+        color += 'struct Input {bool reset=false,native_pq=false;float max_luminance=1;uint64_t sequence=1;void* present=nullptr;};\n'
         color += 'bool reset_for(const Input& in){'+fi[start:end]+'return reset;}\n'
         begin = fi.index('    if (in.native_pq &&')
         finish = fi.index('    if (!prepare(', begin)
@@ -102,6 +103,7 @@ bool scene_tonemap_on(){return tone;}
 int env_switch(const char*){return enabled?1:0;}
 bool fsr3_wanted(){return false;}
 bool dlss_fg_wanted(){return false;}
+bool fsr4fg_wanted(){return false;}
 namespace fsr3fi {unsigned frames_wanted(){return fg;}}
 uint64_t texture_frame_no(){return frame;}
 uint64_t texture_destroy_generation(){return 1;}

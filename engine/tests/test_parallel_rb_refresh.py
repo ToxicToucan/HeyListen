@@ -80,7 +80,7 @@ def main():
         "rb_writeback.inc": block(memory, "struct WriteBack {") + ";\n",
         "rb_refresh.inc": refresh_cut(memory),
         "rb_bindtail.inc": cut(block(memory, "BufferRef gpu_buffer_bind("),
-                               "if (p->synced_epoch != mirror_epoch || p->sync_seg > texture_segment()) mirror_sync(*p);",
+                               "if (!pool_synced_for(*p, rec_epoch(), texture_segment())) mirror_sync(*p);",
                                "return remember({p->mirror"),
         "rb_texture.inc": "\n".join(block(texture, m) for m in (
             "uint64_t texture_segment() {", "void texture_set_segment(uint64_t seg) {",

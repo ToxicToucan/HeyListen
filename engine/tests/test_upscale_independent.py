@@ -35,7 +35,7 @@ def main():
     # Wiring check only: resource/dispatch behavior is exercised by the real functions below.
     capture = replay.index("direct_view = texture_view(")
     age = replay.index("texture_frame(completed());")
-    assert replay.index("std::lock_guard lk(replay_mu)") < capture < age
+    assert replay.index("ReplayLock lk;") < capture < age
     assert capture < replay.index("tex->last_frame = texture_frame_no();") < age
     assert capture < replay.index("tex->last_value = std::max(tex->last_value, value);") < age
     # the wiring check's markers, updated for the present tail's pq parameter

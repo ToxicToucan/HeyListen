@@ -40,19 +40,22 @@ HOST = r"""
 #define HL_OPT_FPS_LIMIT 90
 #define HL_OPT_FRAMEGEN_MULT 91
 #define HL_OPT_VRR_CAP 93
-static int option_limit = 60, option_mult = 1, option_realtime = 1, option_vrr_cap = 0;
+#define HL_OPT_BASE_LIMIT 100
+static int option_limit = 60, option_mult = 1, option_realtime = 1, option_vrr_cap = 0, option_base = 0;
 int rx_option(int id, int otherwise) {
     if (id == 0) return option_realtime;
     if (id == HL_OPT_FPS_LIMIT) return option_limit;
     if (id == HL_OPT_FRAMEGEN_MULT) return option_mult;
     if (id == HL_OPT_VRR_CAP) return option_vrr_cap;
+    if (id == HL_OPT_BASE_LIMIT) return option_base;
     return otherwise;
 }
 FPS_PLAN
 int main(int argc, char **argv) {
-    if (argc != 5) return 90;
+    if (argc != 5 && argc != 6) return 90;
     option_limit = atoi(argv[1]), option_mult = atoi(argv[2]), option_realtime = atoi(argv[3]);
     option_vrr_cap = argv[4][0] == '-' ? 0 : atoi(argv[4]);
+    option_base = argc == 6 ? atoi(argv[5]) : 0;
     printf("%d %d %lld\n", fps_limit(), fps_unlimited(), (long long)fps_period_ns());
     return 0;
 }
@@ -63,14 +66,16 @@ MENU = r"""
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-struct { int fps_limit = 0, realtime = 1; } opts;
+struct { int fps_limit = 0, realtime = 1, fps_base = 0; } opts;
 FRAMEGEN_ROWS
 namespace fgr = mkwvk::framegen_rows;
+MENU_BASE_FPS
 MENU_FPS_LIMIT
 int main(int argc, char **argv) {
-    if (argc != 3) return 90;
+    if (argc != 3 && argc != 4) return 90;
     opts.fps_limit = atoi(argv[1]), opts.realtime = atoi(argv[2]);
-    std::printf("%d\n", menu_fps_limit());
+    opts.fps_base = argc == 4 ? atoi(argv[3]) : 0;
+    std::printf("%d %d\n", menu_fps_limit(), menu_base_fps());
     return 0;
 }
 """
@@ -100,10 +105,10 @@ def check_rows(menu):
     assert '"Frame generation by", &opts.framegen_by, 0, fgr::kBy - 1, 1, tx_framegen_by,' in menu, "the mode row does not have three modes"
     assert "Unlimited" in block(menu, "const char* tx_fps_limit(int v) {", where="gpu/vk/vk_menu.cpp"), "no Unlimited label"
     names = block(menu, "const char* tx_framegen_by(int v) {", where="gpu/vk/vk_menu.cpp")
-    for name in ("Built-in / AMD FSR 3.1", "NVIDIA DLSS FG", "AMD FSR 3.1 FG"):
+    for name in ("Built-in / AMD FSR 3.1", "NVIDIA DLSS FG", "AMD FSR 3.1 FG", "AMD FSR 4 FG"):
         assert '"%s"' % name in names, name
-    assert names.index("Built-in") < names.index("NVIDIA DLSS FG") < names.index("AMD FSR 3.1 FG"), \
-        "the saved modes 0 and 1 are not the first two names (their meaning would change)"
+    assert names.index("Built-in") < names.index("NVIDIA DLSS FG") < names.index("AMD FSR 3.1 FG") < names.index("AMD FSR 4 FG"), \
+        "the saved modes 0, 1 and 2 are not the first three names (their meaning would change)"
     shown = block(menu, "const char* tx_framegen(int v) {", where="gpu/vk/vk_menu.cpp")
     assert "fgr::clamp(framegen_by_now(), dlss_fg_most()," in shown, "the multiplier row shows a value past what the mode makes"
     # set_row: the arrows step what the mode offers; a switch of mode clamps the multiplier (never raising it)
@@ -114,7 +119,15 @@ def check_rows(menu):
         "set_row clamps the multiplier before the new mode is set"
     # the row is shown in a build with DLSS, or where AMD FSR 3.1's frame interpolation runs
     shown_rows = block(menu, "bool row_shown(int i) {", where="gpu/vk/vk_menu.cpp")
-    assert "&opts.framegen_by || dlss_built() || fsr3fi::capable()" in shown_rows, "row_shown: Frame generation by"
+    assert "&opts.framegen_by || dlss_built() || fsr3fi::capable() || fsr4fg_offered()" in shown_rows, "row_shown: Frame generation by"
+    # (AMD FSR 4 FG is a stop of the row only where AMD's own runtime offers it: step_by skips it, and NVIDIA DLSS FG without a build of it)
+    assert "(v == fgr::BY_FSR4 && !fsr4fg_offered())) v = fgr::step_by(v, dir, dlss_built(), fsr4fg_offered());" in row, "set_row: the by row's stops"
+    # the Base frame rate limit row, after the Frame rate limit row: Off and 30 to 120, saved by its own name (no special key)
+    assert menu.index('{TAB_GRAPHICS, "Base frame rate limit", &opts.fps_base, 0, fgr::kBases - 1, 1, tx_fps_base,') > \
+        menu.index('{TAB_GRAPHICS, "Frame rate limit"'), "the Base frame rate limit row is not after the Frame rate limit row"
+    assert "&opts.fps_base)" not in ini_key, "the Base frame rate limit has a key of its own"
+    assert "if (menu_base_fps() > 0) return 0;" in block(menu, "int menu_fps_limit() {", where="gpu/vk/vk_menu.cpp"), \
+        "menu_fps_limit does not answer Unlimited under the base limit"
 
 
 def check_runtime():
@@ -124,6 +137,7 @@ def check_runtime():
         "framegen_now: the mode's clamp, then the limit's lowering"
     by = block(framegen, "int framegen_by_now() {", where="gpu/vk/vk_framegen.cpp")
     assert "dlss_fg_wanted() && temporal_wanted()" in by and "BY_FSR3" in by, "framegen_by_now"
+    assert "opts.framegen_by == framegen_rows::BY_FSR4 && fsr4fg_wanted()" in by, "framegen_by_now: AMD FSR 4 FG only where chosen and offered"
     record = block(framegen, "bool framegen_record(", where="gpu/vk/vk_framegen.cpp")
     assert "menu_fps_limit()" in record and "limit > 0 ? (int64_t)(1000000000LL / limit)" in record, \
         "Auto's refresh period is not held to the Frame rate limit's"
@@ -133,6 +147,7 @@ def check_runtime():
     replay = (VK / "vk_replay.cpp").read_text(encoding="utf-8")
     table = block(replay, "t.option = [](int id) -> int {", where="gpu/vk/vk_replay.cpp")
     assert "id == HL_OPT_FPS_LIMIT ? menu_fps_limit()" in table, "the renderer does not answer the limit as the menu's"
+    assert "id == HL_OPT_BASE_LIMIT ? menu_base_fps()" in table, "the renderer does not answer the base limit as the menu's"
     assert "id == HL_OPT_FRAMEGEN_MULT ? (framegen_on() && framegen_now() >= 2 ? framegen_now() : 1)" in table, \
         "the renderer does not answer the multiplier that runs (1 when frame generation does not run)"
     ids = (VK / "vk_opt_ids.h").read_text(encoding="utf-8")
@@ -143,6 +158,7 @@ def check_runtime():
     host = (ROOT / "host" / "nn_vi.c").read_text(encoding="utf-8")
     assert "rx_option(HL_OPT_FRAMEGEN_MULT, 1)" in host, "the host does not ask the multiplier"
     assert "rx_option(HL_OPT_VRR_CAP, 0)" in host, "the host does not ask the VRR row's cap"
+    assert "rx_option(HL_OPT_BASE_LIMIT, 0)" in host and re.search(r"#define HL_OPT_BASE_LIMIT 100\b", ids), "the host does not ask the base limit (100)"
     # the host paces at the exact period of the game's rate, and Unlimited out of the way of the game's own limiter
     presented = block(host, "void hos_vi_native_presented(void) {", where="host/nn_vi.c")
     assert "fps_period_ns()" in presented, "hos_vi_native_presented: the exact period of the game's rate"
@@ -164,6 +180,7 @@ def main():
         "static int64_t fps_period_ns(void) {"))
     rows = (VK / "framegen_rows.h").read_text(encoding="utf-8").replace("#pragma once", "")
     fps_limit_fn = block(menu, "int menu_fps_limit() {", where="gpu/vk/vk_menu.cpp")
+    base_fps_fn = block(menu, "int menu_base_fps() {", where="gpu/vk/vk_menu.cpp")
     with tempfile.TemporaryDirectory(prefix="framegen-rows-") as tmp:
         work = Path(tmp)
         pure = work / "pure.exe"
@@ -218,16 +235,43 @@ def main():
                                                                     (want_fps, want_unlimited, want_period))
         out = run([str(host_exe), "60", "2", "1", "117"], env=env_limit).split()
         assert (int(out[0]), int(out[2])) == (59, 1000000000 * 2 // 117), out   # (the cap over HOS_FPS_LIMIT too)
+        # the Base frame rate limit: the game runs at the base whatever the limit (here 60) and the multiplier; its period is exactly the base's
+        # (limit, multiplier, Real time, VRR cap, base) -> (the game's rate, its period in ns)
+        for limit, mult, realtime, cap, base, want_fps, want_period in (
+            (0, 2, 1, "-", 60, 60, 1000000000 // 60),            # (base 60 at 2x: the game at 60, 120 shown; the limit Unlimited as the menu answers)
+            (0, 3, 1, "-", 48, 48, 1000000000 // 48),            # (base 48 at 3x: 144 shown)
+            (60, 3, 1, "-", 48, 48, 1000000000 // 48),           # (a limit of 60 does not hold the base: it would have made the game 20)
+            (2, 1, 1, "-", 48, 48, 1000000000 // 48),            # (no frame generation: the base is the limit itself)
+            (60, 1, 1, "-", 30, 30, 1000000000 // 30),
+            (0, 6, 1, "-", 40, 40, 1000000000 // 40),            # (240 shown)
+            (0, 3, 1, "162", 60, 54, 1000000000 * 3 // 162),     # (the VRR cap holds the shown rate: 180 -> 162, the game at 54)
+            (0, 2, 1, "58", 60, 60, 1000000000 // 60),           # (a cap under 60 is no cap)
+            (60, 2, 0, "-", 48, 60, 1000000000 // 60),           # (Per frame: neither limit applies)
+            (0, 8, 1, "-", 30, 30, 1000000000 // 30),
+        ):
+            out = run([str(host_exe), str(limit), str(mult), str(realtime), cap, str(base)], env=env).split()
+            got = (int(out[0]), int(out[1]), int(out[2]))
+            assert got == (want_fps, 0, want_period), "base %d limit %d x%d cap %s: %s, wanted %s" % (base, limit, mult, cap, got, (want_fps, 0, want_period))
+        out = run([str(host_exe), "60", "2", "1", "-", "60"], env=env_limit).split()   # (HOS_FPS_LIMIT=144 stands over the base row)
+        assert (int(out[0]), int(out[2])) == (72, 1000000000 * 2 // 144), out
         # menu_fps_limit
         menu_cpp, menu_exe = work / "menu.cpp", work / "menu.exe"
-        menu_cpp.write_text(MENU.replace("FRAMEGEN_ROWS", rows).replace("MENU_FPS_LIMIT", fps_limit_fn), encoding="utf-8")
+        menu_cpp.write_text(MENU.replace("FRAMEGEN_ROWS", rows).replace("MENU_BASE_FPS", base_fps_fn).replace("MENU_FPS_LIMIT", fps_limit_fn), encoding="utf-8")
         subprocess.run([args.cxx, "-std=c++20", "-Wall", "-Wextra", "-Werror", str(menu_cpp), "-o", str(menu_exe)], check=True)
         want = {(0, 1): 60, (1, 1): 90, (2, 1): 120, (3, 1): 144, (4, 1): 165, (5, 1): 240, (6, 1): 0, (9, 1): 60, (2, 0): -1, (6, 0): -1}
         for (row, realtime), expected in want.items():
-            assert int(run([str(menu_exe), str(row), str(realtime)], env=env)) == expected, (row, realtime, expected)
-        assert int(run([str(menu_exe), "6", "1"], env=dict(env, HOS_FPS_LIMIT="100"))) == 100
-        assert int(run([str(menu_exe), "6", "1"], env=dict(env, HOS_FPS_MAX="500"))) == 360
-        assert int(run([str(menu_exe), "2", "0"], env=dict(env, HOS_FPS_LIMIT="100"))) == -1
+            assert int(run([str(menu_exe), str(row), str(realtime)], env=env).split()[0]) == expected, (row, realtime, expected)
+        assert int(run([str(menu_exe), "6", "1"], env=dict(env, HOS_FPS_LIMIT="100")).split()[0]) == 100
+        assert int(run([str(menu_exe), "6", "1"], env=dict(env, HOS_FPS_MAX="500")).split()[0]) == 360
+        assert int(run([str(menu_exe), "2", "0"], env=dict(env, HOS_FPS_LIMIT="100")).split()[0]) == -1
+        # the Base frame rate limit row: Off changes nothing; on, the base is the game's rate and the shown rate is held by nothing (Unlimited)
+        for row in range(7):
+            assert run([str(menu_exe), str(row), "1", "0"], env=env).split() == [str(want[(row, 1)]), "0"], row
+        for base_row, fps in ((1, 30), (4, 48), (6, 60), (10, 120), (11, 0), (-1, 0)):
+            got = run([str(menu_exe), "0", "1", str(base_row)], env=env).split()
+            assert got == (["0", str(fps)] if fps else ["60", "0"]), (base_row, got)
+        assert run([str(menu_exe), "0", "0", "6"], env=env).split() == ["-1", "0"], "Per frame: neither limit applies"
+        assert run([str(menu_exe), "0", "1", "6"], env=dict(env, HOS_FPS_LIMIT="100")).split() == ["100", "0"], "the environment's limit stands over the base row"
     print("PASS: the frame rows: each mode's multiplier, the limit as the rate presented, Unlimited")
 
 

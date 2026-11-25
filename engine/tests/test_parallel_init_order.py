@@ -68,7 +68,7 @@ def main():
         raise SystemExit("create()'s initialization moved: update this test")
     # (TICK-056 added a second "struct Job {" in replay_handle_early: this is the other path's, after its submit_recording)
     jobs = cut(replay, "    struct Job {", "    seg_ms += std::chrono::duration", after="    jt_mark(20, 0);")
-    have_seg_init = "std::mutex seg_init_mu;" in texture
+    have_seg_init = "struct SegTable {" in texture
     exits = {"init_end_fail": 3} if have_seg_init else {}   # (replay_fatal ends the process)
     for step in ("record_segment(c, j->g);", "texture_begin_recording(j->r->upload, j->r->value);", "vkQueueSubmit2(",
                  "j->uploads = texture_uploads_recorded();", "par_pool.cv.notify_all();"):
@@ -77,7 +77,7 @@ def main():
     hooks = [block(texture, m) for m in (
         "void texture_set_segment(uint64_t seg) {", "void texture_begin_recording(VkCommandBuffer upload, uint64_t value) {",
         "bool texture_uploads_recorded() {")]
-    hooks += [block(texture, m) for m in ("void texture_segments_begin(", "void texture_segment_worker(", "int texture_segment_end(")
+    hooks += [block(texture, m) for m in ("SegTableRef texture_segments_begin(", "void texture_segment_worker(", "int texture_segment_end(")
               if m in texture]
     have_pools = "bool init_pools_make(" in replay
     if have_pools:   # (the last fallible step of replay_start: no later failure returns with them made)

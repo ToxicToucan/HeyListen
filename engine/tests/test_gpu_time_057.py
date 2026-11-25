@@ -99,12 +99,12 @@ def main():
          "vk_memory.cpp: the mirrors' own need taken before the VRAM rule")
     need("if (!long_idle && p->remade && mirror_sticky_on() && mirror_bytes + want_own <= mirror_budget())" in gb,
          "vk_memory.cpp: sticky only against the VRAM rule, never past kLongIdle")
-    need("p->idle_freed_epoch = mirror_epoch;" in gb, "vk_memory.cpp: an idle mirror's going noted")
+    need("p->idle_freed_epoch = rec_epoch();" in gb, "vk_memory.cpp: an idle mirror's going noted")
     need('getenv("RX_VK_MIRROR_VRAM_FREE")' in gb and "e && atoi(e) != 0" in gb and
          "if (count_free) used -= std::min(used, block_free);" in gb and "used > allowed / 100 * 80" in gb,
          "vk_memory.cpp: RX_VK_MIRROR_VRAM_FREE (off) counts VMA's free block space as free in the 80% rule")
     mk = body(mem, "bool mirror_make(Pool& pool) {")
-    need("if (p->idle_freed_epoch && mirror_epoch - p->idle_freed_epoch <= kLongIdle)" in mk and "p->remade++" in mk,
+    need("if (p->idle_freed_epoch && rec_epoch() - p->idle_freed_epoch <= kLongIdle)" in mk and "p->remade++" in mk,
          "vk_memory.cpp: a mirror made again soon after it went counted")
     need("gpu_tail_note_late(c->late_value)" in mem and
          mem.index("gpu_tail_note_late(c->late_value)") < mem.index("vk_timeline_wait_for(c->late_value"),

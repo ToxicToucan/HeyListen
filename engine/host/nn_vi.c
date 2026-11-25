@@ -5,7 +5,7 @@
    so the game takes its SDR path. Frames are paced at the native NVN layer's window acquire (the end of this file). */
 #include "hos.h"
 #include "step_steady.h"   /* (Triforce v0.5.0, ported: HOS_STEP_STEADY=1, realtime_step) */
-#include "../gpu/vk/vk_opt_ids.h"   /* (HL_OPT_FPS_LIMIT) */
+#include "../gpu/vk/vk_opt_ids.h"   /* (HL_OPT_FPS_LIMIT, HL_OPT_BASE_LIMIT) */
 #include "../gpu/vk/vk_api.h"   /* (HOS_OPT_HDR_*: the Insert menu's HDR, answered by the renderer) */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -118,7 +118,9 @@ static volatile int present_interval = 1;
    multiplies what it gets. The game runs its frames at that rate with its time following the clock (Game speed Real time): the
    display queue, the step (realtime_step) and the game's own limiter (+0xfc) are all at the game's rate. (Sync 11: upstream's Frame
    rate cap, frame_rate_cap= / HOS_FPS_MAX read once at the start, is the same feature; ours is kept, read live, and HOS_FPS_MAX is
-   taken as HOS_FPS_LIMIT) */
+   taken as HOS_FPS_LIMIT). The Base frame rate limit row (HL_OPT_BASE_LIMIT), when it is on, is the game's own rate instead: the game
+   runs at it whatever the limit says, and the rate shown is it times m (60 at 2x: 120; 48 at 3x: 144; Frame generation Off: the base
+   itself); the game's frames are paced at the acquire below, one base frame, so frame generation gets an even rate to work from */
 static void fps_plan(int *limit, int *mult) {
     static int env = -1;
     if (env < 0) {
@@ -130,6 +132,19 @@ static void fps_plan(int *limit, int *mult) {
     int m = rx_option(HL_OPT_FRAMEGEN_MULT, 1);
     m = m < 2 ? 1 : m > 8 ? 8 : m;
     if (!rx_option(0, 1)) v = 60, m = 1;   /* (Per frame: the game's steps are whole frames of 1/60 s: 60, with the frames made on top) */
+    else if (env <= 0 && rx_option(HL_OPT_BASE_LIMIT, 0) > 0) {
+        /* (the Base frame rate limit: the game's OWN rate, before the frames made. The rate shown is that times the multiplier that
+           runs, so the game's period below, 1e9 * m / v, is exactly the base's, whatever the multiplier. The VRR row's cap holds the
+           shown rate under the refresh as it holds a limit, and the game keeps its 20 frames a second. An environment limit stands
+           over the row) */
+        const int base = rx_option(HL_OPT_BASE_LIMIT, 0);
+        v = (base < 20 ? 20 : base > 360 ? 360 : base) * m;
+        if (v > 60) {
+            const int cap = rx_option(HL_OPT_VRR_CAP, 0);
+            if (cap >= 60 && cap < v) v = cap;
+        }
+        if (v < 20 * m) v = 20 * m;
+    }
     else if (v > 0) {
         v = v < 30 ? 30 : v > 360 ? 360 : v;
         if (v > 60) {   /* (the VRR row: a few fps under the refresh; 0 when VRR is off, which leaves the limit alone) */

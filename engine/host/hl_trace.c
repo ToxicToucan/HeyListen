@@ -289,13 +289,32 @@ static DWORD WINAPI step_scan(void *p) {
     return 0;
 }
 
+/* (CRASH3) HL_TRACE_WB=1 (with HL_TRACE's memory bit): the write-back watch (hl_trace.h hl_trace_wb_counts); its counts in
+   the log every 30 s */
+static DWORD WINAPI wb_counts_every(void *p) {
+    (void)p;
+    for (;;) {
+        Sleep(30000);
+        HlTraceWbCounts n;
+        hl_trace_wb_counts(&n);
+        hos_log("hl trace wb: %llu write-backs into live heap blocks, %llu blocks allocated over and %llu freed under a "
+                "target written back in the last 5 s; %llu targets seen, %llu of them hit", (unsigned long long)n.into_live,
+                (unsigned long long)n.allocs_over, (unsigned long long)n.frees_under, (unsigned long long)n.targets,
+                (unsigned long long)n.targets_hit);
+    }
+    return 0;
+}
+
 /* (a constructor: the heaps' first allocations come before the game's code runs anything else) */__attribute__((constructor)) static void hl_trace_switch(void) {
     const char *e = getenv("HL_TRACE");
     uint32_t mask = e && e[0] ? (uint32_t)strtoul(e, NULL, 0) : 0;
     if (!mask) return;
     if (mask == 1) mask = HL_TR_ALL;
-    const HlTraceConfig config = {.thread_name = thread_name, .out = out_line};
+    const char *wb = getenv("HL_TRACE_WB");
+    const HlTraceConfig config = {.thread_name = thread_name, .out = out_line,
+                                  .wb_watch = (mask & HL_TR_MEM) && wb && atoi(wb) != 0};
     if (!hl_trace_start(mask, &config)) return;
+    if (config.wb_watch) CreateThread(NULL, 0, wb_counts_every, NULL, 0, NULL);
     const char *d = getenv("HL_TRACE_DUMP");
     if (d && atoi(d) > 0) CreateThread(NULL, 0, dump_after, (void *)(uintptr_t)atoi(d), 0, NULL);
     const char *sc = getenv("HL_STEP_SCAN");

@@ -1,9 +1,8 @@
-/* The host side of tests/vbytes_test.c, on Windows and on Linux (from Longshot deb08f36f's tests/x86_test_host.h,
-   MagicBeanDev/Longshot #1576, Veix and HumanBean, GPL-3.0-or-later): guest memory at a fixed place, a clock, and
-   whether this CPU runs the instruction set the file was built for (the test builds the driver for -march=native,
-   x86-64-v3, x86-64-v2 and the baseline, and a CPU without AVX2, say, cannot run the v3 one). */
-#ifndef HL_X86_TEST_HOST_H
-#define HL_X86_TEST_HOST_H
+/* The host side of tests/vbytes_test.c and tests/vfpx_elem_test.c, on Windows and on Linux: guest memory at a fixed
+   place, a clock, and whether this CPU runs the instruction set the file was built for (their tests build each driver
+   for -march=native, x86-64-v3, x86-64-v2 and the baseline, and a CPU without AVX2, say, cannot run the v3 one). */
+#ifndef LONGSHOT_X86_TEST_HOST_H
+#define LONGSHOT_X86_TEST_HOST_H
 #include <stddef.h>
 #include <stdint.h>
 #include <cpuid.h>
